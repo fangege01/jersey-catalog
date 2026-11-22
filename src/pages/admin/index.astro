@@ -6,34 +6,37 @@ import { countAllProducts, lowStockProducts } from '../../features/products/db';
 import { listOrders, orderStats, dailyOrderTotals } from '../../features/orders/db';
 import { countCustomers } from '../../features/customers/db';
 import { orderReference } from '../../features/orders/number';
+import CatalogDashboard from '../../features/admin/CatalogDashboard.astro';
 import RevenueChart from '../../components/RevenueChart.astro';
 
 // First-run onboarding: bounce to the setup wizard until it's been completed.
 // (settings is populated by middleware; absent/incomplete → wizard.)
 if (!Astro.locals.settings?.setupComplete) return Astro.redirect('/admin/setup', 302);
 
-const stats = await orderStats(env.DB);
-const productCount = await countAllProducts(env.DB);
-const customerCount = await countCustomers(env.DB);
-const daily = await dailyOrderTotals(env.DB, 14);
-const recent = await listOrders(env.DB, 5);
-const lowStock = await lowStockProducts(env.DB, 5, 8);
+const catalogOnly = getConfig().features.catalogOnly;
+const stats = catalogOnly ? { revenue_cents: 0, refunded_cents: 0, count: 0 } : await orderStats(env.DB);
+const productCount = catalogOnly ? 0 : await countAllProducts(env.DB);
+const customerCount = catalogOnly ? 0 : await countCustomers(env.DB);
+const daily = catalogOnly ? [] : await dailyOrderTotals(env.DB, 14);
+const recent = catalogOnly ? [] : await listOrders(env.DB, 5);
+const lowStock = catalogOnly ? [] : await lowStockProducts(env.DB, 5, 8);
 const onCfg = getConfig().orderNumber;
 
 const cards = [
   {
-    label: 'Net revenue',
+    label: '净收入',
     value: formatPrice(stats.revenue_cents),
     sub: stats.refunded_cents > 0 ? `${formatPrice(stats.refunded_cents)} refunded` : null,
   },
-  { label: 'Orders', value: String(stats.count), sub: null },
-  { label: 'Products', value: String(productCount), sub: null },
-  { label: 'Customers', value: String(customerCount), sub: null },
+  { label: '订单', value: String(stats.count), sub: null },
+  { label: '商品管理', value: String(productCount), sub: null },
+  { label: '客户', value: String(customerCount), sub: null },
 ];
 ---
 
-<AdminLayout title="Dashboard" active="dashboard">
-  <h1 class="mb-8 font-serif text-3xl tracking-tight">Dashboard</h1>
+<AdminLayout title={catalogOnly ? '工作台' : '仪表盘'} active="dashboard">
+  {catalogOnly ? <CatalogDashboard /> : <>
+  <h1 class="mb-8 font-serif text-3xl tracking-tight">仪表盘</h1>
 
   <div class="mb-12 grid grid-cols-2 gap-4 sm:grid-cols-4">
     {
@@ -54,9 +57,9 @@ const cards = [
   <div class="grid gap-12 lg:grid-cols-2">
     <section>
       <div class="mb-3 flex items-baseline justify-between">
-        <h2 class="text-xs uppercase tracking-widest text-gray-400">Recent orders</h2>
+        <h2 class="text-xs uppercase tracking-widest text-gray-400">最近订单</h2>
         <a href="/admin/orders" class="text-xs uppercase tracking-widest text-accent hover:underline">
-          View all
+          查看全部
         </a>
       </div>
       <table class="w-full text-left text-sm">
@@ -82,7 +85,7 @@ const cards = [
           {
             recent.length === 0 && (
               <tr>
-                <td class="py-6 text-center text-gray-400">No orders yet.</td>
+                <td class="py-6 text-center text-gray-400">暂无订单。</td>
               </tr>
             )
           }
@@ -92,12 +95,12 @@ const cards = [
 
     <section>
       <div class="mb-3 flex items-baseline justify-between">
-        <h2 class="text-xs uppercase tracking-widest text-gray-400">Low stock</h2>
+        <h2 class="text-xs uppercase tracking-widest text-gray-400">库存较少</h2>
         <a
           href="/admin/products?sort=stock&dir=asc"
           class="text-xs uppercase tracking-widest text-accent hover:underline"
         >
-          View all
+          查看全部
         </a>
       </div>
       <table class="w-full text-left text-sm">
@@ -121,7 +124,7 @@ const cards = [
           {
             lowStock.length === 0 && (
               <tr>
-                <td class="py-6 text-center text-gray-400">Everything's well-stocked.</td>
+                <td class="py-6 text-center text-gray-400">所有商品库存充足。</td>
               </tr>
             )
           }
@@ -129,4 +132,5 @@ const cards = [
       </table>
     </section>
   </div>
+  </>}
 </AdminLayout>

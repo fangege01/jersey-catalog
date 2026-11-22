@@ -14,14 +14,14 @@ export interface ProductFilters {
 }
 
 export const PRODUCT_STATUS_OPTIONS: { value: 'active' | 'inactive'; label: string }[] = [
-  { value: 'active', label: 'Active' },
-  { value: 'inactive', label: 'Hidden' },
+  { value: 'active', label: '已上架' },
+  { value: 'inactive', label: '待上架' },
 ];
 
 export const PRODUCT_STOCK_OPTIONS: { value: StockState; label: string }[] = [
-  { value: 'in', label: 'In stock' },
-  { value: 'low', label: `Low stock (≤ ${LOW_STOCK})` },
-  { value: 'out', label: 'Out of stock' },
+  { value: 'in', label: '有库存' },
+  { value: 'low', label: `库存较少（≤ ${LOW_STOCK})` },
+  { value: 'out', label: '无库存' },
 ];
 
 // The same boundaries stockState() uses for display, so a product badged "Low"

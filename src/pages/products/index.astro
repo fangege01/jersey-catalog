@@ -2,6 +2,8 @@
 import { env } from 'cloudflare:workers';
 import Layout from '../../layouts/Layout.astro';
 import ProductList from '../../features/products/ProductList.astro';
+import { display } from '../../features/i18n/locale';
+import { readSiteCopy } from '../../features/site-content/copy';
 import { publicOrigin } from '../../features/http/origin';
 
 /**
@@ -15,12 +17,16 @@ import { publicOrigin } from '../../features/http/origin';
  * When `/` IS the catalog the two render the same thing, so this one canonicals
  * to `/` rather than competing with it for the same content.
  */
-const homeIsOverridden = !!Astro.locals.settings?.homePage;
+const teal = import.meta.env.MINSHOP_THEME === 'teal';
+const locale = Astro.locals.storeLocale;
+const copy = teal ? readSiteCopy(Astro.locals.settings?.siteContent, 'products', locale ?? 'en') : undefined;
+const title = copy?.title ?? display(locale, 'All products', '全部商品');
+const homeIsOverridden = teal || !!Astro.locals.settings?.homePage;
 const canonical = homeIsOverridden
   ? undefined
   : new URL('/', publicOrigin(Astro.url.origin, env.CANONICAL_ORIGIN)).href;
 ---
 
-<Layout title="All products" canonical={canonical}>
-  <ProductList />
+<Layout title={copy?.seoTitle ?? title} exactTitle={!!copy} description={copy?.seoDescription} canonical={canonical}>
+  <ProductList heading={title} copy={copy} />
 </Layout>

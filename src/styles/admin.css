@@ -21,25 +21,22 @@
    weight here — and no theme may restyle Admin by accident. */
 @import "./themes/_admin.css";
 
-/* Admin's own tokens: the upstream light palette, frozen. These match the
-   default theme's values today, but they are Admin's, not the default theme's —
-   the default theme can evolve without dragging Admin along. */
+/* Administrative palette is independent of the public storefront. */
 @theme {
-  --color-brand: #111827;
-  --color-brand-hover: #374151;
-  --color-ink: #111827;
-  --color-accent: #2563eb;
-  --color-paper: #faf8f4;
-  --color-line: #e7e2d9;
+  --color-brand: #087663;
+  --color-brand-hover: #086353;
+  --color-ink: #15323c;
+  --color-accent: #08695a;
+  --color-paper: #f2f6f7;
+  --color-line: #d7e5e8;
   --color-surface: #ffffff;
-  --color-muted: #4b5563;
-  --color-faint: #6b7280;
+  --color-muted: #4d6670;
+  --color-faint: #607781;
   --color-on-brand: #ffffff;
 
   --font-sans: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto,
     Helvetica, Arial, sans-serif;
-  --font-serif: 'Hoefler Text', 'Iowan Old Style', 'Palatino Linotype', Palatino,
-    Georgia, 'Times New Roman', serif;
+  --font-serif: "Segoe UI", "Microsoft YaHei", system-ui, sans-serif;
 
   --radius-md: 0.375rem;
   --radius-lg: 0.5rem;
@@ -51,3 +48,46 @@
 :root {
   --minshop-css-entry: admin;
 }
+
+/* Shared shop administration shell. */
+.admin-frame{min-height:100dvh;display:grid;grid-template-columns:15rem minmax(0,1fr);}
+.admin-sidebar{position:sticky;top:0;height:100dvh;display:flex;flex-direction:column;min-height:0;background:#102c34;color:#e7f7f7;}
+.admin-brand{display:flex;align-items:center;gap:.7rem;padding:1rem .95rem;border-bottom:1px solid #2b4850;line-height:1.3;overflow-wrap:anywhere;}
+.admin-brand-label{flex:none;color:#b3ced2;font-size:.75rem;}
+.admin-mark{display:block;min-width:42px;max-width:100%;padding:.28rem .55rem;border-radius:8px;background:#167969;color:white;font-size:1.05rem;font-weight:800;line-height:1.25;}
+.admin-nav{min-height:0;overflow:auto;padding:.45rem .65rem .8rem;flex:1;scrollbar-color:#507281 transparent;}
+.admin-nav-group{margin-top:.52rem;}
+.admin-nav-group:not(:first-child){border-top:1px solid #25424a;padding-top:.4rem;}
+.admin-nav-group h2{padding:.25rem .6rem;color:#a5c4c8;font-size:.7rem;font-weight:650;}
+.admin-nav-item{min-height:32px;display:flex;align-items:center;padding:.35rem .65rem;border-radius:8px;font-size:.84rem;color:#e6f2f3;}
+.admin-nav-item:hover{background:#1d424a;}
+.admin-nav-item[aria-current=page]{background:#215059;box-shadow:inset 3px 0 #6be0c9;color:white;font-weight:650;}
+.admin-sidebar-footer{display:flex;flex-wrap:wrap;gap:.5rem 1rem;border-top:1px solid #2b4850;padding:.85rem 1rem;color:#d6eded;font-size:.75rem;}
+.admin-sidebar-footer a:hover{text-decoration:underline;}
+.admin-nav-trigger{display:none;}
+.admin-workspace{min-width:0;}
+.admin-topbar{display:flex;gap:.6rem 1.2rem;align-items:center;justify-content:space-between;flex-wrap:wrap;border-bottom:1px solid #d7e5e8;background:white;padding:.8rem clamp(.8rem,2.8vw,2rem);min-height:62px;}
+.admin-location{font-size:.88rem;color:#56717b;}
+.admin-location strong{color:#15323c;}
+.admin-top-actions{display:flex;flex-wrap:wrap;gap:.4rem;}
+.admin-top-actions a{padding:.46rem .7rem;border:1px solid #d7e5e8;border-radius:8px;background:white;font-size:.76rem;font-weight:650;}
+.admin-top-actions a:hover{border-color:#228773;color:#136757;}
+.admin-content{max-width:96rem;min-width:0;margin-inline:auto;padding:clamp(1rem,3vw,2.25rem);}
+.admin-content:focus{outline:none;}
+.admin-skip{position:absolute;z-index:30;top:.5rem;left:.5rem;transform:translateY(-180%);background:white;color:#15323c;padding:.6rem 1rem;border-radius:8px;}
+.admin-skip:focus{transform:none;}
+@media(max-width:800px){
+  .admin-frame{grid-template-columns:minmax(0,1fr);}
+  .admin-sidebar{position:relative;height:auto;display:block;}
+  .admin-brand{padding:.65rem .9rem;}
+  .admin-nav-trigger{display:flex;justify-content:space-between;align-items:center;min-height:44px;padding:.55rem .9rem;}
+  .admin-trigger-location{color:#a5c4c8;font-size:.8rem;}
+  .admin-nav{display:none;max-height:65dvh;border-top:1px solid #2b4850;}
+  .admin-nav-item{min-height:44px;}
+  [data-admin-nav-toggle]:checked ~ .admin-nav{display:block;}
+  [data-admin-nav-toggle]:focus-visible ~ .admin-nav-trigger{outline:2px solid #6be0c9;outline-offset:-3px;}
+  .admin-sidebar-footer{display:none;}
+  [data-admin-nav-toggle]:checked ~ .admin-sidebar-footer{display:flex;}
+  .admin-topbar{min-height:50px;}
+}
+@media(min-width:801px){[data-admin-nav-toggle]{display:none;}}

@@ -5,7 +5,9 @@ import ContentPage from '#theme/ContentPage.astro';
 import { getConfig } from '../../config';
 import { getPublishedPageBySlug } from '../../features/pages/db';
 import { pageImageDimensions } from '../../features/media/db';
+import { managedWhatsAppHref } from '../../features/storefront/catalogMode';
 import { renderMarkdown, markdownExcerpt } from '../../features/pages/markdown';
+import { translations } from '../../features/i18n/db';
 import { normalizePageLayout, pageLayoutStyle } from '../../features/pages/layouts';
 
 const { slug } = Astro.params;
@@ -25,17 +27,26 @@ if (!page) {
 
 // One indexed read, on an edge-cached route, so body images can carry their
 // intrinsic size and stop shifting the layout when they load.
-const dimensions = await pageImageDimensions(env.DB, page.id);
-const html = renderMarkdown(page.body_markdown, {
+const [dimensions, translated] = await Promise.all([
+  pageImageDimensions(env.DB, page.id),
+  translations(env.DB, Astro.locals.storeLocale, 'page', [page.public_id]),
+]);
+const local = translated.get(page.public_id ?? '');
+const title = local?.title ?? page.title;
+const body = local?.body || page.body_markdown;
+const html = renderMarkdown(body, {
   baseUrl: getConfig().images.baseUrl,
   dimensions,
+  resolveLink: getConfig().features.catalogOnly
+    ? (href) => managedWhatsAppHref(href, Astro.locals.settings?.whatsappNumber ?? null)
+    : undefined,
 });
-const description = markdownExcerpt(page.body_markdown);
+const description = markdownExcerpt(body);
 const layout = normalizePageLayout(page.layout);
 ---
 
-<Layout title={page.title} description={description}>
+<Layout title={title} description={description}>
   <ContentPage
-    model={{ title: page.title, html, layout, layoutStyle: pageLayoutStyle(layout) }}
+    model={{ title, html, layout, layoutStyle: pageLayoutStyle(layout) }}
   />
 </Layout>

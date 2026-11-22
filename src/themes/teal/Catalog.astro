@@ -1,0 +1,56 @@
+---
+import type { CatalogPageModel } from '../../features/storefront/models';
+import ProductCard from './ProductCard.astro';
+import Home from './Home.astro';
+import CatalogSort from '../../features/storefront/controls/CatalogSort.astro';
+import CatalogPagination from '../../features/storefront/controls/CatalogPagination.astro';
+interface Props { model: CatalogPageModel; }
+const { model } = Astro.props;
+const copy = model.copy;
+const zh = model.locale === 'zh-CN';
+---
+{model.landing ? <Home model={model} landing={model.landing} /> : (
+  <div class="catalog" data-wide-catalog>
+    <section class="catalog-banner">
+      <div class="frame">
+        <nav aria-label={zh ? '当前位置' : 'Breadcrumb'} class="crumb">
+          <a href="/">{zh ? '首页' : 'Home'}</a><span aria-hidden="true">/</span>
+          {model.categoryPage ? <><a href="/products">{zh ? '球衣目录' : 'Catalog'}</a><span aria-hidden="true">/</span></> : null}
+          <span aria-current="page">{model.categoryPage ? model.heading : (zh ? '球衣目录' : 'Catalog')}</span>
+        </nav>
+        <h1>{model.heading}</h1>
+        <p>{copy?.intro}</p>
+      </div>
+    </section>
+    <section class="frame results">
+      <div class="filter-row">
+        <nav class="chips" aria-label={zh ? '商品分类' : 'Product categories'}>
+          <a href="/products" aria-current={model.categoryPage ? undefined : 'page'}>{copy?.allLabel ?? (zh ? '全部球衣' : 'All jerseys')}</a>
+          {model.categories.map(category => <a href={category.href} aria-current={category.href === model.categoryPage ? 'page' : undefined}>{category.text}</a>)}
+        </nav>
+        <CatalogSort locale={model.locale} model={model.sort} class="flex flex-wrap items-baseline gap-x-3 gap-y-1 text-sm text-muted" />
+      </div>
+      {model.products.length === 0 && <p role="status" class="rounded-lg border border-line bg-surface p-6 text-muted">{copy?.emptyText ?? (zh ? '暂无商品。' : 'No products yet.')}</p>}
+      <ul class="product-grid">
+        {model.products.map((card, i) => <ProductCard card={card} index={i} locale={model.locale} />)}
+      </ul>
+      <CatalogPagination locale={model.locale} model={model.pagination} />
+    </section>
+  </div>
+)}
+<style>
+.frame{max-width:75rem;width:calc(100% - 3rem);margin-inline:auto;}
+.catalog-banner{padding:3.3rem 0 3.8rem;background:linear-gradient(135deg,#0b2b2a,#0f766e 80%,#0c83ab);color:white;border-radius:0 0 38px 38px;}
+.catalog-banner h1{margin:.55rem 0 .65rem;font-size:clamp(2.1rem,5vw,3.9rem);line-height:1.13;font-weight:800;}
+.catalog-banner p{color:#e4f8f7;}
+.crumb{display:flex;flex-wrap:wrap;gap:.5rem;font-size:.82rem;color:#c9f4ed;}
+.crumb a:hover{text-decoration:underline;}
+.results{padding-block:2rem 3.5rem;}
+.filter-row{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:1rem;margin-bottom:1.5rem;}
+.chips{display:flex;flex-wrap:wrap;gap:.5rem;}
+.chips a{border:1px solid #dcebe9;box-shadow:0 4px 14px rgba(13,148,136,.08);border-radius:30px;padding:.55rem .95rem;font-size:.85rem;font-weight:650;}
+.chips a[aria-current=page]{background:#0f766e;color:white;border-color:#0f766e;}
+.product-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:1.25rem;}
+@media(max-width:64rem){.product-grid{grid-template-columns:repeat(3,minmax(0,1fr));}}
+@media(max-width:47rem){.frame{width:calc(100% - 2rem);}.catalog-banner{padding-block:2.25rem;border-radius:0 0 24px 24px;}.product-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:.75rem;}}
+</style>

@@ -103,7 +103,7 @@ function isAmount(value: unknown): value is number {
 function validateBands(bands: unknown, zoneIndex: number, rateIndex: number) {
   const errors: ShippingValidationError[] = [];
   if (!Array.isArray(bands) || bands.length === 0) {
-    errors.push({ zoneIndex, rateIndex, field: 'bands', message: 'Add at least one weight band.' });
+    errors.push({ zoneIndex, rateIndex, field: 'bands', message: '请至少添加一个重量区间。' });
     return errors;
   }
   if (bands.length > SHIPPING_LIMITS.bandsPerRate) {
@@ -111,7 +111,7 @@ function validateBands(bands: unknown, zoneIndex: number, rateIndex: number) {
       zoneIndex,
       rateIndex,
       field: 'bands',
-      message: `At most ${SHIPPING_LIMITS.bandsPerRate} bands per service.`,
+      message: `每项配送服务最多可设置 ${SHIPPING_LIMITS.bandsPerRate} 个重量区间。`,
     });
     return errors;
   }
@@ -119,7 +119,7 @@ function validateBands(bands: unknown, zoneIndex: number, rateIndex: number) {
   bands.forEach((band: WeightBand, bandIndex) => {
     const last = bandIndex === bands.length - 1;
     if (!isAmount(band?.amountCents)) {
-      errors.push({ zoneIndex, rateIndex, bandIndex, field: 'amount', message: 'Enter a price.' });
+      errors.push({ zoneIndex, rateIndex, bandIndex, field: 'amount', message: '请填写运费。' });
     }
     if (band?.upToGrams == null) {
       if (!last) {
@@ -128,7 +128,7 @@ function validateBands(bands: unknown, zoneIndex: number, rateIndex: number) {
           rateIndex,
           bandIndex,
           field: 'upTo',
-          message: 'Only the last band can have no maximum.',
+          message: '仅最后一个区间可不设重量上限。',
         });
       }
       return;
@@ -139,7 +139,7 @@ function validateBands(bands: unknown, zoneIndex: number, rateIndex: number) {
         rateIndex,
         bandIndex,
         field: 'upTo',
-        message: 'Enter a weight above zero.',
+        message: '请输入大于零的重量。',
       });
       return;
     }
@@ -149,7 +149,7 @@ function validateBands(bands: unknown, zoneIndex: number, rateIndex: number) {
         rateIndex,
         bandIndex,
         field: 'upTo',
-        message: 'Each band must be heavier than the one above it.',
+        message: '后一个区间的重量上限须大于前一个。',
       });
     }
     previous = band.upToGrams;
@@ -163,22 +163,22 @@ export function validateShippingDocument(doc: RuntimeShippingConfig): ShippingVa
   const errors: ShippingValidationError[] = [];
 
   if (typeof doc.enabled !== 'boolean') {
-    errors.push({ field: 'document', message: 'Enabled must be true or false.' });
+    errors.push({ field: 'document', message: '请选择启用或关闭配送。' });
   }
   if (!Number.isSafeInteger(doc.packageWeightGrams) || doc.packageWeightGrams < 0) {
-    errors.push({ field: 'packageWeight', message: 'Enter a package weight of zero or more.' });
+    errors.push({ field: 'packageWeight', message: '请输入大于或等于零的包装重量。' });
   }
   if (!Array.isArray(doc.zones)) {
-    errors.push({ field: 'document', message: 'Zones must be a list.' });
+    errors.push({ field: 'document', message: '配送区域必须是列表。' });
     return errors;
   }
   if (doc.zones.length > SHIPPING_LIMITS.zones) {
-    errors.push({ field: 'document', message: `At most ${SHIPPING_LIMITS.zones} zones.` });
+    errors.push({ field: 'document', message: `最多可添加 ${SHIPPING_LIMITS.zones} 个配送区域。` });
   }
   if (doc.enabled && doc.zones.length === 0) {
     errors.push({
       field: 'document',
-      message: 'Add at least one zone with one rate before turning shipping on.',
+      message: '启用配送前，请至少添加一个含运费规则的配送区域。',
     });
   }
 
@@ -189,28 +189,28 @@ export function validateShippingDocument(doc: RuntimeShippingConfig): ShippingVa
   doc.zones.forEach((zone, zoneIndex) => {
     const name = (zone?.name ?? '').trim();
     if (!name) {
-      errors.push({ zoneIndex, field: 'name', message: 'Name this zone.' });
+      errors.push({ zoneIndex, field: 'name', message: '请填写配送区域名称。' });
     } else if (name.length > SHIPPING_LIMITS.zoneName) {
       errors.push({
         zoneIndex,
         field: 'name',
-        message: `Keep the name under ${SHIPPING_LIMITS.zoneName} characters.`,
+        message: `区域名称请少于 ${SHIPPING_LIMITS.zoneName} 个字符。`,
       });
     } else if (names.has(name.toLowerCase())) {
-      errors.push({ zoneIndex, field: 'name', message: 'Another zone already uses this name.' });
+      errors.push({ zoneIndex, field: 'name', message: '该区域名称已被使用。' });
     } else {
       names.add(name.toLowerCase());
     }
 
     const zoneCountries = Array.isArray(zone?.countries) ? zone.countries : [];
     if (zoneCountries.length === 0) {
-      errors.push({ zoneIndex, field: 'countries', message: 'Choose at least one destination.' });
+      errors.push({ zoneIndex, field: 'countries', message: '请至少选择一个配送目的地。' });
     }
     if (zoneCountries.length > SHIPPING_LIMITS.countriesPerZone) {
       errors.push({
         zoneIndex,
         field: 'countries',
-        message: `At most ${SHIPPING_LIMITS.countriesPerZone} countries per zone.`,
+        message: `每个区域最多可添加 ${SHIPPING_LIMITS.countriesPerZone} 个国家或地区。`,
       });
     }
     const hasCatchAll = zoneCountries.includes(CATCH_ALL);
@@ -219,14 +219,14 @@ export function validateShippingDocument(doc: RuntimeShippingConfig): ShippingVa
         errors.push({
           zoneIndex,
           field: 'countries',
-          message: 'Rest of world cannot be combined with specific countries.',
+          message: '全球其余地区不能和指定国家或地区混用。',
         });
       }
       if (catchAllIndex >= 0) {
         errors.push({
           zoneIndex,
           field: 'countries',
-          message: 'Only one zone can be Rest of world.',
+          message: '只能设置一个全球其余地区的区域。',
         });
       }
       catchAllIndex = zoneIndex;
@@ -234,7 +234,7 @@ export function validateShippingDocument(doc: RuntimeShippingConfig): ShippingVa
     for (const code of zoneCountries) {
       if (code === CATCH_ALL) continue;
       if (!isCountryCode(code)) {
-        errors.push({ zoneIndex, field: 'countries', message: `${code} is not a country code.` });
+        errors.push({ zoneIndex, field: 'countries', message: `${code} 不是有效的国家或地区代码。` });
         continue;
       }
       const cc = code.toUpperCase();
@@ -242,7 +242,7 @@ export function validateShippingDocument(doc: RuntimeShippingConfig): ShippingVa
         errors.push({
           zoneIndex,
           field: 'countries',
-          message: `${countryName(cc)} is already in another zone.`,
+          message: `${countryName(cc)} 已在另一配送区域中.`,
         });
       }
       countries.add(cc);
@@ -250,11 +250,11 @@ export function validateShippingDocument(doc: RuntimeShippingConfig): ShippingVa
 
     const rates = Array.isArray(zone?.rates) ? zone.rates : [];
     if (rates.length === 0) {
-      errors.push({ zoneIndex, field: 'document', message: 'Add at least one shipping rate.' });
+      errors.push({ zoneIndex, field: 'document', message: '请至少添加一项运费规则。' });
     }
     const freeOver = zone?.freeOverCents;
     if (freeOver != null && (!isAmount(freeOver) || freeOver <= 0)) {
-      errors.push({ zoneIndex, field: 'freeOver', message: 'Enter an amount above zero.' });
+      errors.push({ zoneIndex, field: 'freeOver', message: '请输入大于零的金额。' });
     }
     const resolved = rates.length + (freeOver != null ? 1 : 0);
     if (resolved > SHIPPING_LIMITS.resolvedOptionsPerZone) {
@@ -271,20 +271,20 @@ export function validateShippingDocument(doc: RuntimeShippingConfig): ShippingVa
     rates.forEach((rate, rateIndex) => {
       const label = (rate?.label ?? '').trim();
       if (!label) {
-        errors.push({ zoneIndex, rateIndex, field: 'label', message: 'Name this rate.' });
+        errors.push({ zoneIndex, rateIndex, field: 'label', message: '请填写运费规则名称。' });
       } else if (label.length > SHIPPING_LIMITS.rateLabel) {
         errors.push({
           zoneIndex,
           rateIndex,
           field: 'label',
-          message: `Keep the label under ${SHIPPING_LIMITS.rateLabel} characters.`,
+          message: `规则名称请少于 ${SHIPPING_LIMITS.rateLabel} 个字符。`,
         });
       } else if (labels.has(label.toLowerCase())) {
         errors.push({
           zoneIndex,
           rateIndex,
           field: 'label',
-          message: 'Another rate in this zone uses this label.',
+          message: '该区域已存在同名运费规则。',
         });
       } else if (freeOver != null && label.toLowerCase() === FREE_SHIPPING_LABEL.toLowerCase()) {
         // The free option is synthesized under this exact label; a configured rate
@@ -293,7 +293,7 @@ export function validateShippingDocument(doc: RuntimeShippingConfig): ShippingVa
           zoneIndex,
           rateIndex,
           field: 'label',
-          message: `"${FREE_SHIPPING_LABEL}" is reserved while a free-shipping threshold is set.`,
+          message: `"${FREE_SHIPPING_LABEL}" 是设置免邮门槛时保留的名称。`,
         });
       } else {
         labels.add(label.toLowerCase());
@@ -302,12 +302,12 @@ export function validateShippingDocument(doc: RuntimeShippingConfig): ShippingVa
       const pricing = rate?.pricing;
       if (pricing?.type === 'flat' || pricing?.type === 'pickup') {
         if (!isAmount(pricing.amountCents)) {
-          errors.push({ zoneIndex, rateIndex, field: 'amount', message: 'Enter a price.' });
+          errors.push({ zoneIndex, rateIndex, field: 'amount', message: '请填写运费。' });
         }
       } else if (pricing?.type === 'weight') {
         errors.push(...validateBands(pricing.bands, zoneIndex, rateIndex));
       } else {
-        errors.push({ zoneIndex, rateIndex, field: 'amount', message: 'Choose a pricing mode.' });
+        errors.push({ zoneIndex, rateIndex, field: 'amount', message: '请选择计费方式。' });
       }
     });
   });
@@ -316,7 +316,7 @@ export function validateShippingDocument(doc: RuntimeShippingConfig): ShippingVa
     errors.push({
       zoneIndex: catchAllIndex,
       field: 'countries',
-      message: 'Rest of world must be the last zone.',
+      message: '请将全球其余地区设为最后一个区域。',
     });
   }
 
@@ -335,10 +335,10 @@ export function parseRuntimeShippingConfig(
   try {
     value = JSON.parse(raw);
   } catch {
-    return { status: 'invalid', raw, error: 'The stored shipping configuration is not valid JSON.' };
+    return { status: 'invalid', raw, error: '保存的配送配置不是有效的 JSON。' };
   }
   if (typeof value !== 'object' || value === null || Array.isArray(value)) {
-    return { status: 'invalid', raw, error: 'The stored shipping configuration is not an object.' };
+    return { status: 'invalid', raw, error: '保存的配送配置应为对象。' };
   }
 
   const doc = value as Partial<RuntimeShippingConfig>;
@@ -346,11 +346,11 @@ export function parseRuntimeShippingConfig(
     return {
       status: 'invalid',
       raw,
-      error: `Unsupported shipping schema version ${String(doc.schema)}.`,
+      error: `不支持配送配置版本 ${String(doc.schema)}。`,
     };
   }
   if (!Number.isSafeInteger(doc.revision) || (doc.revision as number) < 0) {
-    return { status: 'invalid', raw, error: 'The shipping configuration has no valid revision.' };
+    return { status: 'invalid', raw, error: '配送配置缺少有效的修订版本。' };
   }
 
   // Coercion is a SCHEMA 1 MIGRATION, not a parser. Applying it to a schema 2
@@ -361,13 +361,13 @@ export function parseRuntimeShippingConfig(
   const isLegacy = doc.schema < 2;
   if (!isLegacy) {
     if (typeof doc.enabled !== 'boolean') {
-      return { status: 'invalid', raw, error: 'The shipping configuration has no valid on/off value.' };
+      return { status: 'invalid', raw, error: '配送配置缺少有效的启用状态。' };
     }
     if (!Number.isSafeInteger(doc.packageWeightGrams)) {
-      return { status: 'invalid', raw, error: 'The shipping configuration has an invalid packaging weight.' };
+      return { status: 'invalid', raw, error: '配送配置的包装重量无效。' };
     }
     if (!Array.isArray(doc.zones)) {
-      return { status: 'invalid', raw, error: 'The shipping configuration has no zone list.' };
+      return { status: 'invalid', raw, error: '配送配置缺少区域列表。' };
     }
     for (const zone of doc.zones) {
       if (
@@ -377,16 +377,16 @@ export function parseRuntimeShippingConfig(
         !Array.isArray(zone?.rates) ||
         (zone.freeOverCents !== null && typeof zone.freeOverCents !== 'number')
       ) {
-        return { status: 'invalid', raw, error: 'The shipping configuration has a malformed zone.' };
+        return { status: 'invalid', raw, error: '配送配置包含格式无效的配送区域。' };
       }
       for (const rate of zone.rates) {
         if (typeof rate?.label !== 'string' || rate?.pricing == null) {
-          return { status: 'invalid', raw, error: 'The shipping configuration has a malformed rate.' };
+          return { status: 'invalid', raw, error: '配送配置包含格式无效的运费规则。' };
         }
       }
     }
   } else if (typeof doc.enabled !== 'boolean') {
-    return { status: 'invalid', raw, error: 'The shipping configuration has no valid on/off value.' };
+    return { status: 'invalid', raw, error: '配送配置缺少有效的启用状态。' };
   }
 
   const normalized: RuntimeShippingConfig = {
@@ -473,7 +473,7 @@ export function validateBuildTimeShipping(cfg: ShippingConfig): string | null {
     (e) =>
       e.field !== 'name' &&
       !(
-        e.message === 'Add at least one shipping rate.' &&
+        e.message === '请至少添加一项运费规则。' &&
         e.zoneIndex != null &&
         thresholdOnly.has(e.zoneIndex)
       ),
@@ -844,7 +844,7 @@ export function parseShippingForm(
     if (freeOverValue !== '') {
       const major = Number(freeOverValue);
       if (!Number.isFinite(major) || major < 0) {
-        errors.push({ zoneIndex, field: 'freeOver', message: 'Enter an amount above zero.' });
+        errors.push({ zoneIndex, field: 'freeOver', message: '请输入大于零的金额。' });
       } else {
         freeOverCents = toMinorUnits(major, currency);
       }
@@ -957,13 +957,13 @@ export function weightErrorMessage(
 ): string {
   switch (reason) {
     case 'negative':
-      return 'Weight cannot be negative.';
+      return '重量不能为负数。';
     case 'precision':
-      return `Too many decimal places for ${unit}.`;
+      return `${unit} 的重量小数位数过多。`;
     case 'over_limit':
-      return 'That weight is too heavy for parcel shipping.';
+      return '重量超过包裹配送上限。';
     default:
-      return 'Enter a weight as a number.';
+      return '请输入数字重量。';
   }
 }
 

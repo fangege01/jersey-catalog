@@ -37,7 +37,7 @@ export const prerender = false;
 export const POST: APIRoute = async ({ request, params, redirect }) => {
   const publicId = parsePublicId(params.id, 'product');
   const product = publicId ? await getProductByPublicId(env.DB, publicId) : null;
-  if (!publicId || !product) return new Response('Not found', { status: 404 });
+  if (!publicId || !product) return new Response('未找到记录。', { status: 404 });
   const id = product.id;
 
   const back = (msg?: string) =>
@@ -74,7 +74,7 @@ export const POST: APIRoute = async ({ request, params, redirect }) => {
   if (action === 'attach') {
     const mediaPublicId = parsePublicId(form.get('media_id'), 'media');
     const media = mediaPublicId ? await getMediaByPublicId(env.DB, mediaPublicId) : null;
-    if (!media) return back('Choose an image.');
+    if (!media) return back('请选择一张图片。');
     const attached = await attachMediaToProduct(env.DB, id, media.id);
     if (!attached.ok) return back(attached.error);
     await syncPrimaryImage(env.DB, id);
@@ -102,7 +102,7 @@ export const POST: APIRoute = async ({ request, params, redirect }) => {
 
   const imagePublicId = parsePublicId(form.get('image_id'), 'productImage');
   const img = imagePublicId ? byPublicId.get(imagePublicId) : undefined;
-  if (!img) return back('Image not found.');
+  if (!img) return back('未找到图片。');
   const imageId = img.id;
 
   if (action === 'alt') {
@@ -137,5 +137,5 @@ export const POST: APIRoute = async ({ request, params, redirect }) => {
     return back();
   }
 
-  return back('Unknown action.');
+  return back('无法识别此操作。');
 };

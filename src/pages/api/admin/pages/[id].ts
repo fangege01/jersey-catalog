@@ -16,7 +16,7 @@ export const prerender = false;
 export const POST: APIRoute = async ({ request, params, redirect }) => {
   const publicId = parsePublicId(params.id, 'page');
   const existing = publicId ? await getPageByPublicId(env.DB, publicId) : null;
-  if (!existing) return new Response('Not found', { status: 404 });
+  if (!existing) return new Response('未找到记录。', { status: 404 });
   const id = existing.id;
 
   const form = await request.formData();

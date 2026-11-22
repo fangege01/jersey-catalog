@@ -1,0 +1,19 @@
+---
+import type { StorefrontShellModel } from '../../features/storefront/models';
+interface Props { model: StorefrontShellModel; }
+const { model } = Astro.props;
+const zh = model.locale === 'zh-CN';
+---
+<footer class="bg-teal-deep text-white">
+  <div class="mx-auto grid w-full max-w-6xl gap-8 px-6 py-12 sm:grid-cols-2 lg:grid-cols-3">
+    <div class="space-y-3">
+      <a href="/" class="text-xl font-bold">{model.storeName}</a>
+      <p class="max-w-sm text-sm leading-relaxed text-teal-100">{model.footerCopy}</p>
+    </div>
+    {model.footerLinks.length > 0 && <nav aria-label={zh ? '页脚' : 'Footer'} class="flex flex-wrap content-start gap-x-4 gap-y-3 text-sm">
+      {model.footerLinks.map(link => <a class="hover:underline" href={link.href}>{link.text}</a>)}
+    </nav>}
+    {model.whatsappHref && <div><a class="inline-flex min-h-11 items-center rounded-md bg-white px-4 text-sm font-semibold text-ink" href={model.whatsappHref} data-whatsapp-inquiry>{zh ? '通过 WhatsApp 联系' : 'Contact us on WhatsApp'}</a></div>}
+    <p class="border-t border-white/20 pt-5 text-xs text-teal-100 sm:col-span-2 lg:col-span-3">&copy; {model.storeName}</p>
+  </div>
+</footer>

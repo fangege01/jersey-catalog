@@ -104,13 +104,13 @@ describe('validateVariantWeights', () => {
     return f;
   };
   it('refuses the inputs that used to be silently discarded', () => {
-    expect(validateVariantWeights(withWeights('heavy'), 'g')).toMatch(/must be a number/);
-    expect(validateVariantWeights(withWeights('-1'), 'g')).toMatch(/negative/);
-    expect(validateVariantWeights(withWeights('0.5'), 'g')).toMatch(/decimal places/);
-    expect(validateVariantWeights(withWeights('2000'), 'kg')).toMatch(/too heavy/);
+    expect(validateVariantWeights(withWeights('heavy'), 'g')).toMatch(/数字重量/);
+    expect(validateVariantWeights(withWeights('-1'), 'g')).toMatch(/负数/);
+    expect(validateVariantWeights(withWeights('0.5'), 'g')).toMatch(/小数位数/);
+    expect(validateVariantWeights(withWeights('2000'), 'kg')).toMatch(/配送上限/);
   });
   it('names the offending row', () => {
-    expect(validateVariantWeights(withWeights('1', 'heavy'), 'g')).toMatch(/^Variant 2:/);
+    expect(validateVariantWeights(withWeights('1', 'heavy'), 'g')).toMatch(/^第 2 个规格：/);
   });
   it('accepts blank (inherit), zero, and ordinary values', () => {
     expect(validateVariantWeights(withWeights('', '0', '250'), 'g')).toBeNull();

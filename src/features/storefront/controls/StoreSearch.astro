@@ -12,6 +12,7 @@
  * pass anything are unaffected.
  */
 interface Props {
+  locale?: import('../../i18n/locale').StoreLocale;
   action: string;
   query: string;
   class?: string;
@@ -22,6 +23,7 @@ const DEFAULT_INPUT_CLASS =
   'w-40 border-0 border-b border-line bg-transparent px-1 py-1 text-sm transition-all focus:w-56 focus:border-brand focus:outline-none';
 
 const {
+  locale,
   action,
   query,
   class: className = '',
@@ -34,8 +36,8 @@ const {
     type="search"
     name="q"
     value={query}
-    placeholder="Search"
-    aria-label="Search products"
+    placeholder={locale === 'zh-CN' ? '搜索' : 'Search'}
+    aria-label={locale === 'zh-CN' ? '搜索商品' : 'Search products'}
     class={inputClass}
   />
 </form>

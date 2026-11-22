@@ -9,6 +9,9 @@ import { addCacheTags, productCacheTags } from '../../features/cache/tags';
 
 const loaded = await loadProductDetail(env.DB, {
   slug: Astro.params.slug,
+  locale: Astro.locals.storeLocale,
+  catalogOnly: getConfig().features.catalogOnly,
+  separateCatalog: import.meta.env.MINSHOP_THEME === 'teal',
   searchParams: Astro.url.searchParams,
   settings: Astro.locals.settings,
   imageBaseUrl: getConfig().images.baseUrl,
@@ -32,7 +35,7 @@ if (loaded.backfillRelated) {
 }
 ---
 
-<Layout title={seo.title} description={seo.description ?? undefined} image={seo.imagePath}>
+<Layout title={seo.title} description={seo.description ?? undefined} image={seo.imagePath} imageAlt={seo.imageAlt}>
   <ProductDetail model={model} purchase={purchase} />
 
   <script is:inline type="application/ld+json" set:html={seo.jsonLd} />

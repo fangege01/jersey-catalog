@@ -29,13 +29,12 @@ function formatSize(bytes: number | null): string | null {
 }
 ---
 
-<AdminLayout title="Media" active="media">
+<AdminLayout title="素材库" active="media">
   <div class="mb-8 flex flex-wrap items-center justify-between gap-4">
     <div>
-      <h1 class="font-serif text-3xl tracking-tight">Media</h1>
+      <h1 class="font-serif text-3xl tracking-tight">素材库</h1>
       <p class="mt-1 text-sm text-gray-500">
-        {total} file{total === 1 ? '' : 's'}. Deleting here removes the file everywhere —
-        it is refused while anything still uses it.
+        共 {total} 个文件。只有解除所有引用后才能删除文件。
       </p>
     </div>
   </div>
@@ -66,15 +65,15 @@ function formatSize(bytes: number | null): string | null {
       type="submit"
       class="rounded-md bg-brand px-4 py-2 text-xs font-medium uppercase tracking-wider text-white hover:bg-brand-hover"
     >
-      Upload
+      上传
     </button>
-    <span class="text-xs text-gray-500">JPEG, PNG, WebP, or GIF. Max 5 MB each.</span>
+    <span class="text-xs text-gray-500">支持 JPEG、PNG、WebP 和 GIF，每张最多 5 MB。</span>
   </form>
 
   {
     items.length === 0 ? (
       <p class="py-12 text-center text-sm text-gray-500">
-        No files yet. Upload one above, or add a product image — every upload lands here.
+        暂无素材。可在上方上传，也可以给商品添加图片，上传内容都会进入此素材库。
       </p>
     ) : (
       <ul class="grid grid-cols-2 gap-6 sm:grid-cols-3 lg:grid-cols-4">
@@ -108,10 +107,10 @@ function formatSize(bytes: number | null): string | null {
               </p>
               <p class="text-xs text-gray-600">
                 {unused ? (
-                  <span class="text-gray-400">Unused</span>
+                  <span class="text-gray-400">未引用</span>
                 ) : (
                   <Fragment>
-                    Used by{' '}
+                    引用位置{' '}
                     {usageLinks(entry!).map((link, index) => (
                       <Fragment>
                         {index > 0 && ', '}
@@ -133,7 +132,7 @@ function formatSize(bytes: number | null): string | null {
                   data-copy-url={url}
                   class="text-xs uppercase tracking-widest text-gray-500 hover:text-brand"
                 >
-                  Copy URL
+                  复制网址
                 </button>
                 {unused && (
                   <form method="post" action={`/api/admin/media/${m.public_id}`}>
@@ -142,7 +141,7 @@ function formatSize(bytes: number | null): string | null {
                       type="submit"
                       class="text-xs uppercase tracking-widest text-red-600 hover:text-red-700"
                     >
-                      Delete
+                      删除
                     </button>
                   </form>
                 )}
@@ -167,7 +166,7 @@ function formatSize(bytes: number | null): string | null {
     try {
       await navigator.clipboard.writeText(url);
       const original = button.textContent;
-      button.textContent = 'Copied';
+      button.textContent = '已复制';
       setTimeout(() => {
         button.textContent = original;
       }, 1200);

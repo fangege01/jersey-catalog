@@ -1,0 +1,82 @@
+---
+import type { SiteCopy } from './copy';
+import { inquiryOptions, inquirySelectLabels, inquiryTextFields, MAX_INQUIRY_MESSAGE, validContactEmail } from './inquiry';
+
+interface Props { copy: SiteCopy<'contact'>; number: string | null; zh: boolean }
+const { copy, number, zh } = Astro.props;
+const language = zh ? 1 : 0;
+const email = validContactEmail(copy.contactEmail) ? copy.contactEmail : '';
+const methods = copy.shippingMethods.split(/[,，]/).map(item => item.trim()).filter(Boolean);
+const result = Astro.url.searchParams.get('inquiry');
+const notices: Record<string, readonly [string, string]> = {
+  sent: ['Your inquiry was sent. We’ll reply using the contact details you provided.', '询盘已发送，我们将通过你提供的联系方式回复。'],
+  invalid: ['Please check the required fields and enter a valid email address or phone number.', '请检查必填字段，并填写有效的邮箱或电话号码。'],
+  limited: ['You’ve submitted several inquiries recently. Please wait a minute and try again.', '提交过于频繁，请稍等一分钟再试。'],
+  unavailable: ['Your inquiry could not be sent. Please try again or contact us on WhatsApp.', '询盘发送失败，请重试或通过 WhatsApp 联系我们。'],
+};
+const notice = result && Object.hasOwn(notices, result) ? notices[result][language] : null;
+const field = 'mt-1.5 block min-h-11 w-full rounded-lg border border-line bg-paper px-3 py-2 text-ink focus:border-brand focus:outline-2 focus:outline-accent';
+---
+<section id="contact-inquiry" class="grid scroll-mt-24 items-start gap-5 lg:grid-cols-[minmax(0,5fr)_minmax(0,4fr)]">
+  <form action="/api/contact-inquiry" method="POST" data-contact-inquiry class="rounded-xl border border-line bg-surface p-5 sm:p-8">
+    <h2 class="text-2xl font-bold">{copy.formTitle}</h2>
+    {notice && <p role={result === 'sent' ? 'status' : 'alert'} class:list={['mt-3 rounded-lg border p-3 text-sm', result === 'sent' ? 'border-line text-brand' : 'border-red-200 text-red-700']}>{notice}</p>}
+    <p class="mt-3 text-sm text-muted" id="contact-reply-help">{zh ? '请至少填写邮箱或 WhatsApp / 电话中的一项，方便我们回复。' : 'Enter at least one email address or phone number so we can reply.'}</p>
+    <input type="hidden" name="locale" value={zh ? 'zh-CN' : 'en'} />
+    <div hidden><input name="website" tabindex="-1" autocomplete="off" aria-hidden="true" /></div>
+    <div class="mt-5 grid gap-4 sm:grid-cols-2">
+      {Object.entries(inquiryTextFields).map(([key, item]) => <label class="min-w-0 text-sm font-semibold">
+        {item.label[language]} {item.required && <span aria-hidden="true">*</span>}
+        <input name={key} type={item.type} autocomplete={item.autocomplete} maxlength={item.max}
+          required={item.required} class={field} aria-describedby={key === 'email' || key === 'whatsapp' ? 'contact-reply-help' : undefined} />
+      </label>)}
+      {Object.entries(inquiryOptions).map(([key, options]) => (
+        <label class:list={['min-w-0 text-sm font-semibold', key === 'orderType' && 'sm:col-span-2']}>
+          {inquirySelectLabels[key as keyof typeof inquirySelectLabels][language]}
+          <select name={key} required class={field}>
+            {key !== 'orderType' && <option value="">{zh ? '请选择' : 'Please select'}</option>}
+            {Object.entries(options).map(([value, labels]) => <option value={value}>{labels[language]}</option>)}
+          </select>
+        </label>
+      ))}
+      <label class="min-w-0 text-sm font-semibold sm:col-span-2">
+        {zh ? '留言' : 'Message'}
+        <textarea name="message" rows="5" maxlength={MAX_INQUIRY_MESSAGE} class={field}></textarea>
+      </label>
+    </div>
+    <button type="submit" class="mt-4 min-h-11 w-full rounded-lg bg-brand px-4 py-3 font-semibold text-on-brand hover:bg-teal-deep">{copy.formSubmit}</button>
+  </form>
+
+  <aside class="rounded-xl bg-teal-deep p-5 text-white sm:p-8">
+    <h2 class="text-2xl font-bold">{copy.infoTitle}</h2>
+    <dl class="mt-4 divide-y divide-white/20">
+      {number && <div class="py-3"><dt class="text-sm font-medium text-teal-100">WhatsApp</dt>
+        <dd><a class="hover:underline" href={number} data-whatsapp-inquiry>+{new URL(number).pathname.slice(1)}</a></dd></div>}
+      {email && <div class="py-3"><dt class="text-sm font-medium text-teal-100">{zh ? '邮箱' : 'Email'}</dt>
+        <dd class="break-all"><a class="hover:underline" href={'mailto:' + encodeURIComponent(email).replace('%40', '@')}>{email}</a></dd></div>}
+      {copy.contactAddress && <div class="py-3"><dt class="text-sm font-medium text-teal-100">{zh ? '地址' : 'Address'}</dt>
+        <dd>{copy.contactAddress}</dd></div>}
+    </dl>
+    {number && <a href={number} data-whatsapp-inquiry class="mt-4 inline-flex min-h-11 items-center rounded-lg bg-sky-200 px-4 font-semibold text-ink">{copy.cta}</a>}
+    {(methods.length > 0 || copy.shippingNote) && <div class="mt-6 border-t border-white/20 pt-5">
+      <h3 class="text-sm font-semibold">{zh ? '运输方式' : 'Shipping options'}</h3>
+      {methods.length > 0 && <ul class="mt-2 flex flex-wrap gap-2">
+        {methods.map(method => <li class="rounded-md border border-white/25 px-2.5 py-1 text-sm">{method}</li>)}
+      </ul>}
+      {copy.shippingNote && <p class="mt-3 text-sm leading-relaxed text-teal-50">{copy.shippingNote}</p>}
+    </div>}
+  </aside>
+</section>
+<script>
+  const form = document.querySelector<HTMLFormElement>('form[data-contact-inquiry]');
+  const email = form?.querySelector<HTMLInputElement>('input[name="email"]');
+  const phone = form?.querySelector<HTMLInputElement>('input[name="whatsapp"]');
+  form?.addEventListener('submit', (event) => {
+    if (!email || !phone || email.value.trim() || phone.value.trim()) return;
+    event.preventDefault();
+    email.setCustomValidity(document.documentElement.lang === 'zh-CN'
+      ? '请填写邮箱或 WhatsApp / 电话。' : 'Enter an email address or phone number.');
+    email.reportValidity();
+  });
+  form?.addEventListener('input', () => email?.setCustomValidity(''));
+</script>

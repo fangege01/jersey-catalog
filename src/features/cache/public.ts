@@ -1,3 +1,5 @@
+import { isInformationPath } from '../site-content/copy';
+
 export const PUBLIC_CACHE_CONTROL = 'public, max-age=0, s-maxage=600';
 export const PRIVATE_CACHE_CONTROL = 'private, no-store';
 
@@ -8,7 +10,7 @@ export function isPublicCatalogApi(pathname: string): boolean {
 /** Storefront routes whose HTML is identical for every shopper. */
 export function isPublicStorefrontPath(pathname: string): boolean {
   return (
-    pathname === '/' ||
+    pathname === '/' || isInformationPath(pathname) ||
     pathname === '/products' ||
     pathname.startsWith('/product/') ||
     pathname === '/search' ||

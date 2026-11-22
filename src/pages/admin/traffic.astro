@@ -1,0 +1,190 @@
+---
+import AdminLayout from '../../layouts/AdminLayout.astro';
+import { env } from 'cloudflare:workers';
+import { channels } from '../../features/analytics/events';
+import { trafficReport, trafficFilters, type TrafficCounts } from '../../features/analytics/report';
+import TrafficTable from '../../features/analytics/TrafficTable.astro';
+import { trafficRangeOrder, trafficRanges } from '../../features/analytics/period';
+import { normalizeTimeZone } from '../../features/settings/timeZone';
+import { getConfig } from '../../config';
+
+const timeZone = normalizeTimeZone(Astro.locals.settings?.timeZone ?? getConfig().timeZone) ?? 'UTC';
+
+let report: Awaited<ReturnType<typeof trafficReport>> | undefined;
+try {
+  report = await trafficReport(env.DB, Astro.url.searchParams, timeZone);
+} catch (error) {
+  console.error('Traffic report failed', error);
+  Astro.response.status = 503;
+}
+const metrics: Record<keyof TrafficCounts, string> = {
+  visitors: '独立访客 UV', visits: '访问会话', views: '页面浏览 PV',
+  products: '商品浏览', clicks: 'WhatsApp 点击', clickers: '独立点击人数',
+};
+const metricKeys = Object.keys(metrics) as Array<keyof TrafficCounts>;
+const selectedMetric = Astro.url.searchParams.get('metric');
+const metric = metricKeys.find((key) => key === selectedMetric) ?? 'views';
+const peak = Math.max(1, ...(report?.series.map((point) => point[metric]) ?? []));
+const channelPeak = Math.max(1, ...(report?.channelSeries.flatMap((point) => [point.organic, point.ai]) ?? []));
+const number = new Intl.NumberFormat('zh-CN');
+const regions = new Intl.DisplayNames('zh-CN', { type: 'region' });
+const region = (code: string) => code ? (regions.of(code) ?? code) + ' (' + code + ')' : '未知';
+const channel = (value: string) => {
+  const [key, ...rest] = value.split(' · ');
+  return [channels[key as keyof typeof channels] ?? key, ...rest].join(' · ');
+};
+const percent = (part: number, whole: number) => whole ? (part * 100 / whole).toFixed(1) + '%' : '0%';
+const date = new Intl.DateTimeFormat('zh-CN', { timeZone, month: '2-digit', day: '2-digit' });
+const hour = new Intl.DateTimeFormat('zh-CN', { timeZone, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
+const timestamp = new Intl.DateTimeFormat('zh-CN', {
+  timeZone, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit',
+  hourCycle: 'h23', timeZoneName: 'shortOffset',
+});
+const chartLabel = (bucket: number) => (report?.period.span === 1 ? hour : date).format(bucket * 1000);
+const field = 'mt-2 block w-full rounded border border-line bg-surface px-3 py-2';
+---
+<AdminLayout title="流量统计" active="traffic">
+  <div lang="zh-CN" class="space-y-6">
+    <header>
+      <h1 class="font-serif text-3xl">流量统计</h1>
+      <p class="mt-2 text-sm text-muted">统计同意分析的浏览器访问，时间以站点时区 {timeZone} 为准。事件保留 90 天。</p>
+    </header>
+    {!report ? <p role="alert" class="rounded border border-line p-4 text-red-700">暂时无法读取统计，请检查 D1 迁移并稍后重试。</p> : (
+      <>
+        <form method="GET" class="grid gap-4 rounded-xl border border-line bg-surface p-4 sm:grid-cols-2 lg:grid-cols-4">
+          <label class="text-sm">时间范围
+            <select name="days" class={field}>
+              {trafficRangeOrder.map((key) => (
+                <option value={key} selected={report.period.key === key}>{trafficRanges[key]}</option>
+              ))}
+            </select>
+          </label>
+          {Object.entries(trafficFilters).map(([key, label]) => (
+            <label class="text-sm">{label}
+              {key === 'channel' ? (
+                <select name={key} class={field}>
+                  <option value="">全部</option>
+                  {Object.entries(channels).map(([id, display]) =>
+                    <option value={id} selected={report.selected.channel === id}>{display}</option>)}
+                </select>
+              ) : key === 'device' ? (
+                <select name={key} class={field}>
+                  <option value="">全部</option>
+                  {['电脑', '手机', '平板', '未知'].map((device) =>
+                    <option value={device} selected={report.selected.device === device}>{device}</option>)}
+                </select>
+              ) : (
+                <input name={key} maxlength={key === 'country' ? 2 : 80}
+                  value={report.selected[key as keyof typeof trafficFilters]}
+                  placeholder={key === 'country' ? '例如 US' : '全部'} class={field} />
+              )}
+            </label>
+          ))}
+          <label class="text-sm">趋势指标
+            <select name="metric" class={field}>
+              {metricKeys.map((key) => <option value={key} selected={key === metric}>{metrics[key]}</option>)}
+            </select>
+          </label>
+          <div class="flex items-center gap-3 sm:col-span-2 lg:col-span-4">
+            <button type="submit" class="rounded bg-brand px-4 py-2 text-sm text-white">应用筛选 / 刷新</button>
+            <a href="/admin/traffic" class="text-sm underline">清除筛选</a>
+          </div>
+        </form>
+
+        <dl class="grid grid-cols-2 gap-3 lg:grid-cols-4">
+          {metricKeys.map((key) => (
+            <div class="rounded-xl border border-line bg-surface p-4">
+              <dt class="text-sm text-muted">{metrics[key]}</dt>
+              <dd class="mt-2 text-2xl font-semibold tabular-nums">{number.format(report.current[key])}</dd>
+              <dd class="mt-1 text-xs text-muted">上期同期 {number.format(report.previous[key])}</dd>
+            </div>
+          ))}
+          <div class="rounded-xl border border-line bg-surface p-4">
+            <dt class="text-sm text-muted">WhatsApp 独立点击率</dt>
+            <dd class="mt-2 text-2xl font-semibold tabular-nums">{percent(report.current.clickers, report.current.visitors)}</dd>
+            <dd class="mt-1 text-xs text-muted">上期同期 {percent(report.previous.clickers, report.previous.visitors)}</dd>
+          </div>
+        </dl>
+
+        <section class="rounded-xl border border-line bg-surface p-5">
+          <h2 class="font-semibold">访问趋势 · {metrics[metric]}</h2>
+          <ol class="mt-4 flex gap-2 overflow-x-auto">
+            {report.series.map((point) => {
+              return (
+                <li class="min-w-11 flex-1 text-center text-xs text-muted">
+                  <div class="flex h-28 items-end overflow-hidden rounded bg-paper" aria-hidden="true">
+                    <span class="block w-full rounded-t bg-brand" style={`height:${point[metric] / peak * 100}%`}></span>
+                  </div>
+                  <span class="mt-2 block" title={timestamp.format(point.bucket * 1000)}>{chartLabel(point.bucket)}</span>
+                  <strong class="mt-1 block text-ink">{point[metric]}</strong>
+                </li>
+              );
+            })}
+          </ol>
+        </section>
+
+        <section class="rounded-xl border border-line bg-surface p-5">
+          <h2 class="font-semibold">自然搜索与 AI 引荐</h2>
+          <p class="mt-1 text-sm text-muted">独立访客 · 深色为自然搜索，浅蓝为 AI 引荐</p>
+          <ol class="mt-4 flex gap-2 overflow-x-auto">
+            {report.channelSeries.map((point) => {
+              return (
+                <li class="min-w-11 flex-1 text-center text-xs text-muted">
+                  <div class="flex h-24 items-end gap-1 rounded bg-paper" aria-hidden="true">
+                    <span class="block w-1/2 rounded-t bg-brand" style={`height:${point.organic / channelPeak * 100}%`}></span>
+                    <span class="block w-1/2 rounded-t bg-sky-400" style={`height:${point.ai / channelPeak * 100}%`}></span>
+                  </div>
+                  <span class="mt-2 block" title={timestamp.format(point.bucket * 1000)}>{chartLabel(point.bucket)}</span>
+                  <span class="mt-1 block tabular-nums">{point.organic} / {point.ai}</span>
+                </li>
+              );
+            })}
+          </ol>
+        </section>
+
+        <section class="rounded-xl border border-line bg-surface p-5">
+          <h2 class="font-semibold">商品询盘漏斗</h2>
+          <ol class="mt-3 space-y-2 text-sm">
+            <li>有记录的访客 <strong>{report.current.visitors}</strong></li>
+            <li>浏览商品的访客 <strong>{report.funnel.viewed}</strong></li>
+            <li>同次会话浏览商品后点击 WhatsApp <strong>{report.funnel.clickedAfterView}</strong>
+              <span class="text-muted">· {percent(report.funnel.clickedAfterView, report.funnel.viewed)}</span></li>
+          </ol>
+        </section>
+        <div class="grid gap-4 xl:grid-cols-2">
+          <TrafficTable title="市场表现" heading="国家/地区" rows={report.countries} format={region} />
+          <TrafficTable title="流量来源" heading="渠道与来源" rows={report.sources} format={channel} />
+          <TrafficTable title="广告活动" heading="活动与来源" rows={report.campaigns} />
+          <TrafficTable title="设备分析" heading="设备 · 系统 · 浏览器" rows={report.devices} />
+          <TrafficTable title="访问页面" heading="页面路径" rows={report.pages} />
+          <TrafficTable title="来源与落地页" heading="落地页 · 渠道" rows={report.landings} formatDetail={channel} />
+        </div>
+        <TrafficTable title="商品分析" heading="商品页面" rows={report.products} />
+        <section class="rounded-xl border border-line bg-surface p-5">
+          <h2 class="mb-3 font-semibold">最近访问</h2>
+          {report.recent.length ? (
+            <div class="overflow-x-auto">
+              <table class="w-full min-w-[40rem] border-collapse text-left text-sm">
+                <thead class="bg-paper text-muted">
+                  <tr><th class="p-2">时间</th><th class="p-2">国家/地区</th><th class="p-2">设备、系统与浏览器</th>
+                    <th class="p-2">渠道与来源</th><th class="p-2">落地页</th></tr>
+                </thead>
+                <tbody>
+                  {report.recent.map((visit) => (
+                    <tr class="border-b border-line">
+                      <td class="whitespace-nowrap p-2">{timestamp.format(visit.seen * 1000)}</td>
+                      <td class="p-2">{region(visit.country)}</td>
+                      <td class="p-2">{visit.device} · {visit.os} · {visit.browser}</td>
+                      <td class="break-all p-2">{channel(visit.channel)}{visit.source && ' · ' + visit.source}</td>
+                      <td class="break-all p-2">{visit.landing}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : <p class="text-sm text-muted">当前筛选条件下暂无数据。</p>}
+        </section>
+      </>
+    )}
+  </div>
+</AdminLayout>

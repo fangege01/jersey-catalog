@@ -312,13 +312,13 @@ export function validateVariantWeights(
     if (parsed.status !== 'error') continue;
     const what =
       parsed.reason === 'negative'
-        ? 'weight cannot be negative.'
+        ? '重量不能为负数。'
         : parsed.reason === 'precision'
-          ? `weight has too many decimal places for ${weightUnit}.`
+          ? `${weightUnit} 的重量小数位数过多。`
           : parsed.reason === 'over_limit'
-            ? 'weight is too heavy for parcel shipping.'
-            : 'weight must be a number.';
-    return `Variant ${i + 1}: ${what}`;
+            ? '重量超过包裹配送上限。'
+            : '请输入数字重量。';
+    return `第 ${i + 1} 个规格：${what}`;
   }
   return null;
 }

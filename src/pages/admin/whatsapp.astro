@@ -1,0 +1,64 @@
+---
+import { env } from 'cloudflare:workers';
+import { getConfig } from '../../config';
+import AdminLayout from '../../layouts/AdminLayout.astro';
+import { getSetting, setSetting } from '../../features/settings/db';
+import { normalizeWhatsAppNumber, whatsappInquiryUrl } from '../../features/storefront/catalogMode';
+import { CACHE_TAG } from '../../features/cache/tags';
+import { purgeCacheTags } from '../../features/cache/purge';
+
+if (!getConfig().features.catalogOnly) return new Response('未找到记录。', { status: 404 });
+
+const currentNumber = (await getSetting(env.DB, 'whatsapp_number')) ?? '';
+let number = currentNumber;
+let error = '';
+const saved = Astro.url.searchParams.get('saved') === '1';
+
+if (Astro.request.method === 'POST') {
+  let stored = false;
+  try {
+    const form = await Astro.request.formData();
+    const input = form.get('whatsapp_number');
+    if (typeof input !== 'string' || input.length > 32) {
+      error = '请输入有效的 WhatsApp 号码。';
+    } else {
+      number = input.trim();
+      const normalized = normalizeWhatsAppNumber(number);
+      if (number && !normalized) {
+        error = '号码必须包含国家区号，例如 +1 202 555 0123。';
+      } else {
+        await setSetting(env.DB, 'whatsapp_number', normalized);
+        stored = true;
+        number = normalized ?? '';
+        await purgeCacheTags([CACHE_TAG.shell, CACHE_TAG.catalog]);
+        return Astro.redirect('/admin/whatsapp?saved=1', 303);
+      }
+    }
+  } catch (cause) {
+    console.error('WhatsApp settings update failed', cause);
+    Astro.response.status = 500;
+    error = stored ? '号码已保存，但前台缓存未能刷新。请重新保存以重试。' : '保存失败，请重试。';
+  }
+  if (Astro.response.status !== 500) Astro.response.status = 400;
+}
+
+const preview = whatsappInquiryUrl(currentNumber);
+---
+
+<AdminLayout title="WhatsApp 管理" active="whatsapp">
+  <section lang="zh-CN" class="max-w-xl space-y-4">
+    <h1 class="font-serif text-3xl">WhatsApp 管理</h1>
+    <p class="text-sm text-muted">首页、商品询盘、联系链接和弹窗共用一个号码。留空保存可关闭这些入口。</p>
+    {error ? <p role="alert" class="text-sm text-red-700">{error}</p> :
+      saved && <p role="status" class="text-sm text-green-700">设置已保存。</p>}
+    <p class="text-sm">当前号码 <strong>{currentNumber ? '+' + currentNumber : '未设置'}</strong></p>
+    <form method="POST" action="/admin/whatsapp" class="space-y-3 rounded-lg border border-line p-4">
+      <label for="whatsapp-number" class="block text-sm font-medium">WhatsApp 号码（含国家区号）</label>
+      <input id="whatsapp-number" type="tel" name="whatsapp_number" maxlength="32"
+        autocomplete="off" value={number} class="w-full rounded border border-line px-3 py-2" />
+      <button class="rounded bg-brand px-4 py-2 text-sm text-white" type="submit">保存并同步全站</button>
+      <a href="/admin/whatsapp" class="ml-3 text-sm underline">重新读取</a>
+    </form>
+    {preview && <a class="text-sm underline" href={preview} target="_blank" rel="noopener noreferrer">{preview}</a>}
+  </section>
+</AdminLayout>

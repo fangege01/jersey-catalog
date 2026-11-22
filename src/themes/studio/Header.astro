@@ -57,7 +57,7 @@ const small =
         class={`hidden min-w-0 items-center gap-6 xl:flex ${small}`}
         disclosureClass={`relative order-last xl:hidden ${small}`}
       />
-      <a href={model.search.action} class={`${small} sm:hidden`}>Search</a>
+      <a href={model.search.action} class={`${small} sm:hidden`}>{model.locale === 'zh-CN' ? '搜索' : 'Search'}</a>
       {model.account.enabled && <StoreAccountControl href={model.account.href} class={small} />}
       {
         model.cart.enabled && (
@@ -72,6 +72,7 @@ const small =
     <StoreSearch
       action={model.search.action}
       query={model.search.query}
+      locale={model.locale}
       class="hidden w-full border-b border-line pb-1 focus-within:border-brand sm:block sm:w-56"
       inputClass="w-full bg-transparent px-0 py-0.5 text-sm focus:outline-none"
     />

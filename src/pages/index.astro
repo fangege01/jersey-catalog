@@ -3,6 +3,11 @@ import { env } from 'cloudflare:workers';
 import Layout from '../layouts/Layout.astro';
 import ProductList from '../features/products/ProductList.astro';
 import { resolveHomePath } from '../features/settings/home';
+import { localizedHref } from '../features/i18n/locale';
+import { readSiteCopy, siteImageKey } from '../features/site-content/copy';
+import { buildStorefrontImage } from '../features/storefront/productCard';
+import { whatsappInquiryUrl } from '../features/storefront/catalogMode';
+import { getConfig } from '../config';
 
 // A store can point `/` at a page or a single product instead of the catalog.
 // Rewriting rather than duplicating those templates keeps one implementation of
@@ -12,8 +17,26 @@ import { resolveHomePath } from '../features/settings/home';
 // through to the catalog: a 404 homepage would be edge-cached for everyone.
 const homePath = await resolveHomePath(env.DB, Astro.locals.settings?.homePage);
 if (homePath) return Astro.rewrite(homePath);
+const landing = import.meta.env.MINSHOP_THEME === 'teal';
+const locale = Astro.locals.storeLocale ?? 'en';
+const { search, searchParams } = Astro.url;
+if (landing && ['page', 'sort', 'dir'].some(key => searchParams.has(key))) {
+  return Astro.redirect(localizedHref('/products' + search, locale), 301);
+}
+const settings = Astro.locals.settings;
+const copy = readSiteCopy(settings?.siteContent, 'home', locale);
+const imageKey = settings?.siteImages?.[siteImageKey('home')];
+const heroSizes = '(max-width: 740px) calc(100vw - 32px), (max-width: 1230px) 45vw, 520px)';
+const image = imageKey ? buildStorefrontImage(imageKey, copy.heroAlt, {
+  baseUrl: getConfig().images.baseUrl, delivery: settings?.imageDelivery, sizes: heroSizes, priority: true,
+}) : {
+  src: '/teal/football-kits-900.webp',
+  srcset: '/teal/football-kits-540.webp 540w, /teal/football-kits-900.webp 900w',
+  sizes: heroSizes, alt: copy.heroAlt, priority: true,
+};
 ---
 
-<Layout>
-  <ProductList />
+<Layout title={landing ? copy.seoTitle : undefined} exactTitle={landing} description={landing ? copy.seoDescription : undefined}
+  image={landing ? image.src : undefined} imageAlt={landing ? image.alt : undefined}>
+  <ProductList landing={landing ? { copy, image, whatsappHref: whatsappInquiryUrl(settings?.whatsappNumber) } : undefined} />
 </Layout>

@@ -19,14 +19,14 @@ export interface PageFields {
  */
 export function parsePageForm(form: FormData): { data: PageFields } | { error: string } {
   const title = String(form.get('title') ?? '').trim();
-  if (!title) return { error: 'Title is required.' };
+  if (!title) return { error: '请填写标题。' };
   if (title.length > MAX_TITLE) {
-    return { error: `Title must be ${MAX_TITLE} characters or fewer.` };
+    return { error: `标题最多可填写 ${MAX_TITLE} 个字符。` };
   }
 
   const body = String(form.get('body_markdown') ?? '');
   if (body.length > MAX_BODY) {
-    return { error: `Page content must be ${MAX_BODY.toLocaleString()} characters or fewer.` };
+    return { error: `页面正文最多可填写 ${MAX_BODY.toLocaleString('zh-CN')} 个字符。` };
   }
 
   return {

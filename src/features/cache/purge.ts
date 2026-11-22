@@ -29,6 +29,9 @@ export async function purgeCacheTags(
 ): Promise<void> {
   const normalized = normalizeCacheTags(tags);
   if (normalized.length === 0) return;
+  // Older local Workers runtimes expose the Cache API without the Workers
+  // Caching purge interface. They do not serve version-cache hits.
+  if (purger === cache && typeof cache?.purge !== 'function') return;
 
   try {
     const result = await purger.purge({ tags: normalized });

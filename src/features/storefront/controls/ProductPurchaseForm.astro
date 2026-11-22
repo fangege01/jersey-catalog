@@ -1,4 +1,5 @@
 ---
+import ProductInquiry from './ProductInquiry.astro';
 import type { ProductPurchaseModel } from '../models';
 
 /**
@@ -28,8 +29,10 @@ const { model } = Astro.props;
 const showAny = model.showAddToCart || model.showBuyNow;
 ---
 
+{model.inquiry && <ProductInquiry inquiry={model.inquiry} variantLabel={model.variantLabel} locale={model.locale} />}
+
 {
-  showAny &&
+  !model.inquiry && showAny &&
     (model.hasOptions ? (
       <form method="POST" action={model.cartAction} class="mt-8 max-w-sm" data-options-form>
         <input type="hidden" name="_action" value="add" />

@@ -44,7 +44,7 @@ const { model } = Astro.props;
   )
 }
 
-<CatalogSort model={model.sort} />
+<CatalogSort locale={model.locale} model={model.sort} />
 
 {
   /* role="status" is the contract, not the wording: an empty catalog must
@@ -52,7 +52,7 @@ const { model } = Astro.props;
      grid. Reword it freely; keep the role and keep it non-empty. */
   model.products.length === 0 && (
     <p role="status" class="text-muted">
-      No products yet.
+      {model.locale === 'zh-CN' ? '暂无商品。' : 'No products yet.'}
     </p>
   )
 }
@@ -61,4 +61,4 @@ const { model } = Astro.props;
   {model.products.map((card, i) => <ProductCard card={card} index={i} />)}
 </ul>
 
-<CatalogPagination model={model.pagination} />
+<CatalogPagination locale={model.locale} model={model.pagination} />

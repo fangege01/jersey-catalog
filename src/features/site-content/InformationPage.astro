@@ -1,0 +1,57 @@
+---
+import Layout from '../../layouts/Layout.astro';
+import { getConfig } from '../../config';
+import { readSiteCopy, siteImageKey, type InformationPage } from './copy';
+import { buildStorefrontImage } from '../storefront/productCard';
+import { whatsappInquiryUrl } from '../storefront/catalogMode';
+import StoreImage from '../storefront/controls/StoreImage.astro';
+import ContactInquiry from './ContactInquiry.astro';
+
+interface Props { section: InformationPage; }
+const { section } = Astro.props;
+const locale = Astro.locals.storeLocale ?? 'en';
+const zh = locale === 'zh-CN';
+const settings = Astro.locals.settings;
+const copy = readSiteCopy(settings?.siteContent, section, locale);
+const number = whatsappInquiryUrl(settings?.whatsappNumber);
+const key = settings?.siteImages?.[siteImageKey(section)];
+const image = key ? buildStorefrontImage(key, copy.imageAlt, {
+  baseUrl: getConfig().images.baseUrl, delivery: settings?.imageDelivery, sizes: '(min-width: 768px) 44vw, 92vw',
+  priority: true,
+}) : section === 'contact' ? null : {
+  src: section === 'factory' ? '/teal/jersey-customization.webp' : '/teal/football-kits-900.webp',
+  alt: copy.imageAlt, priority: true,
+};
+const points = [[copy.point1Title, copy.point1Text], [copy.point2Title, copy.point2Text], [copy.point3Title, copy.point3Text]];
+---
+<Layout title={copy.seoTitle} exactTitle description={copy.seoDescription} image={image?.src} imageAlt={image?.alt}>
+  <article class="space-y-10">
+    <section class="rounded-xl bg-linear-to-br from-teal-deep via-brand to-accent px-5 py-9 text-white sm:px-10 sm:py-14">
+      <nav aria-label={zh ? '当前位置' : 'Breadcrumb'} class="mb-4 flex flex-wrap gap-2 text-sm text-teal-100">
+        <a class="hover:underline" href="/">{zh ? '首页' : 'Home'}</a>
+        <span aria-hidden="true">/</span><span aria-current="page">{copy.title}</span>
+      </nav>
+      <h1 class="break-words text-4xl font-bold tracking-tight sm:text-5xl">{copy.title}</h1>
+      <p class="mt-4 max-w-2xl whitespace-pre-wrap text-teal-50">{copy.intro}</p>
+      {section !== 'contact' && number && <a href={number} data-whatsapp-inquiry class="mt-5 inline-flex min-h-11 items-center rounded-md bg-sky-200 px-4 font-semibold text-ink">{copy.cta}</a>}
+    </section>
+    {section === 'contact' && <ContactInquiry copy={readSiteCopy(settings?.siteContent, 'contact', locale)} number={number} zh={zh} />}
+    <section class:list={['grid gap-5 rounded-xl border border-line bg-surface p-5 sm:p-8', image && 'items-center md:grid-cols-2']}>
+      <div>
+        <h2 class="text-2xl font-bold">{copy.panelTitle}</h2>
+        <p class="mt-3 whitespace-pre-wrap leading-relaxed text-muted">{copy.body}</p>
+      </div>
+      {image && <StoreImage image={image} class="aspect-4/3 w-full rounded-lg object-cover" />}
+    </section>
+    <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      {points.map(([title, description]) => <section class="rounded-lg border border-line p-5">
+        <h3 class="font-bold">{title}</h3>
+        <p class="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-muted">{description}</p>
+      </section>)}
+    </div>
+    <div class="flex flex-wrap gap-3">
+      {number && <a href={number} data-whatsapp-inquiry class="inline-flex min-h-11 items-center rounded-md bg-brand px-4 text-sm font-semibold text-on-brand">{copy.cta}</a>}
+      <a href="/products" class="inline-flex min-h-11 items-center rounded-md border border-line px-4 text-sm font-semibold">{zh ? '查看产品目录' : 'View products'}</a>
+    </div>
+  </article>
+</Layout>

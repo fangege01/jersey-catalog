@@ -87,13 +87,13 @@ async function resolveVariantFormIds(
   };
 
   if (!translate('v_id', variants, 'variant') || !translate('v_remove', variants, 'variant')) {
-    return 'One of the variants no longer exists — reload and try again.';
+    return '有商品规格已不存在，请刷新后重试。';
   }
   if (!translate('e_id', extras, 'extra') || !translate('e_remove', extras, 'extra')) {
-    return 'One of the add-ons no longer exists — reload and try again.';
+    return '有附加选项已不存在，请刷新后重试。';
   }
   if (!translate('v_image', images, 'productImage')) {
-    return 'One of the variant photos no longer exists — reload and try again.';
+    return '有规格图片已不存在，请刷新后重试。';
   }
   return null;
 }
@@ -103,7 +103,7 @@ async function resolveVariantFormIds(
 export const POST: APIRoute = async ({ request, params, redirect, locals }) => {
   const publicId = parsePublicId(params.id, 'product');
   const existing = publicId ? await getProductByPublicId(env.DB, publicId) : null;
-  if (!publicId || !existing) return new Response('Not found', { status: 404 });
+  if (!publicId || !existing) return new Response('未找到记录。', { status: 404 });
   const id = existing.id;
 
   const form = await request.formData();

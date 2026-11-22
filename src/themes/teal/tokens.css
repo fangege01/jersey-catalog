@@ -1,0 +1,38 @@
+@theme {
+  --color-brand: #0f766e;
+  --color-brand-hover: #115e59;
+  --color-ink: #0f2f2b;
+  --color-accent: #036a96;
+  --color-paper: #ffffff;
+  --color-line: #dcebe9;
+  --color-surface: #f2f9f8;
+  --color-muted: #4a5f63;
+  --color-faint: #577176;
+  --color-on-brand: #ffffff;
+  --color-teal-main: #0d9488;
+  --color-teal-deep: #0b2b2a;
+  --color-teal-sky: #0ea5e9;
+  --font-sans: system-ui, "Segoe UI", "Microsoft YaHei", sans-serif;
+  --font-serif: Georgia, "Noto Serif SC", serif;
+  --radius-md: 12px;
+  --radius-lg: 20px;
+}
+
+:root {
+  --page-max: 74rem;
+  --page-pad-x: clamp(1rem, 3vw, 1.5rem);
+  --page-pad-y: clamp(1.6rem, 4vw, 3rem);
+  --prose-measure: 48rem;
+  --prose-leading: 1.75;
+  --prose-h1-size: 2.25rem;
+  --prose-h1-tracking: -0.02em;
+  --prose-h2-size: 1.5rem;
+  --prose-h2-tracking: -0.01em;
+  --prose-h3-size: 1.125rem;
+}
+
+.page-shell:has(> [data-wide-catalog]) {
+  --page-max: none;
+  --page-pad-x: 0px;
+  --page-pad-y: 0px;
+}

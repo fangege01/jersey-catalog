@@ -26,9 +26,9 @@ export const prerender = false;
 
 const FAILURE_MESSAGES = {
   full: (location: string) =>
-    `The ${location} menu is full (${MENU_CAPS[location as 'header' | 'footer']} items). Remove one first.`,
-  duplicate: (location: string, what: string) => `${what} is already in the ${location} menu.`,
-  unavailable: () => 'That page, product, or category is no longer available.',
+    `${location === 'header' ? '页眉' : '页脚'}菜单最多可添加 ${MENU_CAPS[location as 'header' | 'footer']} 项，请先移除一项。`,
+  duplicate: (location: string, what: string) => `${what}已存在于${location === 'header' ? '页眉' : '页脚'}菜单。`,
+  unavailable: () => '该页面、商品或分类已不可用。',
 };
 
 /**
@@ -119,8 +119,8 @@ export const POST: APIRoute = async ({ request, redirect }) => {
   if (action === 'add') {
     const location = form.get('location');
     const targetType = form.get('target_type');
-    if (!isMenuLocation(location)) return new Response('Invalid location', { status: 400 });
-    if (!isMenuTargetType(targetType)) return new Response('Invalid target type', { status: 400 });
+    if (!isMenuLocation(location)) return new Response('无效的菜单位置。', { status: 400 });
+    if (!isMenuTargetType(targetType)) return new Response('无效的链接目标类型。', { status: 400 });
 
     // Singletons carry no target; the rest submit a public ID that must resolve.
     let targetId: number | null = null;
@@ -131,7 +131,7 @@ export const POST: APIRoute = async ({ request, redirect }) => {
       // direct API caller does not have to know that detail.
       const raw = form.get(`target_id_${targetType}`) ?? form.get('target_id');
       targetId = await resolveTargetId(targetType, raw);
-      if (targetId === null) return back('Choose a target first.');
+      if (targetId === null) return back('请先选择链接目标。');
     }
 
     const result = await addMenuItem(env.DB, {
@@ -157,7 +157,7 @@ export const POST: APIRoute = async ({ request, redirect }) => {
   // a tampered payload) simply drop out and fail the permutation check below.
   if (action === 'reorder') {
     const location = form.get('location');
-    if (!isMenuLocation(location)) return new Response('Invalid location', { status: 400 });
+    if (!isMenuLocation(location)) return new Response('无效的菜单位置。', { status: 400 });
     const byPublicId = await menuItemIdsByPublicId(env.DB, location);
     const ids = form
       .getAll('order')
@@ -170,14 +170,14 @@ export const POST: APIRoute = async ({ request, redirect }) => {
     // position. The client reloads on a non-OK response, so the merchant sees
     // the real order rather than an optimistic one.
     const applied = await reorderMenuItems(env.DB, location, ids);
-    if (!applied) return back('That reorder did not match the menu. Reloading.');
+    if (!applied) return back('提交的排序和当前菜单不一致，请重新排序。');
     return saved();
   }
 
   // Row actions address the item by its nav_ public ID.
   const itemPublicId = parsePublicId(form.get('id'), 'navItem');
   const id = itemPublicId ? await getMenuItemIdByPublicId(env.DB, itemPublicId) : null;
-  if (id === null) return new Response('Invalid id', { status: 400 });
+  if (id === null) return new Response('无效的记录 ID。', { status: 400 });
 
   if (action === 'move') {
     await moveMenuItem(env.DB, id, form.get('direction') === 'up' ? 'up' : 'down');
@@ -194,5 +194,5 @@ export const POST: APIRoute = async ({ request, redirect }) => {
     return saved();
   }
 
-  return back('Unknown action.');
+  return back('无法识别此操作。');
 };

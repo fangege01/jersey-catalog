@@ -135,8 +135,23 @@ export async function deleteMediaRecord(
             SELECT 1 FROM page_media WHERE page_media.media_id = media.id
           )
           AND NOT EXISTS (
+            SELECT 1 FROM storefront_translations t
+            WHERE instr(t.body, media.image_key) > 0
+              AND (
+                (t.entity = 'page' AND EXISTS (SELECT 1 FROM pages p WHERE p.public_id = t.public_id))
+                OR (t.entity = 'product' AND EXISTS (SELECT 1 FROM products p WHERE p.public_id = t.public_id))
+              )
+          )
+          AND NOT EXISTS (
+            SELECT 1 FROM products p WHERE instr(p.description, media.image_key) > 0
+          )
+          AND NOT EXISTS (
+            SELECT 1 FROM customer_testimonials WHERE customer_testimonials.avatar_media_id = media.id
+          )
+          AND NOT EXISTS (
             SELECT 1 FROM settings
-             WHERE settings.key = 'logo_image_key' AND settings.value = media.image_key
+             WHERE (settings.key = 'logo_image_key' OR settings.key IN ('site_image:home', 'site_image:factory', 'site_image:about', 'site_image:contact'))
+               AND settings.value = media.image_key
           )
         RETURNING image_key`,
     )
@@ -190,8 +205,8 @@ export async function attachMediaToProduct(
   // Nothing inserted — say which of the two guards refused.
   const media = await getMedia(db, mediaId);
   return media
-    ? { ok: false, error: 'That image is already in this product’s gallery.' }
-    : { ok: false, error: 'That image is no longer in the media library.' };
+    ? { ok: false, error: '该图片已在商品相册中。' }
+    : { ok: false, error: '该图片已不在素材库中。' };
 }
 
 /**
@@ -292,14 +307,20 @@ export async function replaceProductImageFromMedia(
  * two, persisting a key that renders a broken logo site-wide. Returns false if
  * the media row is gone.
  */
-export async function setLogoFromMedia(db: D1Database, imageKey: string): Promise<boolean> {
+export function setLogoFromMedia(db: D1Database, imageKey: string): Promise<boolean> {
+  return setStoreImageFromMedia(db, 'logo_image_key', imageKey);
+}
+
+export async function setStoreImageFromMedia(
+  db: D1Database, key: 'logo_image_key' | import('../site-content/copy').SiteImageKey, imageKey: string,
+): Promise<boolean> {
   const result = await db
     .prepare(
       `INSERT INTO settings (key, value)
-       SELECT 'logo_image_key', m.image_key FROM media m WHERE m.image_key = ?1
+       SELECT ?1, m.image_key FROM media m WHERE m.image_key = ?2
        ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = datetime('now')`,
     )
-    .bind(imageKey)
+    .bind(key, imageKey)
     .run();
   return (result.meta?.changes ?? 0) > 0;
 }

@@ -1,0 +1,104 @@
+---
+import { env } from 'cloudflare:workers';
+import { trafficTotals } from '../analytics/report';
+import { publicOrigin } from '../http/origin';
+
+import { getConfig } from '../../config';
+import { normalizeTimeZone } from '../settings/timeZone';
+
+const timeZone = normalizeTimeZone(Astro.locals.settings?.timeZone ?? getConfig().timeZone) ?? 'UTC';
+const reportParams = new URLSearchParams({ days: '7' });
+const [products, pending, traffic] = await Promise.all([
+  env.DB.prepare('SELECT COUNT(*) AS total, COUNT(CASE WHEN active = 1 THEN 1 END) AS published FROM products')
+    .first<{ total: number; published: number }>(),
+  env.DB.prepare('SELECT public_id, name FROM products WHERE active = 0 ORDER BY created_at DESC, id DESC LIMIT 6')
+    .all<{ public_id: string; name: string }>(),
+  trafficTotals(env.DB, reportParams, timeZone).catch(error => {
+    console.error('Admin dashboard traffic unavailable', error);
+    return null;
+  }),
+]);
+const total = products?.total ?? 0;
+const published = products?.published ?? 0;
+const fmt = new Intl.NumberFormat('zh-CN');
+const metrics = [
+  { label: '已上架', value: published, href: '/admin/products?status=active' },
+  { label: '待上架', value: total - published, href: '/admin/products?status=inactive' },
+  { label: '独立访客', value: traffic?.visitors, href: '/admin/traffic?days=7&metric=visitors' },
+  { label: '页面浏览', value: traffic?.views, href: '/admin/traffic?days=7&metric=views' },
+  { label: 'WhatsApp 点击', value: traffic?.clicks, href: '/admin/traffic?days=7&metric=clicks' },
+];
+const tasks = [
+  { title: '批量导入', href: '/admin/imports', text: '检查采集助手连接与导入状态。' },
+  { title: '编辑网站内容', href: '/admin/site-content', text: '更新首页、联系页与中英文文案。' },
+  { title: '管理素材', href: '/admin/media', text: '上传、查找图片和检查引用。' },
+  { title: 'WhatsApp 管理', href: '/admin/whatsapp', text: '设置全站询价号码。' },
+];
+const hasNumber = Boolean(Astro.locals.settings?.whatsappNumber);
+const origin = publicOrigin(Astro.url.origin, env.CANONICAL_ORIGIN);
+---
+<section class="space-y-6">
+  <header class="flex flex-wrap items-end justify-between gap-4">
+    <div>
+      <h1 class="text-3xl font-bold tracking-tight">工作台</h1>
+      <p class="mt-2 text-sm text-muted">管理球衣、网站内容和 WhatsApp 询价入口。</p>
+    </div>
+    <a href="/admin/products/new" class="rounded-md bg-brand px-4 py-2.5 text-sm font-semibold text-on-brand hover:bg-brand-hover">新增商品</a>
+  </header>
+
+  <section aria-labelledby="summary-title">
+    <div class="mb-3 flex flex-wrap items-baseline justify-between gap-2">
+      <h2 id="summary-title" class="text-lg font-bold">商品与访问概览</h2>
+      <a class="text-sm font-semibold text-brand underline-offset-4 hover:underline" href="/admin/traffic?days=7">查看近 7 天流量</a>
+    </div>
+    <dl class="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-5">
+      {metrics.map((item, index) => (
+        <div class="min-w-0 rounded-xl border border-line bg-surface p-4 shadow-xs">
+          <dt class="text-sm text-muted">{item.label} <span class="block text-xs text-muted">{index > 1 ? '近 7 天' : '当前目录'}</span></dt>
+          <dd class="mt-2 break-words text-2xl font-bold text-brand tabular-nums">
+            <a href={item.href} aria-label={'查看' + item.label} class="hover:underline">{item.value === undefined ? '—' : fmt.format(item.value)}</a>
+          </dd>
+        </div>
+      ))}
+    </dl>
+    <p class="mt-3 text-xs leading-relaxed text-muted">流量来自同意统计的访客。点击数据只记录打开 WhatsApp 的操作。</p>
+    {!traffic && <p role="alert" class="mt-2 text-sm text-red-700">暂时无法读取流量统计。</p>}
+  </section>
+
+  <div class="grid gap-4 xl:grid-cols-[1fr_1fr]">
+    <section class="rounded-xl border border-line bg-surface p-5" aria-labelledby="recent-drafts">
+      <div class="flex flex-wrap items-center justify-between gap-2">
+        <h2 id="recent-drafts" class="text-lg font-bold">最近待上架</h2>
+        <a href="/admin/products?status=inactive" class="text-sm font-semibold text-brand hover:underline">查看全部</a>
+      </div>
+      {pending.results.length ? (
+        <ul class="mt-3 divide-y divide-line">
+          {pending.results.map(product => (
+            <li class="flex items-center justify-between gap-3 py-3 text-sm">
+              <a class="break-words font-medium hover:text-brand" href={'/admin/products/' + product.public_id + '/edit'}>{product.name}</a>
+              <span class="shrink-0 rounded-full bg-paper px-2 py-0.5 text-xs text-muted">待上架</span>
+            </li>
+          ))}
+        </ul>
+      ) : <p class="mt-4 text-sm text-muted">暂无待上架商品。</p>}
+    </section>
+
+    <section class="rounded-xl border border-line bg-surface p-5" aria-labelledby="quick-actions">
+      <h2 id="quick-actions" class="text-lg font-bold">常用操作</h2>
+      <div class="mt-3 grid gap-2 sm:grid-cols-2">
+        {tasks.map(task => <a href={task.href} class="rounded-lg border border-line bg-paper/50 p-3 hover:border-brand">
+          <h3 class="text-sm font-semibold">{task.title}</h3>
+          <p class="mt-1 text-xs leading-relaxed text-muted">{task.text}</p>
+        </a>)}
+      </div>
+    </section>
+  </div>
+
+  <section class="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-line bg-surface p-5" aria-label="站点与联系入口">
+    <div>
+      <h2 class="text-base font-bold">网站与询价入口</h2>
+      <a class="mt-1 block break-all text-sm text-brand underline" href={origin} target="_blank" rel="noopener">{origin}</a>
+    </div>
+    <a class="text-sm font-semibold text-brand underline" href="/admin/whatsapp">WhatsApp {hasNumber ? '已设置' : '待设置'}</a>
+  </section>
+</section>

@@ -2,7 +2,8 @@
 
 import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { createRequire } from 'node:module';
+import { dirname, resolve } from 'node:path';
 import { signDeployPurgeAuthorization } from '../src/features/cache/deployPurgeAuth.ts';
 import { resolveTheme } from './themes.mjs';
 import { executeDeployPlan } from './deploy-plan.mjs';
@@ -20,9 +21,14 @@ const stampPath = resolve(root, 'dist/theme.json');
 const theme = resolveTheme(root);
 console.log(`Deploying theme: ${theme.id} (from ${theme.source})`);
 
+const require = createRequire(import.meta.url);
 
-function run(command, args) {
-  const result = spawnSync(command, args, {
+function run(packageName, args) {
+  const manifestPath = require.resolve(packageName + '/package.json');
+  const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
+  const bin = typeof manifest.bin === 'string' ? manifest.bin : manifest.bin?.[packageName];
+  if (!bin) throw new Error(packageName + ' does not declare a CLI.');
+  const result = spawnSync(process.execPath, [resolve(dirname(manifestPath), bin), ...args], {
     cwd: root,
     env: process.env,
     stdio: 'inherit',
@@ -146,10 +152,10 @@ async function purgeAfterDeploy(origin, secret) {
 const ops = {
   expectedTheme: theme.id,
   readStamp: () => (existsSync(stampPath) ? readFileSync(stampPath, 'utf8') : null),
-  build: () => run('npx', ['astro', 'build']),
+  build: () => run('astro', ['build']),
   loadCacheConfig: () => deploymentCacheConfig(),
-  migrate: () => run('npx', ['wrangler', 'd1', 'migrations', 'apply', 'DB', '--remote']),
-  deploy: () => run('npx', ['wrangler', 'deploy']),
+  migrate: () => run('wrangler', ['d1', 'migrations', 'apply', 'DB', '--remote']),
+  deploy: () => run('wrangler', ['deploy']),
   purge: (cacheConfig) => purgeAfterDeploy(cacheConfig.origin, cacheConfig.secret),
 };
 

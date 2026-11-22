@@ -28,8 +28,11 @@
  * Usage: node scripts/check-themes.mjs [dir...]
  */
 import { readdir, readFile, stat } from 'node:fs/promises';
-import { dirname, join, normalize, relative } from 'node:path';
+import { posix } from 'node:path';
 import { THEMES_DIR, discoverThemeIds } from './themes.mjs';
+
+// Keep paths in the same slash-delimited form as the import rules on every host.
+const { dirname, join, relative } = posix;
 
 const CONTROLS_DIR = 'src/features/storefront/controls';
 const MODELS_MODULE = 'src/features/storefront/models.ts';
@@ -142,7 +145,7 @@ function importsOf(source) {
 /** Resolve a relative specifier to an actual file, repo-relative. */
 async function resolveLocal(specifier, fromFile) {
   if (!specifier.startsWith('.')) return null;
-  const base = normalize(join(dirname(fromFile), specifier));
+  const base = join(dirname(fromFile), specifier);
   const candidates = [
     base,
     ...SOURCE_EXTENSIONS.map((extension) => `${base}${extension}`),
@@ -281,7 +284,7 @@ async function checkEntry(entry, rootDir, policy) {
 
 const paths = process.argv.slice(2);
 for (const rawRoot of paths.length > 0 ? paths : defaultPaths()) {
-  const root = rawRoot.replace(/\/+$/, '');
+  const root = rawRoot.replaceAll('\\', '/').replace(/\/+$/, '');
   // A root named `controls` takes the core-control policy. Matching the
   // directory name rather than one hardcoded path lets the same checker be
   // pointed at a candidate theme or a future preset.

@@ -6,6 +6,7 @@ import { getConfig, formatPrice } from '../config';
 import { listProducts, countProducts } from '../features/products/db';
 import { listCategories } from '../features/categories/db';
 import { listPublishedPages } from '../features/pages/db';
+import { informationPages, readSiteCopy, siteSections } from '../features/site-content/copy';
 import { publicOrigin } from '../features/http/origin';
 
 export const prerender = false;
@@ -22,9 +23,9 @@ const oneLine = (s: string | null, max = 100) => {
 // /llms.txt — the llmstxt.org convention: a concise, link-rich map of the store
 // for LLMs/agents. Beyond the usual catalog, it documents the JSON checkout so an
 // agentic buyer can go from "what's for sale" to "place the order" without scraping.
-export const GET: APIRoute = async ({ url }) => {
+export const GET: APIRoute = async ({ url, locals }) => {
   const origin = publicOrigin(url.origin, env.CANONICAL_ORIGIN);
-  const { storeName, currency } = getConfig();
+  const { storeName, currency, features } = getConfig();
 
   const total = await countProducts(env.DB);
   const products = total > 0 ? await listProducts(env.DB, total, 0) : [];
@@ -45,7 +46,13 @@ export const GET: APIRoute = async ({ url }) => {
 
   // Merchant-authored informational pages (shipping, returns, policies) — the
   // context an agent needs that the catalog itself doesn't carry.
-  const pageLines = pages.map((p) => `- [${linkText(p.title)}](${origin}/pages/${p.slug})`);
+  const pageLines = [
+    ...informationPages.map(section => {
+      const copy = readSiteCopy(locals.settings?.siteContent, section, 'en');
+      return `- [${linkText(copy.title)}](${origin}${siteSections[section].url})`;
+    }),
+    ...pages.map((p) => `- [${linkText(p.title)}](${origin}/pages/${p.slug})`),
+  ];
 
   // Optional: this store's MCP endpoint, when one is deployed. The MCP server is
   // a SEPARATE Worker whose hostname the storefront cannot derive — they share a
@@ -53,13 +60,13 @@ export const GET: APIRoute = async ({ url }) => {
   // advertised only when MCP_URL is set; unset means llms.txt says nothing,
   // rather than pointing agents at an endpoint that does not exist.
   const mcpUrl = (env.MCP_URL ?? '').trim();
-  const mcpLine = mcpUrl
+  const mcpLine = !features.catalogOnly && mcpUrl
     ? `\n- [Model Context Protocol endpoint](${mcpUrl}): streamable HTTP. Browse and purchase need no credentials — \`browse_products\`, \`get_product_details\`, \`payment_methods\`, \`create_checkout\`, \`check_order_status\`. Same checkout as the JSON endpoints above.`
     : '';
 
   const body = `# ${storeName}
 
-> ${storeName} is an online store you can browse and purchase from programmatically. All prices are in ${currency.toUpperCase()}. This file follows the llms.txt convention (https://llmstxt.org). Catalog and category links are live; an agent can complete a purchase via the JSON checkout endpoint under "For agents".
+> ${features.catalogOnly ? `${storeName} is a product catalog. Visit the product page for WhatsApp inquiries.` : `${storeName} is an online store you can browse and purchase from programmatically. All prices are in ${currency.toUpperCase()}. This file follows the llms.txt convention (https://llmstxt.org). Catalog and category links are live; an agent can complete a purchase via the JSON checkout endpoint under "For agents".`}
 
 ## Products
 ${productLines.length > 0 ? productLines.join('\n') : '- (no products listed)'}
@@ -68,10 +75,10 @@ ${productLines.length > 0 ? productLines.join('\n') : '- (no products listed)'}
 ${categoryLines.length > 0 ? categoryLines.join('\n') : '- (no categories)'}
 ${pageLines.length > 0 ? `\n## Pages\n${pageLines.join('\n')}\n` : ''}
 ## For agents
-- [List payment methods](${origin}/api/checkout): \`GET\` → \`{ available_methods, default }\`.
-- [Browse the catalog as JSON](${origin}/api/products): \`GET\` (\`?q=\`, \`?limit=\`, \`?offset=\`) → products with prefixed public IDs (\`id: "prod_…"\`; the detail route \`/api/products/<slug>\` adds variants \`var_…\` and extras \`xtra_…\`).
-- [Create a checkout](${origin}/api/checkout): \`POST\` with \`Content-Type: application/json\`, body \`{ "items": [{ "product_id": "prod_…", "quantity": number, "variant_id"?: "var_…", "extra_ids"?: ["xtra_…"] }], "method"?: string }\` → \`{ "checkout_url": string, "order_status_url": string }\`. IDs are the catalog's prefixed public IDs; \`slug\` is accepted in place of \`product_id\` as a convenience. Numeric IDs are rejected with 400. Pricing and stock are resolved server-side; CORS is open for browser-based callers. Poll \`order_status_url\` for \`confirming | expired | paid | refunded\`; a paid item may include a token-protected \`download_url\`. After submitting payment, keep polling through \`expired\` until \`paid\` or HTTP 410 because verified settlement can arrive late.
-- [Search the catalog](${origin}/search?q=): append a query, e.g. \`/search?q=leather\`. Keyword + semantic matching.
+${features.catalogOnly ? '' : `- [List payment methods](${origin}/api/checkout): \`GET\` → \`{ available_methods, default }\`.
+`}- [Browse the catalog as JSON](${origin}/api/products): \`GET\` (\`?q=\`, \`?limit=\`, \`?offset=\`) → products with prefixed public IDs (\`id: "prod_…"\`; the detail route \`/api/products/<slug>\` adds variants \`var_…\` and extras \`xtra_…\`).
+${features.catalogOnly ? '' : `- [Create a checkout](${origin}/api/checkout): \`POST\` with \`Content-Type: application/json\`, body \`{ "items": [{ "product_id": "prod_…", "quantity": number, "variant_id"?: "var_…", "extra_ids"?: ["xtra_…"] }], "method"?: string }\` → \`{ "checkout_url": string, "order_status_url": string }\`. IDs are the catalog's prefixed public IDs; \`slug\` is accepted in place of \`product_id\` as a convenience. Numeric IDs are rejected with 400. Pricing and stock are resolved server-side; CORS is open for browser-based callers. Poll \`order_status_url\` for \`confirming | expired | paid | refunded\`; a paid item may include a token-protected \`download_url\`. After submitting payment, keep polling through \`expired\` until \`paid\` or HTTP 410 because verified settlement can arrive late.
+`}- [Search the catalog](${origin}/search?q=): append a query, e.g. \`/search?q=leather\`. Keyword + semantic matching.
 - [Sitemap](${origin}/sitemap.xml): every product, category, and page URL.${mcpLine}
 `;
 

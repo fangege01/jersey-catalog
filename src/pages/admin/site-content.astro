@@ -1,0 +1,183 @@
+---
+import { env } from 'cloudflare:workers';
+import AdminLayout from '../../layouts/AdminLayout.astro';
+import MediaPicker from '../../features/media/MediaPicker.astro';
+import { setStoreImageFromMedia } from '../../features/media/db';
+import { mediaUrl } from '../../features/media/url';
+import { getSetting, setSetting } from '../../features/settings/db';
+import { purgeCacheTags } from '../../features/cache/purge';
+import { CACHE_TAG } from '../../features/cache/tags';
+import { localizedHref } from '../../features/i18n/locale';
+import { imageSections, readSiteCopy, siteCopyKey, siteImageKey, siteSections, type SiteSection } from '../../features/site-content/copy';
+import { getConfig } from '../../config';
+import { validContactEmail } from '../../features/site-content/inquiry';
+
+const sectionQuery = Astro.url.searchParams.get('section') ?? 'home';
+const langQuery = Astro.url.searchParams.get('lang') ?? 'en';
+const validSection = Object.hasOwn(siteSections, sectionQuery);
+const section = validSection ? sectionQuery as SiteSection : 'home';
+const locale = langQuery === 'zh-CN' ? 'zh-CN' : 'en';
+const sectionInfo = siteSections[section];
+const key = siteCopyKey(section, locale);
+const imageSection = imageSections.find(item => item === section);
+const imageKey = imageSection ? siteImageKey(imageSection) : null;
+const formUrl = '/admin/site-content?section=' + section + '&lang=' + locale;
+const path = localizedHref(sectionInfo.url, locale);
+const fields = Object.entries(sectionInfo.fields);
+let draft: Record<string, string> = readSiteCopy({ [key]: (await getSetting(env.DB, key)) ?? undefined }, section, locale);
+let image = imageKey ? await getSetting(env.DB, imageKey) : null;
+let error = '';
+
+if (Astro.request.method === 'POST') {
+  let persisted = false;
+  try {
+    const form = await Astro.request.formData();
+    const action = form.get('_action');
+    if (!validSection || (langQuery !== 'en' && langQuery !== 'zh-CN')) {
+      error = '页面或语言无效。';
+    } else if (action === 'copy') {
+      const values: Record<string, string> = {};
+      for (const [name, field] of fields) {
+        const raw = form.get(name);
+        const value = typeof raw === 'string' ? raw.trim() : '';
+        if ((!value && !('optional' in field && field.optional)) || value.length > field.max) {
+          error ||= field.label + '需要填写，最多 ' + field.max + ' 个字符。';
+        }
+        if (name === 'contactEmail' && value && !validContactEmail(value)) error ||= '请输入有效的联系邮箱。';
+        values[name] = value.slice(0, field.max);
+      }
+      draft = values;
+      if (!error) {
+        await setSetting(env.DB, key, JSON.stringify(values));
+        persisted = true;
+      }
+    } else if (action === 'image' && imageKey) {
+      const selection = form.get('image');
+      if (selection === '') {
+        await setSetting(env.DB, imageKey, '');
+        image = null;
+        persisted = true;
+      } else if (typeof selection === 'string' && selection.length <= 512 &&
+          await setStoreImageFromMedia(env.DB, imageKey, selection)) {
+        image = selection;
+        persisted = true;
+      } else {
+        error = '请选择素材库中仍可用的图片。';
+      }
+    } else {
+      error = '无法识别此操作。';
+    }
+
+    if (persisted) {
+      await purgeCacheTags([CACHE_TAG.shell, CACHE_TAG.catalog]);
+      return Astro.redirect(formUrl + '&saved=1', 303);
+    }
+    Astro.response.status = 400;
+  } catch (cause) {
+    console.error('Site content save failed', { section, locale, cause });
+    Astro.response.status = 500;
+    error = persisted ? '内容已保存，前台缓存刷新失败。请稍后刷新查看。' : '保存失败，请稍后重试。';
+  }
+}
+const homeGroups = [
+  { id: 'hero-copy', title: '首屏与询价按钮', pattern: /^(eyebrow|hero|browseCta|quoteCta)/ },
+  { id: 'listing-copy', title: '精选球衣与分类', pattern: /^(featured|category|emptyFeatured)/ },
+  { id: 'service-copy', title: '采购与定制', pattern: /^(options|retail|team|wholesale|custom)/ },
+  { id: 'supply-copy', title: '供应与质量', pattern: /^supply/ },
+  { id: 'process-copy', title: '询价流程', pattern: /^(process|step)/ },
+  { id: 'faq-copy', title: '常见问题与底部询价', pattern: /^(faq|question|answer|closing)/ },
+  { id: 'page-seo', title: '首页 SEO', pattern: /^seo/ },
+];
+const editorGroups = section === 'home' ? homeGroups.map(group => ({
+  ...group, fields: fields.filter(([name]) => group.pattern.test(name)),
+})) : [{ id: 'page-copy', title: sectionInfo.label, fields }];
+const fieldClass = 'mt-1 block w-full rounded-md border border-line bg-paper p-2.5 text-sm';
+const buttonClass = 'inline-flex min-h-10 items-center rounded-md bg-brand px-4 py-2 text-sm font-semibold text-white';
+const descriptions: Record<SiteSection, string> = {
+  global: '调整五个主菜单的显示文字和页脚介绍。站点名称和 Logo 在「站点设置」修改。',
+  home: '编辑首屏、精选商品、分类、采购说明、供应介绍、询价流程、FAQ 和底部按钮。精选商品与分类来自已上架商品及分类库。',
+  products: '编辑目录介绍、SEO 和空列表文案。商品详情和图片可在「商品管理」编辑。',
+  factory: '编辑供应说明、品质要求、备货和货运内容。',
+  about: '编辑品牌介绍、服务对象和配图。',
+  contact: '编辑中英文联系页、表单按钮和运输信息。WhatsApp 号码在「WhatsApp 管理」修改，收到的表单在「询盘管理」查看。',
+};
+---
+<AdminLayout title="网站内容" active="siteContent">
+  <div class="mx-auto max-w-4xl space-y-5">
+    <div class="flex flex-wrap items-center justify-between gap-3">
+      <h1 class="font-serif text-3xl">网站内容</h1>
+      <a class="text-sm underline" href={path} target="_blank" rel="noopener">打开当前前台页面</a>
+    </div>
+    <nav aria-label="网站页面" class="flex flex-wrap gap-2">
+      {Object.entries(siteSections).map(([name, item]) => <a class:list={['rounded-md border border-line px-3 py-2 text-sm', name === section && 'bg-brand text-white']}
+        href={'/admin/site-content?section=' + name + '&lang=' + locale}
+        aria-current={name === section ? 'page' : undefined}>{item.label}</a>)}
+    </nav>
+    <nav aria-label="编辑语言" class="flex flex-wrap gap-3 text-sm">
+      <a href={'/admin/site-content?section=' + section + '&lang=en'} aria-current={locale === 'en' ? 'page' : undefined}
+        class:list={[locale === 'en' && 'font-bold underline']}>英文前台</a>
+      <a href={'/admin/site-content?section=' + section + '&lang=zh-CN'} aria-current={locale === 'zh-CN' ? 'page' : undefined}
+        class:list={[locale === 'zh-CN' && 'font-bold underline']}>简体中文前台</a>
+    </nav>
+    <p class="text-sm text-muted">{descriptions[section]}</p>
+    {section === 'products' && <div class="flex flex-wrap gap-4 text-sm">
+      <a class="underline" href="/admin/products">商品管理</a><a class="underline" href="/admin/categories">分类管理</a>
+    </div>}
+    {section === 'global' && <a class="block text-sm underline" href="/admin/settings">修改站点名称和 Logo</a>}
+    {section === 'contact' && <a class="block text-sm underline" href="/admin/whatsapp">修改全站 WhatsApp 号码</a>}
+    {error ? <p role="alert" class="text-sm font-medium text-red-700">{error}</p> :
+      Astro.url.searchParams.get('saved') === '1' && <p role="status" class="text-sm font-medium text-green-700">已保存并同步前台。</p>}
+    {imageSection && <form method="POST" action={formUrl} data-site-image-form class="space-y-3 rounded-xl border border-line bg-surface p-5">
+      <input type="hidden" name="_action" value="image" />
+      <input type="hidden" name="image" value={image ?? ''} />
+      <h2 class="font-semibold">{siteSections[imageSection].image}</h2>
+      <p class="text-sm text-muted">此图片供中英文页面共用。各语言的替代文字在下方分别编辑。</p>
+      <img src={image ? mediaUrl(image, getConfig().images.baseUrl) : undefined} alt="已选配图预览" data-site-image-preview
+        hidden={!image} class="max-h-48 max-w-full rounded-md object-contain" />
+      <div class="flex flex-wrap gap-2">
+        <MediaPicker id="site-content-image" />
+        <button type="button" data-clear-site-image class="rounded-md border border-line px-3 text-sm">清除选图</button>
+        <button class={buttonClass}>保存图片</button>
+      </div>
+    </form>}
+    <form method="POST" action={formUrl} class="space-y-5 rounded-xl border border-line bg-surface p-5">
+      <input type="hidden" name="_action" value="copy" />
+      <h2 class="font-semibold">{sectionInfo.label} · {locale === 'en' ? '英文' : '简体中文'}</h2>
+      {section === 'home' && <nav aria-label="首页编辑区块" class="flex flex-wrap gap-2">
+        {editorGroups.map(group => <a class="rounded-md border border-line bg-paper px-3 py-1 text-xs font-medium hover:border-brand" href={'#' + group.id}>{group.title}</a>)}
+      </nav>}
+      {editorGroups.map(group => <fieldset id={group.id} class="scroll-mt-4 rounded-lg border border-line p-4">
+        <legend class="px-2 text-sm font-bold">{group.title}</legend>
+        <div class="grid gap-4 sm:grid-cols-2">
+        {group.fields.map(([name, field]) => <label class:list={['block text-sm font-medium', field.max > 160 && 'sm:col-span-2']}>{field.label}
+          {field.max > 160 && name !== 'contactEmail' ? <textarea rows="3" class={fieldClass} name={name} maxlength={field.max} required>{draft[name]}</textarea> :
+            <input type={name === 'contactEmail' ? 'email' : 'text'} class={fieldClass} name={name} value={draft[name]} maxlength={field.max}
+              required={!('optional' in field && field.optional)} />}
+        </label>)}
+        </div>
+      </fieldset>)}
+      <button class={buttonClass}>保存此语言并同步前台</button>
+    </form>
+  </div>
+</AdminLayout>
+
+<script>
+  const form = document.querySelector('[data-site-image-form]');
+  const picker = form?.querySelector('dialog');
+  const input = form?.querySelector<HTMLInputElement>('input[name="image"]');
+  const preview = form?.querySelector<HTMLImageElement>('[data-site-image-preview]');
+
+  if (form && input && preview) {
+    picker?.addEventListener('media:selected', (event) => {
+      const { imageKey, url } = (event as CustomEvent<{ imageKey: string; url: string }>).detail;
+      input.value = imageKey;
+      preview.src = url;
+      preview.hidden = false;
+    });
+    form.querySelector('[data-clear-site-image]')?.addEventListener('click', () => {
+      input.value = '';
+      preview.removeAttribute('src');
+      preview.hidden = true;
+    });
+  }
+</script>

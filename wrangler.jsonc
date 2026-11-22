@@ -14,7 +14,8 @@
 	// Per-instance CLI deploys use scripts/provision-cf.sh, which renders an instance
 	// config from wrangler.template.jsonc (real ids) and restores this file after.
 	"$schema": "node_modules/wrangler/config-schema.json",
-	"name": "minshop",
+	"name": "jersey-catalog",
+	"account_id": "1f7fda319f11e4b620008f39554d0279",
 	"main": "./src/worker.ts",
 	"compatibility_date": "2026-07-20",
 	"compatibility_flags": [
@@ -72,19 +73,20 @@
 	"d1_databases": [
 		{
 			"binding": "DB",
-			"database_name": "minshop-db",
+			"database_name": "jersey-catalog-db",
+			"database_id": "b247a985-af8f-4d7e-b2ac-9c4d2818a116",
 			"migrations_dir": "migrations"
 		}
 	],
 	"r2_buckets": [
 		{
 			"binding": "BUCKET",
-			"bucket_name": "minshop-images"
+			"bucket_name": "jersey-catalog-images"
 		},
 		{
 			"binding": "FILES",
 			// Private deliverables: never enable r2.dev or attach a custom domain.
-			"bucket_name": "minshop-files"
+			"bucket_name": "jersey-catalog-files"
 		}
 	],
 	// Optional integrations — uncomment + redeploy to enable (see README → Search,

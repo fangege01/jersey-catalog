@@ -2,6 +2,7 @@
 import { env } from 'cloudflare:workers';
 import Catalog from '#theme/Catalog.astro';
 import { loadCatalogPage } from '../storefront/catalog';
+import { display } from '../i18n/locale';
 import { getConfig } from '../../config';
 
 /**
@@ -18,9 +19,12 @@ interface Props {
   /** Shown above the title; the section label. */
   eyebrow?: string;
   heading?: string;
+  landing?: import('../storefront/models').CatalogPageModel['landing'];
+  copy?: import('../storefront/models').CatalogPageModel['copy'];
 }
 
-const { eyebrow = 'Shop', heading = 'All products' } = Astro.props;
+const locale = Astro.locals.storeLocale;
+const { eyebrow = display(locale, 'Shop', '商城'), heading = display(locale, 'All products', '全部商品'), landing, copy } = Astro.props;
 
 const model = await loadCatalogPage(env.DB, {
   base: Astro.url.pathname,
@@ -29,8 +33,11 @@ const model = await loadCatalogPage(env.DB, {
   imageBaseUrl: getConfig().images.baseUrl,
   currency: getConfig().currency,
   delivery: Astro.locals.settings?.imageDelivery,
+  locale,
   eyebrow,
   heading,
+  landing,
+  copy,
 });
 ---
 

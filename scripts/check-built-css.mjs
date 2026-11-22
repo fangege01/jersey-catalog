@@ -91,7 +91,18 @@ function rawContentUnder(dir, { skipDirs = [] } = {}) {
 
 /** The compiled form of a class name inside a CSS selector. */
 function cssEscaped(name) {
-  return name.replace(/[^a-zA-Z0-9-]/g, (ch) => `\\${ch}`);
+  return name.replace(/[^a-zA-Z0-9_-]/g, (ch) => `\\${ch}`);
+}
+
+function hasClassSelector(body, name) {
+  const selector = '.' + cssEscaped(name);
+  let index = body.indexOf(selector);
+  while (index !== -1) {
+    const next = body[index + selector.length];
+    if (next === undefined || !/[\w\\-]/.test(next)) return true;
+    index = body.indexOf(selector, index + selector.length);
+  }
+  return false;
 }
 
 // ---------------------------------------------------------------------------
@@ -173,7 +184,7 @@ if (storefrontFiles.length === 0) {
 // 1a. The active theme is actually in the storefront output.
 const activeCandidates = uniqueTo(active.id);
 const activeHits = activeCandidates.filter((c) =>
-  storefrontFiles.some((f) => css.get(f).includes(cssEscaped(c))),
+  storefrontFiles.some((f) => hasClassSelector(css.get(f), c)),
 );
 if (activeCandidates.length === 0) {
   // No silent caps: a theme whose every class overlaps its siblings cannot be
@@ -193,7 +204,7 @@ for (const id of ids) {
   if (id === active.id) continue;
   for (const c of uniqueTo(id)) {
     for (const f of cssFiles) {
-      if (css.get(f).includes(cssEscaped(c))) {
+      if (hasClassSelector(css.get(f), c)) {
         failures.push(
           `inactive theme "${id}": utility "${c}" leaked into ${relative(root, f)} — its exclusion is broken.`,
         );
@@ -206,7 +217,7 @@ for (const id of ids) {
 //     markers exist for. The Admin entry excludes every theme, active included.
 for (const c of activeCandidates) {
   for (const f of adminFiles) {
-    if (css.get(f).includes(cssEscaped(c))) {
+    if (hasClassSelector(css.get(f), c)) {
       failures.push(
         `active theme "${active.id}": utility "${c}" leaked into the Admin stylesheet ${relative(root, f)}.`,
       );

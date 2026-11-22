@@ -11,6 +11,9 @@ import { stockState } from '../products/stock';
 import { catalogPath } from '../settings/home';
 import { formatMoney, toMajorUnits, currencyDecimals } from '../../money';
 import { requirePublicId } from '../catalog/serialize';
+import { managedWhatsAppHref, whatsappInquiryUrl } from './catalogMode';
+import { localizedProduct, translations } from '../i18n/db';
+import { translatedPath, type StoreLocale } from '../i18n/locale';
 import { buildProductCard } from './productCard';
 import type {
   ProductDetailModel,
@@ -62,6 +65,9 @@ export interface ProductDetailOptions {
   /** Absolute origin for SEO URLs. */
   origin: string;
   pathname: string;
+  catalogOnly?: boolean;
+  separateCatalog?: boolean;
+  locale?: StoreLocale;
 }
 
 function heroImage(
@@ -88,8 +94,8 @@ export async function loadProductDetail(
   db: D1Database,
   options: ProductDetailOptions,
 ): Promise<LoadedProductDetail> {
-  const product = options.slug ? await getProductBySlug(db, options.slug) : null;
-  if (!product) return { status: 'not_found' };
+  let product = options.slug ? await getProductBySlug(db, options.slug) : null;
+  if (!product?.active) return { status: 'not_found' };
 
   // Independent once the product is known. Run together so an uncached render
   // pays one concurrent wait instead of a serial chain.
@@ -109,6 +115,11 @@ export async function loadProductDetail(
     related = [...related, ...byCategory.filter((p) => !seen.has(p.id))].slice(0, RELATED_TARGET);
   }
 
+  const [productText, categoryText] = await Promise.all([
+    translations(db, options.locale, 'product', [product.public_id, ...related.map((p) => p.public_id)]),
+    translations(db, options.locale, 'category', categories.map((c) => c.public_id)),
+  ]);
+  product = localizedProduct(product, productText.get(product.public_id ?? ''));
   const hasVariants = variants.length > 0;
   const state = stockState(product.stock);
   // With variants the inventory unit is the variant, so availability comes from
@@ -148,25 +159,33 @@ export async function loadProductDetail(
       // The first frame is what a shopper sees before scrolling, so it is the
       // page's LCP candidate. Saying so on the model keeps the rendered
       // attributes and the fade decision from drifting apart.
-      hero: { ...hero, alt: image.alt || product.name, priority: index === 0 },
+      hero: { ...hero, alt: image.alt?.trim() || product.name, priority: index === 0 },
       thumbnail: { ...thumbnail, alt: '', priority: false },
     };
   });
 
-  const offered = options.settings ? enabledMethods(options.settings) : [];
+  const offered = !options.catalogOnly && options.settings ? enabledMethods(options.settings) : [];
   const canCheckout = offered.length > 0;
   const cartEnabled = options.settings?.cartEnabled ?? true;
   const buyNowEnabled = options.settings?.buyNowEnabled ?? true;
 
-  const imagePath = productImageUrl(product.image_key, options.imageBaseUrl);
+  const inquiryProduct = { name: product.name, url: new URL(translatedPath(options.pathname, options.locale ?? 'en'), options.origin).href };
+  const inquiryNumber = options.settings?.whatsappNumber;
+  const inquiryHref = options.catalogOnly ? whatsappInquiryUrl(inquiryNumber, inquiryProduct, undefined, options.locale) : null;
+  const galleryByKey = new Map(gallery.map((image) => [image.image_key, image]));
+  const imageKeys = [...new Set([...(product.image_key ? [product.image_key] : []), ...galleryByKey.keys()])];
+  const imageUrls = imageKeys.map((key) => new URL(productImageUrl(key, options.imageBaseUrl), options.origin).href);
+  const imagePath = imageUrls[0];
+  const imageAlt = imageKeys[0] ? galleryByKey.get(imageKeys[0])?.alt?.trim() || product.name : undefined;
   const jsonLd = {
     '@context': 'https://schema.org',
     '@type': 'Product',
     name: product.name,
     // Structured data wants prose, not Markdown syntax characters.
     ...(product.description ? { description: markdownExcerpt(product.description, 5000) } : {}),
-    image: new URL(imagePath, options.origin).href,
-    offers: {
+    url: inquiryProduct.url,
+    ...(imageUrls.length > 0 && { image: imageUrls }),
+    ...(!options.catalogOnly && { offers: {
       '@type': 'Offer',
       // The SAME currency the page displays. These previously disagreed: the
       // header formatted in the store currency while JSON-LD and the live-price
@@ -178,8 +197,8 @@ export async function loadProductDetail(
       ),
       priceCurrency: options.currency.toUpperCase(),
       availability: soldOut ? 'https://schema.org/OutOfStock' : 'https://schema.org/InStock',
-      url: new URL(options.pathname, options.origin).href,
-    },
+      url: inquiryProduct.url,
+    } }),
   };
 
   return {
@@ -192,15 +211,20 @@ export async function loadProductDetail(
       // Meta/og description: plain text, truncated on a word boundary.
       description: product.description ? markdownExcerpt(product.description, 160) : null,
       imagePath,
+      imageAlt,
       // Escape "<" so a product name can't break out of the <script> tag.
       jsonLd: JSON.stringify(jsonLd).replace(/</g, '\\u003c'),
     },
     model: {
+      ...(options.locale === 'zh-CN' && { locale: options.locale }),
       id: requirePublicId(product.public_id, product.id, 'product'),
       name: product.name,
       description: product.description,
       descriptionHtml: product.description
-        ? renderMarkdown(product.description, { baseUrl: options.imageBaseUrl })
+        ? renderMarkdown(product.description, {
+            baseUrl: options.imageBaseUrl,
+            resolveLink: options.catalogOnly ? (href) => managedWhatsAppHref(href, inquiryNumber ?? null) : undefined,
+          })
         : null,
       formattedPrice: formatMoney(displayPriceCents, options.currency),
       priceCents: product.price_cents,
@@ -212,32 +236,42 @@ export async function loadProductDetail(
       lowStock: !hasVariants && state === 'low',
       digitalDelivery: Boolean(product.file_key),
       categories: categories.map((category) => ({
-        text: category.name,
+        text: categoryText.get(category.public_id ?? '')?.title ?? category.name,
         href: `/categories/${category.slug}`,
       })),
       images,
       heroImage: heroImage(product, options),
       related: related.map((candidate) =>
-        buildProductCard(candidate, {
+        buildProductCard(localizedProduct(candidate, productText.get(candidate.public_id ?? '')), {
           baseUrl: options.imageBaseUrl,
           delivery: options.delivery,
           currency: options.currency,
           sizes: RELATED_CARD_SIZES,
         }),
       ),
-      backHref: catalogPath(options.settings?.homePage),
+      backHref: options.separateCatalog ? '/products' : catalogPath(options.settings?.homePage),
       error: options.searchParams.get('error'),
     },
     purchase: {
+      ...(options.locale === 'zh-CN' && { locale: options.locale }),
       productId: requirePublicId(product.public_id, product.id, 'product'),
       cartAction: '/api/cart',
       expressAction: '/express',
       hasOptions: hasVariants || extras.length > 0,
       soldOut,
-      showAddToCart: cartEnabled,
+      showAddToCart: !options.catalogOnly && cartEnabled,
       // Buy now is express (it skips the cart), so it survives the cart being
       // switched off — but not the absence of any rail that can take money.
       showBuyNow: buyNowEnabled && canCheckout,
+      ...(options.catalogOnly && {
+        inquiry: {
+          href: inquiryHref,
+          options: inquiryHref ? variants.flatMap((variant) => {
+            const href = whatsappInquiryUrl(inquiryNumber, inquiryProduct, variant, options.locale);
+            return href ? [{ label: variant.label, href, soldOut: variant.stock <= 0 }] : [];
+          }) : [],
+        },
+      }),
       variantLabel: product.variant_label,
       variants: variants.map((variant, index) => ({
         id: requirePublicId(variant.public_id, variant.id, 'variant'),

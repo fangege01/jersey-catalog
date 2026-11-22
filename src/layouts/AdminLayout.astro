@@ -12,12 +12,23 @@ import '../styles/admin.css';
 type Section =
   | 'dashboard'
   | 'products'
+  | 'pending'
+  | 'imports'
   | 'orders'
   | 'customers'
   | 'categories'
   | 'media'
   | 'pages'
   | 'navigation'
+  | 'siteContent'
+  | 'inquiries'
+  | 'traffic'
+  | 'adTracking'
+  | 'contactPopup'
+  | 'seo'
+  | 'translations'
+  | 'testimonials'
+  | 'whatsapp'
   | 'shipping'
   | 'settings';
 
@@ -35,33 +46,54 @@ const showSetupNudge =
 // Show "Log out" only when a password-login session cookie is present. Under
 // Cloudflare Access or local dev there's no minshop session to clear.
 const showLogout = !!Astro.cookies.get('admin_session')?.value;
-const pageTitle = title ? `${title} — ${storeName} admin` : `${storeName} admin`;
-// Configuration that fails closed blocks checkout for physical orders, and the only
-// other signal is a Worker log nobody is watching. Surface it on EVERY admin page,
-// not just the shipping one — the merchant should not have to go looking to find
-// out that they cannot take orders. Resolution is already loaded for this request,
-// so this costs no query.
-const shippingIssue = shippingFor(Astro.locals.settings).issue;
-const inventoryExceptionCount = await countUnresolvedInventoryExceptions(env.DB);
+const pageTitle = title ? `${title} — ${storeName} 管理后台` : `${storeName} 管理后台`;
+const catalogOnly = config.features.catalogOnly;
+const shippingIssue = catalogOnly ? undefined : shippingFor(Astro.locals.settings).issue;
+const inventoryExceptionCount = catalogOnly ? 0 : await countUnresolvedInventoryExceptions(env.DB);
 
-const nav: { key: Section; label: string; href: string }[] = [
-  { key: 'dashboard', label: 'Dashboard', href: '/admin' },
-  { key: 'products', label: 'Products', href: '/admin/products' },
-  { key: 'orders', label: 'Orders', href: '/admin/orders' },
-  { key: 'customers', label: 'Customers', href: '/admin/customers' },
-  { key: 'categories', label: 'Categories', href: '/admin/categories' },
-  { key: 'pages', label: 'Pages', href: '/admin/pages' },
-  { key: 'navigation', label: 'Navigation', href: '/admin/navigation' },
-  { key: 'shipping', label: 'Shipping', href: '/admin/shipping' },
-  { key: 'media', label: 'Media', href: '/admin/media' },
-  { key: 'settings', label: 'Settings', href: '/admin/settings' },
+type Item = { key: Section; label: string; href: string };
+const groups: { label: string; links: Item[] }[] = [
+  { label: '总览', links: [
+    { key: 'dashboard', label: '工作台', href: '/admin' },
+  ] },
+  { label: '商品与素材', links: [
+    { key: 'products', label: '商品管理', href: '/admin/products' },
+    ...(catalogOnly ? [{ key: 'imports' as const, label: '批量导入', href: '/admin/imports' }] : []),
+    { key: 'pending', label: '待上架商品', href: '/admin/products?status=inactive' },
+    { key: 'categories', label: '分类管理', href: '/admin/categories' },
+    { key: 'media', label: '图片素材库', href: '/admin/media' },
+  ] },
+  ...(!catalogOnly ? [{ label: '交易与配送', links: [
+    { key: 'orders' as const, label: '订单', href: '/admin/orders' },
+    { key: 'customers' as const, label: '客户', href: '/admin/customers' },
+    { key: 'shipping' as const, label: '配送', href: '/admin/shipping' },
+  ] }] : []),
+  { label: '网站内容', links: [
+    { key: 'siteContent', label: '页面内容', href: '/admin/site-content' },
+    { key: 'translations', label: '前台语言', href: '/admin/translations' },
+    { key: 'pages', label: '自定义页面', href: '/admin/pages' },
+    { key: 'navigation', label: import.meta.env.MINSHOP_THEME === 'teal' ? '页脚导航' : '导航', href: '/admin/navigation' },
+    { key: 'testimonials', label: '客户好评', href: '/admin/testimonials' },
+  ] },
+  { label: '询价与营销', links: [
+    { key: 'inquiries', label: '询盘管理', href: '/admin/inquiries' },
+    ...(catalogOnly ? [{ key: 'whatsapp' as const, label: 'WhatsApp 管理', href: '/admin/whatsapp' }] : []),
+    { key: 'contactPopup', label: '智能弹窗', href: '/admin/contact-popup' },
+    { key: 'traffic', label: '流量分析', href: '/admin/traffic' },
+    { key: 'adTracking', label: '广告追踪', href: '/admin/ad-tracking' },
+    { key: 'seo', label: 'SEO 与 AI 爬虫', href: '/admin/seo' },
+  ] },
+  { label: '系统设置', links: [
+    { key: 'settings', label: '站点设置', href: '/admin/settings' },
+  ] },
 ];
-// Label of the section we're on — shown in the collapsed mobile disclosure.
-const currentLabel = nav.find((n) => n.key === active)?.label ?? 'Menu';
+const navKey = active === 'products' && Astro.url.searchParams.get('status') === 'inactive' ? 'pending' : active;
+const group = groups.find(group => group.links.some(link => link.key === navKey));
+const currentLabel = title ?? group?.links.find(link => link.key === navKey)?.label ?? '管理后台';
 ---
 
 <!doctype html>
-<html lang="en">
+<html lang="zh-CN">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -70,77 +102,46 @@ const currentLabel = nav.find((n) => n.key === active)?.label ?? 'Menu';
     <title>{pageTitle}</title>
   </head>
   <body class="min-h-screen bg-paper text-ink antialiased">
-    <div class="mx-auto flex max-w-6xl flex-col gap-8 px-6 py-8 sm:flex-row sm:gap-10">
-      <aside class="w-full shrink-0 sm:w-52 sm:border-r sm:border-line sm:pr-6">
-        <a href="/" class="mb-4 block font-serif text-xl tracking-tight sm:mb-8">{storeName}</a>
-
-        {/* Pure-CSS disclosure (a hidden checkbox toggle). On mobile the list is
-            collapsed by default and the labelled summary card expands it — no JS,
-            and each SSR page load resets it, so it always reflects the page you're
-            on. At sm+ the checkbox/summary are hidden and the list is shown inline
-            as the vertical sidebar. (We deliberately avoid <details>: Chromium
-            doesn't paint closed-<details> content even when CSS forces it visible,
-            which blanks the desktop sidebar.) */}
-        <input
-          type="checkbox"
-          id="admin-nav"
-          data-admin-nav-toggle
-          class="peer sr-only"
-          aria-label="Toggle admin sections"
-        />
-        <label
-          for="admin-nav"
-          data-admin-nav-summary
-          class="flex cursor-pointer select-none items-center justify-between gap-3 rounded-md border border-line bg-white/60 px-4 py-3 transition hover:border-brand sm:hidden"
-        >
-          <span class="flex flex-col gap-0.5">
-            <span class="text-[0.625rem] uppercase tracking-[0.25em] text-gray-400">Admin</span>
-            <span class="font-serif text-lg leading-none tracking-tight text-gray-900">{currentLabel}</span>
-          </span>
-          <svg
-            data-admin-nav-chevron
-            class="size-4 shrink-0 text-gray-400 transition-transform duration-300"
-            viewBox="0 0 20 20"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="1.5"
-            aria-hidden="true"
-          >
-            <path d="M5 7.5 10 12.5 15 7.5" stroke-linecap="round" stroke-linejoin="round" />
-          </svg>
+    <a class="admin-skip" href="#admin-content">跳转到主要内容</a>
+    <div class="admin-frame">
+      <aside class="admin-sidebar">
+        <a href="/admin" class="admin-brand">
+          <strong class="admin-mark">{storeName}</strong>
+          <span class="admin-brand-label">管理后台</span>
+        </a>
+        <input type="checkbox" id="admin-nav" data-admin-nav-toggle class="peer sr-only" aria-label="切换后台菜单" />
+        <label for="admin-nav" data-admin-nav-summary class="admin-nav-trigger">
+          <span>菜单 <span class="admin-trigger-location">· {currentLabel}</span></span>
+          <span aria-hidden="true" data-admin-nav-chevron>⌄</span>
         </label>
-
-        <nav
-          data-admin-nav-list
-          class="mt-2 hidden overflow-hidden rounded-md border border-line bg-white/60 text-xs uppercase tracking-widest peer-checked:block sm:mt-0 sm:block sm:space-y-0.5 sm:rounded-none sm:border-0 sm:bg-transparent"
-        >
-          {
-            nav.map((n) => (
-              <a
-                href={n.href}
-                aria-current={active === n.key ? 'page' : undefined}
-                class={`flex items-center justify-between border-b border-l-2 border-line px-4 py-3 transition last:border-b-0 sm:block sm:border-b-0 sm:px-3 sm:py-1.5 ${
-                  active === n.key
-                    ? 'border-l-brand bg-paper font-medium text-brand sm:bg-transparent'
-                    : 'border-l-transparent text-gray-500 hover:bg-paper hover:text-brand sm:hover:bg-transparent'
-                }`}
-              >
-                <span>{n.label}</span>
-                {active === n.key && (
-                  <span aria-hidden="true" class="size-1.5 rounded-full bg-brand sm:hidden" />
-                )}
-              </a>
-            ))
-          }
+        <nav data-admin-nav-list class="admin-nav" aria-label="后台主菜单">
+          {groups.map((section, index) => (
+            <section aria-labelledby={'admin-group-' + index} class="admin-nav-group">
+              <h2 id={'admin-group-' + index}>{section.label}</h2>
+              {section.links.map(link =>
+                <a class="admin-nav-item" aria-current={navKey === link.key ? 'page' : undefined} href={link.href}>{link.label}</a>
+              )}
+            </section>
+          ))}
         </nav>
-
-        <div class="mt-4 flex gap-4 text-xs uppercase tracking-widest text-gray-400 sm:mt-8 sm:flex-col sm:gap-2">
-          <a href="/" class="hover:text-brand">&larr; View store</a>
-          {showLogout && <a href="/admin/logout" class="hover:text-brand">Log out</a>}
+        <div class="admin-sidebar-footer">
+          <a href="/" target="_blank" rel="noopener">查看网站 <span aria-hidden="true">↗</span></a>
+          {showLogout && <a href="/admin/logout">退出登录</a>}
         </div>
       </aside>
-
-      <main class="min-w-0 flex-1">
+      <div class="admin-workspace">
+        <header class="admin-topbar">
+          <div class="admin-location">
+            {group && <span>{group.label} <span aria-hidden="true">/</span> </span>}
+            <strong>{currentLabel}</strong>
+          </div>
+          <div class="admin-top-actions">
+            <a href="/" target="_blank" rel="noopener">查看网站 <span aria-hidden="true">↗</span></a>
+            {active !== 'media' && <a href="/admin/media">上传图片</a>}
+            {showLogout && <a class="admin-signout" href="/admin/logout">退出登录</a>}
+          </div>
+        </header>
+        <main id="admin-content" class="admin-content" tabindex="-1">
         {
           showSetupNudge && (
             <a
@@ -148,20 +149,16 @@ const currentLabel = nav.find((n) => n.key === active)?.label ?? 'Menu';
               class="mb-6 flex items-center justify-between gap-3 rounded-md border border-brand/30 bg-brand/5 px-4 py-3 text-sm text-gray-700 transition hover:border-brand"
             >
               <span>
-                <strong class="font-semibold">Finish setting up your store</strong> — store name,
-                payment status, and more.
+                <strong class="font-semibold">完成商店设置</strong> ，填写网站名称和管理信息。
               </span>
               <span aria-hidden="true" class="text-brand">&rarr;</span>
             </a>
           )
         }
         {
-          Astro.locals.settings && paymentsInDemoMode(Astro.locals.settings) && (
+          !catalogOnly && Astro.locals.settings && paymentsInDemoMode(Astro.locals.settings) && (
             <div class="mb-6 rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-              <strong class="font-semibold">No real payment method configured.</strong> Only{' '}
-              <strong>Demo checkout</strong> can take orders right now — they're recorded and tagged{' '}
-              <code class="rounded bg-amber-100 px-1 text-xs">demo</code>. Shoppers see setup links
-              for Card &amp; Lightning until you add a key. Demo stays available alongside real rails.
+              <strong class="font-semibold">尚未配置实际支付方式。</strong> 目前仅支持<strong>演示结账</strong>，订单会标记为 <code class="rounded bg-amber-100 px-1 text-xs">demo</code>。配置实际付款方式后，仍可使用演示结账。
             </div>
           )
         }
@@ -172,7 +169,7 @@ const currentLabel = nav.find((n) => n.key === active)?.label ?? 'Menu';
               class="mb-6 flex items-center justify-between gap-3 rounded-md border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-800 transition hover:border-red-500"
             >
               <span>
-                <strong class="font-semibold">Shipping checkout is blocked by invalid configuration:</strong>{' '}
+                <strong class="font-semibold">配送配置无效，实体商品暂时无法结账。</strong>{' '}
                 {shippingIssue.reason}
               </span>
               <span aria-hidden="true">&rarr;</span>
@@ -186,15 +183,25 @@ const currentLabel = nav.find((n) => n.key === active)?.label ?? 'Menu';
               class="mb-6 flex items-center justify-between gap-3 rounded-md border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-800 transition hover:border-red-500"
             >
               <span>
-                <strong class="font-semibold">Inventory needs attention.</strong>{' '}
-                {inventoryExceptionCount} paid order line{inventoryExceptionCount === 1 ? '' : 's'} arrived after its stock hold ended and could not be fully deducted. Open the affected orders and reconcile stock.
+                <strong class="font-semibold">请核对库存。</strong>{' '}
+                有 {inventoryExceptionCount} 个订单明细在库存预留到期后付款，库存未能足额扣减。请打开相关订单核对。
               </span>
               <span aria-hidden="true">&rarr;</span>
             </a>
           )
         }
         <slot />
-      </main>
+        </main>
+      </div>
     </div>
+  <script>
+    const sidebar = document.querySelector<HTMLElement>('[data-admin-nav-list]');
+    const current = sidebar?.querySelector<HTMLElement>('[aria-current="page"]');
+    if (sidebar && current && matchMedia('(min-width: 801px)').matches) {
+      const frame = sidebar.getBoundingClientRect();
+      const link = current.getBoundingClientRect();
+      if (link.bottom > frame.bottom) sidebar.scrollTop += link.bottom - frame.bottom + 8;
+    }
+  </script>
   </body>
 </html>

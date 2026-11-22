@@ -1,0 +1,27 @@
+---
+import type { ProductCardModel } from '../../features/storefront/models';
+import StoreImage from '../../features/storefront/controls/StoreImage.astro';
+interface Props { card: ProductCardModel; index?: number; headingLevel?: 'h2' | 'h3'; locale?: 'en' | 'zh-CN'; }
+const { card, headingLevel: Heading = 'h2', locale } = Astro.props;
+const zh = locale === 'zh-CN';
+---
+<li class="card group">
+  <a href={card.href} class="block h-full">
+    <div class="relative overflow-hidden bg-surface">
+      <StoreImage image={card.image} fade class="aspect-square w-full object-cover motion-safe:transition-transform motion-safe:group-hover:scale-105" />
+      {!card.inStock && <span class="absolute top-2 left-2 rounded-full bg-white px-2 py-1 text-xs text-muted">{zh ? '暂时缺货' : 'Out of stock'}</span>}
+    </div>
+    <div class="space-y-2 p-4">
+      <Heading class="font-bold leading-snug break-words">{card.name}</Heading>
+      <div class="flex flex-wrap items-center justify-between gap-x-2 gap-y-1 text-xs sm:text-sm">
+        <span class="font-semibold tabular-nums text-brand">{card.formattedPrice}</span>
+        <span class="text-muted">{zh ? '查看详情' : 'View details'} <span aria-hidden="true">→</span></span>
+      </div>
+    </div>
+  </a>
+</li>
+<style>
+.card{min-width:0;overflow:hidden;border-radius:20px;background:white;box-shadow:0 12px 30px rgba(13,148,136,.10);border:1px solid #e6f1ef;}
+.card:hover,.card:focus-within{border-color:#90c8c3;box-shadow:0 16px 34px rgba(13,148,136,.16);}
+@media(max-width:28rem){.card{border-radius:14px;}}
+</style>

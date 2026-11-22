@@ -15,4 +15,7 @@ import type { DeepPartial, SiteConfig } from './config';
  *
  * Operational switches and integrations belong in Admin → Settings.
  */
-export const storeOverrides: DeepPartial<SiteConfig> = {};
+export const storeOverrides: DeepPartial<SiteConfig> = {
+  storeName: 'FXF',
+  features: { catalogOnly: true },
+};

@@ -1,0 +1,76 @@
+---
+import { readPopup } from './settings';
+import { display, originalStorefrontPath, type StoreLocale } from '../i18n/locale';
+import { isTrafficPath } from '../analytics/events';
+
+interface Props {
+  path: string;
+  locale?: StoreLocale;
+  settings?: string;
+  href: string | null;
+}
+const { path, settings, href, locale } = Astro.props;
+const popup = readPopup(settings);
+---
+{popup.enabled && href && isTrafficPath(originalStorefrontPath(path)) && (
+  <dialog data-contact-popup data-delays={popup.delays.join(',')} aria-labelledby="popup-title"
+    class="m-auto w-[min(28rem,calc(100%-2rem))] rounded-xl border border-line bg-surface p-6 text-ink shadow-xl backdrop:bg-black/40">
+    <h2 id="popup-title" class="font-serif text-2xl">{display(locale, popup.title, popup.titleZh)}</h2>
+    {display(locale, popup.body, popup.bodyZh) && <p class="mt-2 whitespace-pre-line text-sm text-muted">{display(locale, popup.body, popup.bodyZh)}</p>}
+    <div class="mt-5 flex flex-wrap gap-2">
+      <a href={href} data-whatsapp-inquiry data-popup-contact class="rounded bg-brand px-4 py-2 text-sm text-on-brand">
+        {display(locale, popup.button, popup.buttonZh)}
+      </a>
+      <form method="dialog">
+        <button autofocus type="submit" class="rounded border border-line px-4 py-2 text-sm">{display(locale, popup.dismiss, popup.dismissZh)}</button>
+      </form>
+    </div>
+  </dialog>
+)}
+
+<script>
+import { popupDelays } from './settings';
+
+const dialog = document.querySelector<HTMLDialogElement>('[data-contact-popup]');
+const delays = popupDelays(dialog?.dataset.delays?.split(',').map(Number));
+if (dialog && delays && typeof dialog.showModal === 'function') {
+  let elapsed = 0;
+  let visibleSince = document.hidden ? null : performance.now();
+  let index = 0;
+  let timer: number | undefined;
+  let stopped = false;
+  const activeTime = () => elapsed + (visibleSince === null ? 0 : performance.now() - visibleSince);
+
+  function schedule() {
+    window.clearTimeout(timer);
+    if (!dialog || !delays || stopped || index >= delays.length || dialog.open || visibleSince === null) return;
+    const wait = Math.max(0, delays[index] * 1000 - activeTime());
+    timer = window.setTimeout(() => {
+      if (document.hidden || !dialog.isConnected || stopped) return;
+      // Wait for the privacy choice or any other modal before showing an inquiry.
+      if (document.querySelector('dialog[open], [data-consent-panel]:not([hidden])')) {
+        timer = window.setTimeout(schedule, 3000);
+        return;
+      }
+      index++;
+      dialog.showModal();
+    }, wait);
+  }
+
+  document.addEventListener('visibilitychange', () => {
+    if (visibleSince !== null) elapsed = activeTime();
+    visibleSince = document.hidden ? null : performance.now();
+    schedule();
+  });
+  dialog.addEventListener('close', () => {
+    // Skip thresholds reached while the modal was already open.
+    while (index < delays.length && activeTime() >= delays[index] * 1000) index++;
+    schedule();
+  });
+  dialog.querySelector('[data-popup-contact]')?.addEventListener('click', () => {
+    stopped = true;
+    dialog.close();
+  });
+  schedule();
+}
+</script>

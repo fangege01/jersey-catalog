@@ -1,0 +1,60 @@
+---
+import AdminLayout from '../../layouts/AdminLayout.astro';
+import { env } from 'cloudflare:workers';
+import { getSetting, setSetting } from '../../features/settings/db';
+import { CACHE_TAG } from '../../features/cache/tags';
+import { purgeCacheTags } from '../../features/cache/purge';
+import { pixelFields, pixelKeys, storedAdPixels } from '../../features/analytics/pixelSettings';
+
+let pixels = storedAdPixels((await getSetting(env.DB, 'ad_pixels')) ?? undefined);
+let error = '';
+
+if (Astro.request.method === 'POST') {
+  let stored = false;
+  try {
+    const form = await Astro.request.formData();
+    for (const key of pixelKeys) {
+      const raw = form.get(key);
+      const value = typeof raw === 'string' ? raw.trim() : '';
+      if (typeof raw !== 'string' || (value && !pixelFields[key].format.test(value))) {
+        error = pixelFields[key].label + '格式不正确。';
+        break;
+      }
+      pixels[key] = value;
+    }
+    if (!error && pixels.googleAdsLabel && !pixels.googleAds) error = '填写转化标签时也需要填写 Google Ads 转化 ID。';
+    if (!error) {
+      await setSetting(env.DB, 'ad_pixels', JSON.stringify(pixels));
+      stored = true;
+      await purgeCacheTags([CACHE_TAG.shell]);
+      return Astro.redirect('/admin/ad-tracking?saved=1', 303);
+    }
+    Astro.response.status = 400;
+  } catch (cause) {
+    console.error('Ad tracking settings save failed', cause);
+    Astro.response.status = 500;
+    error = stored ? '设置已保存，但缓存刷新失败。请重新保存以重试。' : '保存失败，请重试。';
+  }
+}
+---
+<AdminLayout title="广告追踪" active="adTracking">
+  <div lang="zh-CN" class="max-w-3xl space-y-5">
+    <h1 class="font-serif text-3xl">广告追踪</h1>
+    <p class="text-sm text-muted">填写平台提供的 ID。留空停用该平台。GA4 在同意分析后启用，广告像素在同意广告后启用。</p>
+    {error ? <p role="alert" class="text-sm text-red-700">{error}</p> :
+      Astro.url.searchParams.has('saved') && <p role="status" class="text-sm text-green-700">设置已保存。</p>}
+    <form method="POST" class="grid gap-4 rounded-xl border border-line bg-surface p-5 sm:grid-cols-2">
+      {pixelKeys.map((key) => (
+        <label class="block text-sm font-medium">
+          {pixelFields[key].label}
+          <input name={key} maxlength="80" autocomplete="off" value={pixels[key] ?? ''}
+            placeholder={pixelFields[key].placeholder} class="mt-2 block w-full rounded border border-line px-3 py-2" />
+        </label>
+      ))}
+      <div class="sm:col-span-2">
+        <button type="submit" class="rounded bg-brand px-4 py-2 text-sm text-white">保存广告像素</button>
+      </div>
+    </form>
+    <p class="text-sm text-muted">Google Ads 转化标签用于记录 WhatsApp 点击。请在广告后台将该转化标记为点击或联系意向。</p>
+  </div>
+</AdminLayout>

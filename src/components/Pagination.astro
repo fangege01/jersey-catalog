@@ -7,6 +7,7 @@ interface Props {
 }
 
 const { page, totalPages, hrefFor } = Astro.props;
+const zh = Astro.locals.storeLocale === 'zh-CN';
 
 // Compact page list with … gaps, e.g. 1 … 4 5 6 … 20
 function windowed(cur: number, total: number): (number | '…')[] {
@@ -28,10 +29,10 @@ const linkCls = 'px-3 py-1.5 text-xs uppercase tracking-widest text-muted hover:
 
 {
   totalPages > 1 && (
-    <nav class="mt-14 flex items-center justify-center gap-1" aria-label="Pagination">
+    <nav class="mt-14 flex items-center justify-center gap-1" aria-label={zh ? '分页' : 'Pagination'}>
       {page > 1 && (
         <a href={hrefFor(page - 1)} class={linkCls} rel="prev">
-          Prev
+          {zh ? '上一页' : 'Prev'}
         </a>
       )}
       {items.map((it) =>
@@ -49,7 +50,7 @@ const linkCls = 'px-3 py-1.5 text-xs uppercase tracking-widest text-muted hover:
       )}
       {page < totalPages && (
         <a href={hrefFor(page + 1)} class={linkCls} rel="next">
-          Next
+          {zh ? '下一页' : 'Next'}
         </a>
       )}
     </nav>

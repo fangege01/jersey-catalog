@@ -1,0 +1,177 @@
+---
+import type { CatalogPageModel } from '../../features/storefront/models';
+import ProductCard from './ProductCard.astro';
+interface Props { model: CatalogPageModel; landing: NonNullable<CatalogPageModel['landing']>; }
+const { model, landing } = Astro.props;
+const { copy, image, whatsappHref: contact } = landing;
+const zh = model.locale === 'zh-CN';
+const t = (en: string, cn: string) => zh ? cn : en;
+const offers = [
+  [copy.retailTitle, copy.retailText],
+  [copy.teamTitle, copy.teamText],
+  [copy.wholesaleTitle, copy.wholesaleText],
+  [copy.customTitle, copy.customText],
+];
+const steps = [
+  [copy.step1Title, copy.step1Text],
+  [copy.step2Title, copy.step2Text],
+  [copy.step3Title, copy.step3Text],
+];
+---
+<section class="hero" data-wide-catalog>
+  <div class="frame hero-layout">
+    <div class="hero-copy">
+      <p class="eyebrow">{copy.eyebrow}</p>
+      <h1>{copy.heroTitle}<br /><em>{copy.heroAccent}</em></h1>
+      <p>{copy.heroIntro}</p>
+      <div class="buttons">
+        <a class="button bright" href="/products">{copy.browseCta}</a>
+        {contact && <a class="button outline" href={contact} data-whatsapp-inquiry>{copy.quoteCta}</a>}
+      </div>
+      <ul class="hero-options">
+        {offers.map(([title]) => <li>{title}</li>)}
+      </ul>
+    </div>
+    <div class="hero-visual">
+      <img src={image.src} srcset={image.srcset} sizes={image.sizes} width="900" height="900"
+        fetchpriority="high" alt={image.alt} />
+    </div>
+  </div>
+</section>
+
+<section class="section">
+  <div class="frame">
+    <div class="section-head">
+      <h2>{copy.featuredTitle}</h2>
+      <a href="/products">{copy.featuredLink} <span aria-hidden="true">→</span></a>
+    </div>
+    {model.products.length > 0 ? (
+      <ul class="grid products">{model.products.map((card, i) => <ProductCard card={card} index={i} headingLevel="h3" locale={model.locale} />)}</ul>
+    ) : <p class="text-muted" role="status">{copy.emptyFeatured}</p>}
+  </div>
+</section>
+
+{model.categories.length > 0 && <section class="section pale">
+  <div class="frame">
+    <div class="section-head">
+      <h2>{copy.categoryTitle}</h2>
+      <a href="/products">{copy.categoryLink} <span aria-hidden="true">→</span></a>
+    </div>
+    <nav class="category-grid" aria-label={t('Jersey categories', '球衣分类')}>
+      {model.categories.map(category => <a class="box" href={category.href}>{category.text} <span aria-hidden="true">→</span></a>)}
+    </nav>
+  </div>
+</section>}
+
+<section class="section" id="order-options">
+  <div class="frame">
+    <h2 class="center">{copy.optionsTitle}</h2>
+    <div class="grid">
+      {offers.map(([title, description], i) => (
+        <article class="box">
+          <div class="circle" aria-hidden="true">{['↗', '＋', '≡', '✦'][i]}</div>
+          <h3>{title}</h3><p>{description}</p>
+        </article>
+      ))}
+    </div>
+  </div>
+</section>
+
+<section class="section team-section">
+  <div class="frame team-layout">
+    <div class="team-card">
+      <div>{copy.teamTag1}</div>
+      <div>{copy.teamTag2}</div>
+      <div>{copy.teamTag3}</div>
+    </div>
+    <div>
+      <h2>{copy.teamCalloutTitle}</h2>
+      <p>{copy.teamCalloutText}</p>
+      <a class="team-link" href={contact || '/products'} data-whatsapp-inquiry={contact ? '' : undefined}>{contact ? copy.teamCalloutLink : t('Explore the catalog', '浏览球衣目录')} <span aria-hidden="true">→</span></a>
+    </div>
+  </div>
+</section>
+
+<section class="section pale">
+  <div class="frame">
+    <div class="section-head">
+      <h2>{copy.supplyTitle}</h2>
+      <a href="/factory">{copy.supplyLink} <span aria-hidden="true">→</span></a>
+    </div>
+    <p class="text-muted">{copy.supplyText}</p>
+  </div>
+</section>
+
+<section class="section deep" id="how-to-order">
+  <div class="frame">
+    <h2 class="center">{copy.processTitle}</h2>
+    <ol class="steps">
+      {steps.map(([title, description], i) => (
+        <li><span class="circle">{i + 1}</span><h3>{title}</h3><p>{description}</p></li>
+      ))}
+    </ol>
+  </div>
+</section>
+
+<section class="section">
+  <div class="frame">
+    <h2>{copy.faqTitle}</h2>
+    <div class="questions">
+      <details><summary>{copy.question1}</summary><p>{copy.answer1}</p></details>
+      <details><summary>{copy.question2}</summary><p>{copy.answer2}</p></details>
+      <details><summary>{copy.question3}</summary><p>{copy.answer3}</p></details>
+    </div>
+    <div class="closing">
+      <h2>{copy.closingTitle}</h2>
+      {contact ? <a class="button bright" data-whatsapp-inquiry href={contact}>{copy.closingLink}</a> :
+        <a class="button bright" href="/products">{copy.browseCta}</a>}
+    </div>
+  </div>
+</section>
+
+<style>
+.frame{width:min(100% - 3rem,75rem);margin-inline:auto;}
+.hero{color:white;background:radial-gradient(ellipse at 84% 10%,rgba(14,165,233,.36),transparent 54%),linear-gradient(135deg,#0b2b2a 0%,#0f766e 58%,#0ea5e9 130%);border-radius:0 0 60px 60px;overflow:hidden;}
+.hero-layout{display:grid;grid-template-columns:minmax(0,1.12fr) minmax(0,.88fr);gap:clamp(1.5rem,5.8vw,5.5rem);align-items:center;padding-block:clamp(2.8rem,6.3vw,6.4rem);}
+.eyebrow{font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:#a9e8fc;font-size:.85rem;}
+.hero h1{margin:.9rem 0 1.3rem;font-size:clamp(2.35rem,5vw,4.7rem);line-height:1.08;font-weight:800;letter-spacing:-.035em;}
+.hero h1 em{color:#7dd3fc;font-style:normal;}
+.hero-copy>p:not(.eyebrow){max-width:35rem;line-height:1.68;color:#e0f5f2;font-size:clamp(1rem,1.45vw,1.15rem);}
+.buttons{display:flex;flex-wrap:wrap;gap:.7rem;margin-top:1.55rem;}
+.button{display:inline-flex;min-height:46px;align-items:center;justify-content:center;border-radius:12px;padding:.65rem 1.1rem;font-weight:750;font-size:.95rem;}
+.bright{background:#7dd3fc;color:#082e39;}.bright:hover{background:#bae6fd;}
+.outline{border:1px solid rgba(255,255,255,.65);color:white;}.outline:hover{background:#ffffff15;}
+.hero-options{display:grid;grid-template-columns:repeat(4,1fr);gap:.6rem;margin-top:1.9rem;padding-top:1rem;border-top:1px solid #ffffff45;font-size:.81rem;font-weight:650;}
+.hero-visual{position:relative;isolation:isolate;border-radius:24px;}
+.hero-visual::before{content:"";position:absolute;inset:-.55rem -.6rem auto 2.5rem;height:90%;z-index:-1;border-radius:28px;background:linear-gradient(150deg,#5eead4,#0ea5e9);opacity:.68;}
+.hero-visual img{width:100%;height:auto;aspect-ratio:1;object-fit:cover;border-radius:24px;}
+.section{scroll-margin-top:84px;padding-block:clamp(2.5rem,5.3vw,5rem);}
+.section h2{font-size:clamp(1.75rem,3.5vw,2.7rem);font-weight:800;line-height:1.18;}
+.center{text-align:center;margin-bottom:1.7rem;}
+.grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:1.1rem;}
+.box{min-width:0;border-radius:20px;padding:1.3rem;background:white;box-shadow:0 12px 30px rgba(13,148,136,.1);border:1px solid #e8f3f1;}
+.box h3,.steps h3{margin:.6rem 0 .45rem;font-size:1.06rem;font-weight:750;}
+.box p,.questions p{color:#4a5f63;font-size:.95rem;line-height:1.6;}
+.circle{display:grid;place-items:center;width:2.8rem;height:2.8rem;border-radius:50%;background:#e6f7f4;color:#0f766e;font-weight:800;font-size:1.15rem;}
+.pale{background:#f2f9f8;}.deep{background:#0b2b2a;color:white;}
+.section-head{display:flex;justify-content:space-between;align-items:baseline;gap:1rem;flex-wrap:wrap;margin-bottom:1.3rem;}
+.section-head a,.category-grid a{font-weight:750;color:#0f766e;}
+.category-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,12rem),1fr));gap:.85rem;}
+.category-grid a{display:flex;justify-content:space-between;gap:.65rem;}.category-grid a:hover{border-color:#5fb6ac;}
+.team-layout{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:clamp(1.5rem,5vw,5rem);align-items:center;}
+.team-card{display:grid;gap:.75rem;padding:clamp(1.25rem,4vw,2.8rem);border-radius:28px;background:linear-gradient(140deg,#0f766e,#16869c);color:white;}
+.team-card div{padding:.9rem 1rem;border:1px solid #ffffff56;border-radius:12px;background:#ffffff14;font-weight:700;}
+.team-layout p{color:#4a5f63;margin:1rem 0;line-height:1.65;}
+.team-link{color:#0f766e;font-weight:750;}
+.team-link:hover{text-decoration:underline;}
+.steps{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:1rem;}
+.steps li{padding:1.25rem;border:1px solid #ffffff35;border-radius:20px;}
+.steps p{color:#c7e9e5;line-height:1.55;}
+.questions{display:grid;gap:.55rem;margin-top:1.2rem;}
+.questions details{border:1px solid #dcebe9;border-radius:12px;padding:.9rem 1rem;}
+.questions summary{font-weight:650;}.questions p{padding-top:.5rem;}
+.closing{display:flex;gap:1rem;flex-wrap:wrap;align-items:center;justify-content:space-between;padding:clamp(1.25rem,4vw,2.5rem);margin-top:2rem;border-radius:26px;background:linear-gradient(115deg,#0f766e,#08769f);color:white;}
+@media(max-width:62rem){.grid{grid-template-columns:repeat(2,minmax(0,1fr));}}
+@media(max-width:47rem){.frame{width:calc(100% - 2rem);}.hero{border-radius:0 0 32px 32px;}.hero-layout{grid-template-columns:1fr;gap:1.75rem;}.hero-visual{max-width:32rem;}.hero-options{grid-template-columns:repeat(2,minmax(0,1fr));}.steps,.team-layout{grid-template-columns:1fr;}}
+@media(max-width:27rem){.grid{gap:.65rem;}.box{padding:.8rem;}.box p{font-size:.85rem;}}
+</style>

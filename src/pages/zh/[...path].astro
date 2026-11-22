@@ -1,0 +1,9 @@
+---
+import { isTrafficPath } from '../../features/analytics/events';
+import { originalStorefrontPath } from '../../features/i18n/locale';
+
+const target = originalStorefrontPath(Astro.url.pathname);
+if (!isTrafficPath(target)) return new Response('页面不存在', { status: 404 });
+Astro.locals.storeLocale = 'zh-CN';
+return Astro.rewrite(target + Astro.url.search);
+---

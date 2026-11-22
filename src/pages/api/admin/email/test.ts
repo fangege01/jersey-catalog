@@ -22,11 +22,11 @@ export const POST: APIRoute = async ({ request, redirect }) => {
       : redirect(`/admin/settings?msg=${encodeURIComponent(message)}#email`, 303);
 
   if (!to || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(to)) {
-    return done(false, 'Enter a valid recipient address for the test email.');
+    return done(false, '请输入有效的测试邮件收件地址。');
   }
   const provider = await getEmailProvider();
   if (!provider) {
-    return done(false, 'Email isn’t configured — pick a provider, add its key, and Save first.');
+    return done(false, '邮件服务尚未配置。请先选择服务商，填写所需配置并保存。');
   }
   const storeName = (await getStoreSettings(env.DB)).storeName ?? 'your store';
   try {
@@ -36,8 +36,9 @@ export const POST: APIRoute = async ({ request, redirect }) => {
       html: `<p>This is a test email from your ${storeName} admin. Email delivery is working ✅</p>`,
       text: `This is a test email from your ${storeName} admin. Email delivery is working.`,
     });
-    return done(true, `Test email sent to ${to}.`);
+    return done(true, `测试邮件已发送至 ${to}。`);
   } catch (err) {
-    return done(false, `Send failed: ${(err as Error).message || 'unknown error'}`);
+    console.error('Admin test email failed', err);
+    return done(false, '邮件发送失败，请检查邮件配置后重试。');
   }
 };

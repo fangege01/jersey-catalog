@@ -27,16 +27,16 @@ export function parseProductForm(
   const { unit = 'g', requireWeight = false } = options;
 
   const name = String(form.get('name') ?? '').trim();
-  if (!name) return { error: 'Name is required.' };
+  if (!name) return { error: '请填写商品名称。' };
 
   const price = Number(String(form.get('price') ?? '').trim());
   if (!Number.isFinite(price) || price < 0) {
-    return { error: 'Price must be a non-negative number.' };
+    return { error: '请输入大于或等于零的价格。' };
   }
 
   const stock = Number(String(form.get('stock') ?? '0').trim());
   if (!Number.isInteger(stock) || stock < 0) {
-    return { error: 'Stock must be a non-negative whole number.' };
+    return { error: '请输入大于或等于零的整数库存。' };
   }
 
   const currency = String(form.get('currency') ?? 'usd').trim().toLowerCase() || 'usd';
@@ -56,8 +56,8 @@ export function parseProductForm(
   } else if (requireWeight && requires_shipping === 1 && active === 1) {
     return {
       error:
-        'This product needs a shipping weight: every shipping zone prices by weight, ' +
-        'so without one it cannot be purchased.',
+        '请填写配送重量。所有配置的配送区域均按重量计费，' +
+        '缺少重量时顾客无法购买。',
     };
   }
 
@@ -72,12 +72,12 @@ function weightFieldError(
 ): string {
   switch (reason) {
     case 'negative':
-      return 'Weight cannot be negative.';
+      return '重量不能为负数。';
     case 'precision':
-      return `Weight has too many decimal places for ${unit}.`;
+      return `${unit} 的重量小数位数过多。`;
     case 'over_limit':
-      return 'Weight is too heavy for parcel shipping.';
+      return '重量超过包裹配送上限。';
     default:
-      return 'Weight must be a number.';
+      return '请输入数字重量。';
   }
 }

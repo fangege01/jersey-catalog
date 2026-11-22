@@ -20,11 +20,11 @@ export function accessGateDecision(
     if (!teamDomain || !aud) {
       return {
         action: 'deny',
-        message: 'Cloudflare Access is misconfigured: set both CF_ACCESS_TEAM_DOMAIN and CF_ACCESS_AUD.',
+        message: 'Cloudflare Access 配置不完整。请同时设置 CF_ACCESS_TEAM_DOMAIN 和 CF_ACCESS_AUD。',
       };
     }
     if (!token) {
-      return { action: 'deny', message: 'Cloudflare Access authentication required.' };
+      return { action: 'deny', message: '请先通过 Cloudflare Access 身份验证。' };
     }
     return { action: 'verify', token, teamDomain, aud };
   }
@@ -35,7 +35,7 @@ export function accessGateDecision(
   if (token) {
     return {
       action: 'deny',
-      message: 'Cloudflare Access is not configured: set CF_ACCESS_TEAM_DOMAIN and CF_ACCESS_AUD.',
+      message: 'Cloudflare Access 尚未配置。请设置 CF_ACCESS_TEAM_DOMAIN 和 CF_ACCESS_AUD。',
     };
   }
   return { action: 'bootstrap' };

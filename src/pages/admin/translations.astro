@@ -1,0 +1,93 @@
+---
+import { env } from 'cloudflare:workers';
+import AdminLayout from '../../layouts/AdminLayout.astro';
+import { parsePublicId } from '../../features/ids/publicId';
+import { CACHE_TAG } from '../../features/cache/tags';
+import { purgeCacheTags } from '../../features/cache/purge';
+import { translations } from '../../features/i18n/db';
+import { getConfig } from '../../config';
+import { extractMediaKeys } from '../../features/pages/markdown';
+
+const types = {
+  product: { label: '商品', table: 'products', title: 'name', path: '/admin/products' },
+  category: { label: '分类', table: 'categories', title: 'name', path: '/admin/categories' },
+  page: { label: '内容页', table: 'pages', title: 'title', path: '/admin/pages' },
+} as const;
+
+const key = Astro.url.searchParams.get('entity');
+const entity = key === 'product' || key === 'category' || key === 'page' ? key : null;
+const id = entity ? parsePublicId(Astro.url.searchParams.get('id'), entity) : null;
+const target = entity && id ? await env.DB.prepare(
+  'SELECT ' + types[entity].title + ' AS title FROM ' + types[entity].table + ' WHERE public_id = ?',
+).bind(id).first<{ title: string }>() : null;
+let value = entity && id ? (await translations(env.DB, 'zh-CN', entity, [id])).get(id) : undefined;
+let error = '';
+if (Astro.request.method === 'POST') {
+  let stored = false;
+  try {
+    const form = await Astro.request.formData();
+    const title = form.get('title');
+    const body = form.get('body');
+    if (!entity || !id || !target || typeof title !== 'string' || typeof body !== 'string' ||
+        title.length > 250 || body.length > 24000 || (!title.trim() && body.trim())) {
+      Astro.response.status = 400;
+      error = '请输入中文标题，或清空标题和正文以使用英文内容。';
+    } else {
+      if (title.trim()) {
+        const keys = extractMediaKeys(body, { baseUrl: getConfig().images.baseUrl });
+        const updated = await env.DB.prepare(`INSERT INTO storefront_translations(locale, entity, public_id, title, body)
+          SELECT 'zh-CN', ?, ?, ?, ? WHERE NOT EXISTS (
+            SELECT 1 FROM json_each(?) reference
+            WHERE NOT EXISTS (SELECT 1 FROM media WHERE image_key = reference.value)
+          )
+          ON CONFLICT(locale, entity, public_id) DO UPDATE SET title = excluded.title, body = excluded.body`)
+          .bind(entity, id, title.trim(), body.trim() || null, JSON.stringify(keys)).run();
+        if (!updated.meta.changes) {
+          Astro.response.status = 400;
+          error = '译文引用了素材库中不存在的图片，请更新图片后重试。';
+          value = { public_id: id, title, body };
+        }
+      } else {
+        await env.DB.prepare("DELETE FROM storefront_translations WHERE locale = 'zh-CN' AND entity = ? AND public_id = ?")
+          .bind(entity, id).run();
+      }
+      if (!error) {
+        stored = true;
+        await purgeCacheTags([CACHE_TAG.catalog, CACHE_TAG.shell]);
+        return Astro.redirect('/admin/translations?entity=' + entity + '&id=' + id + '&saved=1', 303);
+      }
+    }
+  } catch (cause) {
+    console.error('Storefront translation save failed', cause);
+    Astro.response.status = 500;
+    error = stored ? '中文资料已保存，但缓存刷新失败。请重新保存。' : '保存失败，请重试。';
+  }
+}
+---
+<AdminLayout title="前台语言" active="translations">
+  <div lang="zh-CN" class="max-w-3xl space-y-5">
+    <h1 class="font-serif text-3xl">前台语言</h1>
+    <p class="text-sm text-muted">英文本沿用原有编辑页。中文译文可在商品、分类或内容页的编辑页进入填写。缺少译文时显示原文。</p>
+    {error ? <p role="alert" class="text-sm text-red-700">{error}</p> :
+      Astro.url.searchParams.get('saved') === '1' && <p role="status" class="text-sm text-green-700">译文已保存。</p>}
+    {target && entity && id ? (
+      <form method="POST" class="space-y-4 rounded-xl border border-line bg-surface p-5">
+        <p class="text-sm text-muted">{types[entity].label}原文 · {target.title}</p>
+        <label class="block text-sm">中文标题
+          <input name="title" maxlength="250" value={value?.title ?? ''} class="mt-2 block w-full rounded border border-line px-3 py-2" />
+        </label>
+        {entity === 'category' ? <input type="hidden" name="body" value="" /> : (
+          <label class="block text-sm">中文正文（支持 Markdown）
+            <textarea name="body" maxlength="24000" rows="10" class="mt-2 block w-full rounded border border-line px-3 py-2">{value?.body ?? ''}</textarea>
+          </label>
+        )}
+        <button class="rounded bg-brand px-4 py-2 text-sm text-white">保存中文译文</button>
+        <a class="ml-3 text-sm underline" href={types[entity].path + '/' + id + '/edit'}>返回原文编辑</a>
+      </form>
+    ) : (
+      <div class="flex flex-wrap gap-4">
+        {Object.values(types).map((type) => <a class="text-sm underline" href={type.path}>管理{type.label}</a>)}
+      </div>
+    )}
+  </div>
+</AdminLayout>

@@ -5,6 +5,8 @@ import { orderByClause, parseStoreSortQuery, STORE_SORTS } from '../products/sor
 import { MAX_PUBLIC_PAGE, paginate, queryHref } from '../../pagination';
 import { addCacheTags, productCacheTags } from '../cache/tags';
 import type { ImageDelivery } from '../products/image';
+import { localizedProduct, translations } from '../i18n/db';
+import type { StoreLocale } from '../i18n/locale';
 import { buildProductCard } from './productCard';
 import type {
   CatalogPageModel,
@@ -115,6 +117,9 @@ export interface CatalogPageOptions {
   currency: string;
   eyebrow: string;
   heading: string;
+  locale?: StoreLocale;
+  landing?: CatalogPageModel['landing'];
+  copy?: CatalogPageModel['copy'];
 }
 
 export async function loadCatalogPage(
@@ -127,14 +132,19 @@ export async function loadCatalogPage(
   );
   const order = orderByClause(sort, dir);
 
-  const [total, categories] = await Promise.all([countProducts(db), listCategories(db)]);
+  const pageSize = options.landing ? 8 : PAGE_SIZE;
+  const [total, categories] = await Promise.all([options.landing ? 0 : countProducts(db), listCategories(db)]);
   const { page, offset, totalPages } = paginate(
     options.searchParams,
     total,
-    PAGE_SIZE,
+    pageSize,
     MAX_PUBLIC_PAGE,
   );
-  const products = await listProducts(db, PAGE_SIZE, offset, order);
+  const products = await listProducts(db, pageSize, offset, order);
+  const [productText, categoryText] = await Promise.all([
+    translations(db, options.locale, 'product', products.map((p) => p.public_id)),
+    translations(db, options.locale, 'category', categories.map((c) => c.public_id)),
+  ]);
 
   addCacheTags(
     options.responseHeaders,
@@ -142,20 +152,23 @@ export async function loadCatalogPage(
   );
 
   return {
+    ...(options.locale === 'zh-CN' && { locale: options.locale }),
+    ...(options.landing && { landing: options.landing }),
+    ...(options.copy && { copy: options.copy }),
     eyebrow: options.eyebrow,
     heading: options.heading,
     categories: childrenOf(categories, null).map((category) => ({
-      text: category.name,
+      text: categoryText.get(category.public_id ?? '')?.title ?? category.name,
       href: `/categories/${category.slug}`,
     })),
     products: products.map((product, index) =>
-      buildProductCard(product, {
+      buildProductCard(localizedProduct(product, productText.get(product.public_id ?? '')), {
         baseUrl: options.imageBaseUrl,
         delivery: options.delivery,
         currency: options.currency,
         sizes: CARD_SIZES,
         // Only the first card is the page's likely LCP image.
-        priority: index === 0,
+        priority: !options.landing && index === 0,
       }),
     ),
     sort: buildSortModel(options.base, sort, dir),

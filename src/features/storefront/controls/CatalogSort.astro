@@ -8,19 +8,22 @@ import type { StorefrontSortModel } from '../models';
  * to the cache.
  */
 interface Props {
+  locale?: import('../../i18n/locale').StoreLocale;
   model: StorefrontSortModel;
   class?: string;
 }
 
 const {
+  locale,
   model,
   class: className =
     'mb-8 flex flex-wrap items-baseline gap-x-5 gap-y-1 text-xs uppercase tracking-widest text-muted',
 } = Astro.props;
+const chineseLabels: Record<string, string> = { Newest: '最新', Price: '价格', Name: '名称' };
 ---
 
 <div class={className}>
-  <span>Sort</span>
+  <span>{locale === 'zh-CN' ? '排序' : 'Sort'}</span>
   {
     model.options.map((option) => (
       <a
@@ -28,7 +31,7 @@ const {
         aria-current={option.current ? 'true' : undefined}
         class={`hover:text-brand ${option.current ? 'text-brand' : ''}`}
       >
-        {option.label}
+        {locale === 'zh-CN' ? chineseLabels[option.label] ?? option.label : option.label}
         {option.direction === 'asc' ? ' ↑' : option.direction === 'desc' ? ' ↓' : ''}
       </a>
     ))

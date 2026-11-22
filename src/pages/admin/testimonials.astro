@@ -1,0 +1,174 @@
+---
+import { env } from 'cloudflare:workers';
+import { getConfig } from '../../config';
+import AdminLayout from '../../layouts/AdminLayout.astro';
+import MediaPicker from '../../features/media/MediaPicker.astro';
+import { mediaUrl } from '../../features/media/url';
+import { getSetting, setSetting } from '../../features/settings/db';
+import { CACHE_TAG } from '../../features/cache/tags';
+import { purgeCacheTags } from '../../features/cache/purge';
+import {
+  testimonialSettings, reviewText, testimonialId, getTestimonial, listTestimonials,
+  saveTestimonial, moveTestimonial, deleteTestimonial, TestimonialInputError,
+} from '../../features/testimonials/db';
+
+const requestedPage = Number(Astro.url.searchParams.get('page') ?? 1);
+const page = Number.isSafeInteger(requestedPage) ? Math.min(10000, Math.max(1, requestedPage)) : 1;
+const pageHref = (n: number) => '/admin/testimonials?page=' + n;
+let editId = testimonialId(Astro.url.searchParams.get('edit'));
+let error = '';
+if (Astro.request.method === 'POST') {
+  let changed = false;
+  try {
+    const form = await Astro.request.formData();
+    const action = form.get('_action');
+    if (action === 'settings') {
+      const title = reviewText(form, 'title', 100, true);
+      const intro = reviewText(form, 'intro', 500);
+      await setSetting(env.DB, 'testimonials', JSON.stringify({ enabled: form.get('enabled') === '1', title, intro }));
+    } else if (action === 'create') {
+      await saveTestimonial(env.DB, form, null);
+    } else {
+      editId = testimonialId(form.get('id'));
+      if (!editId) throw new TestimonialInputError('评价编号无效。');
+      if (action === 'edit') await saveTestimonial(env.DB, form, editId);
+      else if (action === 'up' || action === 'down') await moveTestimonial(env.DB, editId, action === 'up');
+      else if (action === 'delete') await deleteTestimonial(env.DB, editId);
+      else throw new TestimonialInputError('未知操作。');
+    }
+    changed = true;
+    await purgeCacheTags([CACHE_TAG.shell, CACHE_TAG.catalog]);
+    return Astro.redirect(pageHref(page) + '&saved=1', 303);
+  } catch (cause) {
+    if (cause instanceof TestimonialInputError) {
+      error = cause.message;
+      Astro.response.status = 400;
+    } else {
+      console.error('Testimonial admin operation failed', cause);
+      error = changed ? '改动已保存，前台缓存未能刷新。请重试保存。' : '操作失败，请稍后重试。';
+      Astro.response.status = 500;
+    }
+  }
+}
+
+const [stored, listing, editor] = await Promise.all([
+  getSetting(env.DB, 'testimonials'),
+  listTestimonials(env.DB, (page - 1) * 20),
+  editId ? getTestimonial(env.DB, editId) : null,
+]);
+const settings = testimonialSettings(stored ?? undefined);
+const avatar = editor?.avatarKey ? mediaUrl(editor.avatarKey, getConfig().images.baseUrl) : null;
+const field = 'mt-2 block w-full rounded border border-line px-3 py-2 text-sm';
+const secondary = 'rounded border border-line px-3 py-2 text-sm hover:border-brand';
+const primary = 'rounded bg-brand px-4 py-2 text-sm text-white';
+---
+<AdminLayout title="客户好评" active="testimonials">
+  <div lang="zh-CN" class="space-y-6">
+    <h1 class="font-serif text-3xl">客户好评</h1>
+    {error ? <p role="alert" class="text-sm text-red-700">{error}</p> :
+      Astro.url.searchParams.get('saved') === '1' && <p role="status" class="text-sm text-green-700">改动已保存。</p>}
+
+    <form method="POST" class="space-y-4 rounded-xl border border-line bg-surface p-5">
+      <input type="hidden" name="_action" value="settings" />
+      <h2 class="font-semibold">首页好评模块</h2>
+      <label class="flex items-center gap-2 text-sm">
+        <input name="enabled" value="1" type="checkbox" checked={settings.enabled} /> 在首页显示
+      </label>
+      <label class="block text-sm">前台标题（英文）
+        <input name="title" value={settings.title} maxlength="100" required class={field} />
+      </label>
+      <label class="block text-sm">前台简介（英文，可选）
+        <textarea name="intro" maxlength="500" rows="2" class={field}>{settings.intro}</textarea>
+      </label>
+      <p class="text-sm text-muted">综合评分按已公开评价自动计算。</p>
+      <button type="submit" class={primary}>保存模块设置</button>
+    </form>
+
+    <form method="POST" id="review-editor" class="space-y-4 rounded-xl border border-line bg-surface p-5">
+      <input type="hidden" name="_action" value={editor ? 'edit' : 'create'} />
+      {editor && <input type="hidden" name="id" value={editor.id} />}
+      <h2 class="font-semibold">{editor ? '编辑评价' : '新增评价'}</h2>
+      <div class="grid gap-4 sm:grid-cols-2">
+        <label class="text-sm">客户显示名
+          <input name="name" maxlength="100" required value={editor?.name ?? ''} class={field} />
+        </label>
+        <label class="text-sm">客户身份或地区（可选）
+          <input name="attribution" maxlength="120" value={editor?.attribution ?? ''} class={field} />
+        </label>
+      </div>
+      <label class="block text-sm">客户原文或获准展示的英文译文
+        <textarea name="quote" maxlength="1200" required rows="4" class={field}>{editor?.quote ?? ''}</textarea>
+      </label>
+      <div class="flex flex-wrap items-end gap-4">
+        <label class="text-sm">评分
+          <select name="rating" class={field} required>
+            <option value="" selected={!editor}>选择星级</option>
+            {[5, 4, 3, 2, 1].map((rating) =>
+              <option value={rating} selected={editor?.rating === rating}>{rating} 星</option>)}
+          </select>
+        </label>
+        <div class="flex flex-wrap items-center gap-2">
+          <input type="hidden" name="avatar" id="review-avatar" value={editor?.avatarPublicId ?? ''} />
+          <img id="review-avatar-preview" src={avatar ?? undefined} hidden={!avatar} alt="" width="40" height="40" class="h-10 w-10 rounded-full object-cover" />
+          <MediaPicker id="testimonial-avatar" label="选头像（可选）" />
+          <button type="button" id="clear-review-avatar" class={secondary}>移除头像</button>
+        </div>
+      </div>
+      <label class="flex items-center gap-2 text-sm">
+        <input name="published" value="1" type="checkbox" checked={editor?.published === 1} /> 公开此评价
+      </label>
+      <div class="flex flex-wrap gap-3">
+        <button type="submit" class={primary}>保存评价</button>
+        {editor && <a class={secondary} href={pageHref(page)}>返回列表</a>}
+      </div>
+    </form>
+
+    <section class="space-y-3">
+      <h2 class="font-semibold">评价列表</h2>
+      {listing.items.length === 0 && <p class="text-sm text-muted">暂无评价。</p>}
+      {listing.items.map((item, index) => (
+        <article class="flex flex-col gap-3 rounded-xl border border-line bg-surface p-4 sm:flex-row sm:justify-between">
+          <div class="min-w-0">
+            <p class="text-sm font-semibold">{item.name} · {item.rating} 星 · {item.published ? '公开' : '未公开'}</p>
+            {item.attribution && <p class="text-xs text-muted">{item.attribution}</p>}
+            <p class="mt-2 line-clamp-3 whitespace-pre-line break-words text-sm">{item.quote}</p>
+          </div>
+          <form method="POST" data-review-actions class="flex shrink-0 flex-wrap content-start gap-2">
+            <input type="hidden" name="id" value={item.id} />
+            <button class={secondary} type="submit" name="_action" value="up" disabled={page === 1 && index === 0}>上移</button>
+            <button class={secondary} type="submit" name="_action" value="down" disabled={!listing.more && index === listing.items.length - 1}>下移</button>
+            <a class={secondary} href={pageHref(page) + '&edit=' + item.id + '#review-editor'}>编辑</a>
+            <button class={secondary + ' text-red-700'} type="submit" name="_action" value="delete">删除</button>
+          </form>
+        </article>
+      ))}
+      {(page > 1 || listing.more) && <nav aria-label="评价分页" class="flex gap-4 text-sm">
+        {page > 1 && <a class="underline" href={pageHref(page - 1)}>上一页</a>}
+        {listing.more && <a class="underline" href={pageHref(page + 1)}>下一页</a>}
+      </nav>}
+    </section>
+  </div>
+</AdminLayout>
+
+<script>
+  const input = document.querySelector<HTMLInputElement>('#review-avatar');
+  const preview = document.querySelector<HTMLImageElement>('#review-avatar-preview');
+  document.querySelector('[data-media-picker="testimonial-avatar"]')?.addEventListener('media:selected', (event) => {
+    if (!input || !preview || !(event instanceof CustomEvent) || !event.detail?.id) return;
+    input.value = event.detail.id;
+    preview.src = event.detail.url;
+    preview.hidden = false;
+  });
+  document.querySelector('#clear-review-avatar')?.addEventListener('click', () => {
+    if (!input || !preview) return;
+    input.value = '';
+    preview.removeAttribute('src');
+    preview.hidden = true;
+  });
+  document.querySelectorAll<HTMLFormElement>('[data-review-actions]').forEach((form) => {
+    form.addEventListener('submit', (event) => {
+      if (event.submitter instanceof HTMLButtonElement && event.submitter.value === 'delete' &&
+          !confirm('确定删除这条评价？')) event.preventDefault();
+    });
+  });
+</script>

@@ -26,7 +26,8 @@ const saved = url.searchParams.get('saved');
 // this page's HTML, and a bare cap would make anything past it unselectable.
 const rawType = url.searchParams.get('target_type');
 const pickerType: MenuTargetType = isMenuTargetType(rawType) ? rawType : 'page';
-const pickerLocation: MenuLocation = url.searchParams.get('location') === 'footer' ? 'footer' : 'header';
+const teal = import.meta.env.MINSHOP_THEME === 'teal';
+const pickerLocation: MenuLocation = teal || url.searchParams.get('location') === 'footer' ? 'footer' : 'header';
 const pickerQuery = url.searchParams.get('q') ?? '';
 
 const homePage = Astro.locals.settings?.homePage ?? null;
@@ -71,26 +72,26 @@ const initialDefaultLabel = isSingletonType
 // suppress one at render time: silently dropping it would make this list disagree
 // with the storefront, which is worse than a duplicate.
 const bothRootLinks = (loc: MenuLocation) =>
-  !homePage &&
+  !teal && !homePage &&
   menus[loc].some((i) => i.targetType === 'home') &&
   menus[loc].some((i) => i.targetType === 'catalog');
 
 const locations: { key: MenuLocation; title: string; note: string }[] = [
   {
     key: 'header',
-    title: 'Header',
-    note: `Up to ${MENU_CAPS.header} items — the header also holds your logo, search, and cart.`,
+    title: '页眉',
+    note: `最多 ${MENU_CAPS.header} 项。`,
   },
-  { key: 'footer', title: 'Footer', note: `Up to ${MENU_CAPS.footer} items.` },
+  { key: 'footer', title: '页脚', note: `最多 ${MENU_CAPS.footer} 项。` },
 ];
+const visibleLocations = teal ? locations.filter(({ key }) => key === 'footer') : locations;
 ---
-
-<AdminLayout title="Navigation" active="navigation">
+<AdminLayout title={teal ? '页脚导航' : '导航'} active="navigation">
+  {teal && <p class="mb-4 text-sm text-muted">青绿主题的五个主菜单名称在 <a class="underline" href="/admin/site-content?section=global">网站内容 → 菜单与页脚</a> 编辑。这里的页脚项目会显示在前台。</p>}
   <div class="mb-8">
-    <h1 class="font-serif text-3xl tracking-tight">Navigation</h1>
+    <h1 class="font-serif text-3xl tracking-tight">{teal ? '页脚导航' : '导航'}</h1>
     <p class="mt-2 text-sm text-gray-500">
-      Choose what appears in your header and footer. Changes appear on the storefront within a
-      minute.
+      {teal ? '管理前台页脚的附加链接。' : '设置前台页眉和页脚的菜单。'}
     </p>
   </div>
 
@@ -104,13 +105,13 @@ const locations: { key: MenuLocation; title: string; note: string }[] = [
   {
     saved && !error && (
       <p class="mb-6 rounded-md border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700">
-        Navigation updated.
+        导航已更新。
       </p>
     )
   }
 
   <section class="mb-10 rounded-lg border border-line bg-white/60 p-5">
-    <h2 class="mb-4 font-serif text-xl tracking-tight">Add an item</h2>
+    <h2 class="mb-4 font-serif text-xl tracking-tight">新增导航项</h2>
 
     {/* ONE form. Every type's picker is rendered up front and revealed by CSS as
         the type <select> changes, so choosing a type costs no round trip.
@@ -131,7 +132,7 @@ const locations: { key: MenuLocation; title: string; note: string }[] = [
           the search, which would otherwise nudge the second row up by 2px. */}
       <div class="flex min-h-[3.65rem] flex-wrap items-end gap-3">
       <label class="text-xs uppercase tracking-wider text-gray-500">
-        Type
+        类型
         <select
           name="target_type"
           class="mt-1 block rounded-md border border-line bg-white px-3 py-2 text-sm normal-case tracking-normal text-gray-900"
@@ -147,14 +148,14 @@ const locations: { key: MenuLocation; title: string; note: string }[] = [
       </label>
 
       <div data-target-search class="flex-col text-xs uppercase tracking-wider text-gray-500">
-        <label for="nav-target-search">Search</label>
+        <label for="nav-target-search">搜索</label>
         <div class="mt-1 flex gap-2">
           <input
             id="nav-target-search"
             type="search"
             name="q"
             value={pickerQuery}
-            placeholder="Filter by name"
+            placeholder="按名称筛选"
             class="block w-40 rounded-md border border-line px-3 py-2 text-sm normal-case tracking-normal"
           />
           <button
@@ -164,7 +165,7 @@ const locations: { key: MenuLocation; title: string; note: string }[] = [
             hidden={!searchAllNeeded}
             class="rounded-md border border-line px-3 py-2 text-xs uppercase tracking-wider hover:border-brand hover:text-brand"
           >
-            Search all
+            搜索全部
           </button>
         </div>
       </div>
@@ -187,7 +188,7 @@ const locations: { key: MenuLocation; title: string; note: string }[] = [
             >
               {choices[t].options.length === 0 && (
                 <option value="">
-                  {pickerQuery ? 'No matches' : 'None available'}
+                  {pickerQuery ? '暂无匹配' : '暂无可用项目'}
                 </option>
               )}
               {choices[t].options.map((o) => (
@@ -201,29 +202,29 @@ const locations: { key: MenuLocation; title: string; note: string }[] = [
 
       <div class="flex flex-wrap items-end gap-3">
         <label class="text-xs uppercase tracking-wider text-gray-500">
-        Label (optional)
+        显示名称（可选）
         <input
           type="text"
           name="label"
           maxlength={MAX_MENU_LABEL}
           data-label-input
           placeholder={
-            initialDefaultLabel ? `Defaults to “${initialDefaultLabel}”` : 'Defaults to its name'
+            initialDefaultLabel ? `默认使用「${initialDefaultLabel}」` : '默认使用原名称'
           }
           class="mt-1 block rounded-md border border-line px-3 py-2 text-sm normal-case tracking-normal"
         />
       </label>
 
-      <label class="text-xs uppercase tracking-wider text-gray-500">
-        Add to
+      {teal ? <input type="hidden" name="location" value="footer" /> : <label class="text-xs uppercase tracking-wider text-gray-500">
+        添加到
         <select
           name="location"
           class="mt-1 block rounded-md border border-line bg-white px-3 py-2 text-sm normal-case tracking-normal text-gray-900"
         >
-          <option value="header" selected={pickerLocation === 'header'}>Header</option>
-          <option value="footer" selected={pickerLocation === 'footer'}>Footer</option>
+          <option value="header" selected={pickerLocation === 'header'}>页眉</option>
+          <option value="footer" selected={pickerLocation === 'footer'}>页脚</option>
         </select>
-      </label>
+      </label>}
 
       <button
         type="submit"
@@ -231,10 +232,10 @@ const locations: { key: MenuLocation; title: string; note: string }[] = [
         value="add"
         data-add-button
         disabled={nothingToAdd}
-        title={nothingToAdd ? 'Nothing matches — clear or widen your search' : undefined}
+        title={nothingToAdd ? '没有匹配项，请清除筛选或扩大搜索范围' : undefined}
         class="rounded-md bg-brand px-4 py-2 text-xs font-medium uppercase tracking-wider text-white hover:bg-brand-hover disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-brand"
       >
-        Add
+        添加
         </button>
       </div>
     </form>
@@ -243,9 +244,9 @@ const locations: { key: MenuLocation; title: string; note: string }[] = [
       truncated.length > 0 && (
         <p class="mt-3 text-xs text-gray-500">
           {truncated
-            .map((t) => `${TARGET_TYPE_LABELS[t].toLowerCase()}s: showing ${PICKER_LIMIT} of ${choices[t].options.length + choices[t].remaining}`)
+            .map((t) => `${TARGET_TYPE_LABELS[t]}：显示 ${PICKER_LIMIT} 项，共 ${choices[t].options.length + choices[t].remaining} 项`)
             .join(' · ')}
-          . Type to filter; press Search all to look beyond that.
+          。输入内容可筛选当前列表，也可搜索全部。
         </p>
       )
     }
@@ -253,7 +254,7 @@ const locations: { key: MenuLocation; title: string; note: string }[] = [
 
   <div class="grid gap-10 lg:grid-cols-2">
     {
-      locations.map((loc) => (
+      visibleLocations.map((loc) => (
         <section class="min-w-0">
           <div class="mb-1 flex items-baseline justify-between">
             <h2 class="font-serif text-xl tracking-tight">{loc.title}</h2>
@@ -265,14 +266,13 @@ const locations: { key: MenuLocation; title: string; note: string }[] = [
 
           {bothRootLinks(loc.key) && (
             <p class="mb-4 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-              Home and Catalog both point at <code>/</code> right now. They will differ once you
-              set a custom home page in Settings.
+              首页和商品目录目前都指向 <code>/</code>。设置自定义首页后，两者会指向不同页面。
             </p>
           )}
 
           {menus[loc.key].length === 0 ? (
             <p class="rounded-md border border-dashed border-line py-8 text-center text-sm text-gray-500">
-              No items yet.
+              暂无项目。
             </p>
           ) : (
             <ul data-menu-list={loc.key} class="divide-y divide-line border-y border-line">
@@ -319,7 +319,7 @@ const locations: { key: MenuLocation; title: string; note: string }[] = [
                           own summary and needs no JavaScript. */}
                       <details class="admin-rename mt-1">
                         <summary class="inline-flex cursor-pointer list-none text-xs text-gray-500 hover:text-brand">
-                          Edit link text
+                          编辑链接文字
                         </summary>
                         <form
                           method="POST"
@@ -332,7 +332,7 @@ const locations: { key: MenuLocation; title: string; note: string }[] = [
                             for={`label-${item.publicId}`}
                             class="block text-[10px] uppercase tracking-wider text-gray-500"
                           >
-                            Link text
+                            链接文字
                           </label>
                           <div class="mt-1 flex gap-2">
                             <input
@@ -341,18 +341,18 @@ const locations: { key: MenuLocation; title: string; note: string }[] = [
                               name="label"
                               value={item.label ?? ''}
                               maxlength={MAX_MENU_LABEL}
-                              placeholder={item.targetName ?? 'Link text'}
+                              placeholder={item.targetName ?? '链接文字'}
                               class="min-w-0 flex-1 rounded border border-line bg-white px-2 py-1 text-xs focus:border-brand focus:outline-none"
                             />
                             <button
                               type="submit"
                               class="rounded border border-line px-2 py-1 text-xs hover:border-brand hover:text-brand"
                             >
-                              Save
+                              保存
                             </button>
                           </div>
                           <p class="mt-1 text-[10px] text-gray-500">
-                            Changes only what this menu shows
+                            仅修改此导航菜单显示的文字
                             {item.targetName ? ` — leave blank to use “${item.targetName}”` : ''}.
                           </p>
                         </form>
@@ -368,7 +368,7 @@ const locations: { key: MenuLocation; title: string; note: string }[] = [
                         <input type="hidden" name="direction" value="up" />
                         <button
                           type="submit"
-                          aria-label="Move up"
+                          aria-label="上移"
                           disabled={index === 0}
                           class="px-1 text-gray-400 hover:text-brand disabled:invisible"
                         >
@@ -381,7 +381,7 @@ const locations: { key: MenuLocation; title: string; note: string }[] = [
                         <input type="hidden" name="direction" value="down" />
                         <button
                           type="submit"
-                          aria-label="Move down"
+                          aria-label="下移"
                           disabled={index === menus[loc.key].length - 1}
                           class="px-1 text-gray-400 hover:text-brand disabled:invisible"
                         >
@@ -394,13 +394,13 @@ const locations: { key: MenuLocation; title: string; note: string }[] = [
                       <form
                         method="POST"
                         action="/api/admin/navigation"
-                        onsubmit={`return confirm('Remove ${(item.text || 'this item').replace(/'/g, "\\'")} from the ${loc.title.toLowerCase()} menu?')`}
+                        onsubmit={`return confirm('确定从${loc.title}菜单移除${(item.text || '此项目').replace(/'/g, "\\'")}？')`}
                       >
                         <input type="hidden" name="_action" value="remove" />
                         <input type="hidden" name="id" value={item.publicId} />
                         <button
                           type="submit"
-                          aria-label={`Remove ${item.text || 'item'}`}
+                          aria-label={`移除${item.text || '此项目'}`}
                           class="px-1 text-gray-400 hover:text-red-600"
                         >
                           ×
@@ -427,7 +427,7 @@ const locations: { key: MenuLocation; title: string; note: string }[] = [
   // clears the box, because a query typed for Products means nothing for Pages.
   //
   // The filter only claims completeness when the list is NOT truncated. Over a
-  // capped list it would report "No matches" for a product that exists just past
+  // capped list it would report "暂无匹配" for a product that exists just past
   // the cap, so "Search all" stays visible in exactly that case.
   //
   // Casts rather than querySelector<T> generics: this project's global `Element`
@@ -476,14 +476,14 @@ const locations: { key: MenuLocation; title: string; note: string }[] = [
             ? ''
             : (picker.select.selectedOptions[0]?.textContent ?? ''))
         : (singletonLabels[typeSel.value] ?? '');
-      labelInput.placeholder = name ? `Defaults to \u201C${name}\u201D` : 'Defaults to its name';
+      labelInput.placeholder = name ? `默认使用「${name}」` : '默认使用原名称';
     };
 
     const setAddEnabled = (enabled: boolean) => {
       if (!addButton) return;
       addButton.disabled = !enabled;
       if (enabled) addButton.removeAttribute('title');
-      else addButton.title = 'Nothing matches — clear or widen your search';
+      else addButton.title = '没有匹配项，请清除筛选或扩大搜索范围';
     };
 
     const apply = () => {
@@ -497,7 +497,7 @@ const locations: { key: MenuLocation; title: string; note: string }[] = [
       }
       const q = search.value.trim().toLowerCase();
       const matches = q ? picker.all.filter((o) => o.text.toLowerCase().includes(q)) : picker.all;
-      const empty = picker.truncated ? 'No matches here — try Search all' : 'No matches';
+      const empty = picker.truncated ? '当前列表暂无匹配，试试搜索全部' : '暂无匹配';
       picker.select.replaceChildren(
         ...(matches.length === 0
           ? [new Option(empty, '')]
@@ -537,8 +537,8 @@ const locations: { key: MenuLocation; title: string; note: string }[] = [
   const refreshEnds = (list: HTMLElement) => {
     const rows = [...list.children];
     rows.forEach((row, i) => {
-      const up = row.querySelector('button[aria-label="Move up"]') as HTMLButtonElement | null;
-      const down = row.querySelector('button[aria-label="Move down"]') as HTMLButtonElement | null;
+      const up = row.querySelector('button[aria-label="上移"]') as HTMLButtonElement | null;
+      const down = row.querySelector('button[aria-label="下移"]') as HTMLButtonElement | null;
       if (up) up.disabled = i === 0;
       if (down) down.disabled = i === rows.length - 1;
     });

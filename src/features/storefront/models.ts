@@ -58,6 +58,7 @@ export interface ProductCardModel {
 export interface StorefrontLink {
   text: string;
   href: string;
+  current?: boolean;
 }
 
 /**
@@ -68,7 +69,11 @@ export interface StorefrontLink {
  * flags. Nothing here can start a request or change state.
  */
 export interface StorefrontShellModel {
+  locale?: import('../i18n/locale').StoreLocale;
   storeName: string;
+  whatsappHref?: string | null;
+  footerCopy?: string;
+  languageSwitch?: { label: string; href: string; locale: 'en' | 'zh-CN' };
   /** Resolved header logo, or null to fall back to the store name as text. */
   logo: StorefrontImage | null;
   /** Escaped message plus an already-validated link, or null when unset. */
@@ -120,6 +125,10 @@ export interface StorefrontPaginationModel {
  * URL stays clean and cacheable.
  */
 export interface CatalogPageModel {
+  landing?: { whatsappHref: string | null; copy: import('../site-content/copy').SiteCopy<'home'>; image: StorefrontImage; };
+  copy?: import('../site-content/copy').SiteCopy<'products'>;
+  categoryPage?: string;
+  locale?: import('../i18n/locale').StoreLocale;
   eyebrow: string;
   heading: string;
   categories: StorefrontLink[];
@@ -170,6 +179,7 @@ export interface StorefrontExtra {
  * buy-now toggles and whether any payment rail can actually take money.
  */
 export interface ProductPurchaseModel {
+  locale?: import('../i18n/locale').StoreLocale;
   /** `prod_` public ID, submitted by both forms. */
   productId: string;
   cartAction: string;
@@ -178,6 +188,7 @@ export interface ProductPurchaseModel {
   soldOut: boolean;
   showAddToCart: boolean;
   showBuyNow: boolean;
+  inquiry?: { href: string | null; options: Array<{ label: string; href: string; soldOut: boolean }> };
   /** Merchant's name for the variant group, e.g. "Size". */
   variantLabel: string | null;
   variants: StorefrontVariant[];
@@ -190,12 +201,14 @@ export interface ProductSeoModel {
   title: string;
   description: string | null;
   /** Root-relative image path for the social card. */
-  imagePath: string;
+  imagePath?: string;
+  imageAlt?: string;
   /** Serialized JSON-LD, already escaped for embedding in a script tag. */
   jsonLd: string;
 }
 
 export interface ProductDetailModel {
+  locale?: import('../i18n/locale').StoreLocale;
   id: string;
   name: string;
   /** Raw Markdown source (also what the catalog API returns). */

@@ -9,7 +9,11 @@ import {
   productsInCategory,
   countProductsInCategory,
 } from '../../features/categories/db';
+import { readSiteCopy } from '../../features/site-content/copy';
+import { display } from '../../features/i18n/locale';
+import { localizedProduct, translations } from '../../features/i18n/db';
 import ProductCard from '#theme/ProductCard.astro';
+import Catalog from '#theme/Catalog.astro';
 import { buildProductCard } from '../../features/storefront/productCard';
 import { getConfig } from '../../config';
 import { orderByClause, parseStoreSortQuery } from '../../features/products/sort';
@@ -20,11 +24,12 @@ import {
 } from '../../pagination';
 import Pagination from '../../components/Pagination.astro';
 import CatalogSort from '../../features/storefront/controls/CatalogSort.astro';
-import { buildSortModel } from '../../features/storefront/catalog';
+import { buildPaginationModel, buildSortModel } from '../../features/storefront/catalog';
 import { catalogPath } from '../../features/settings/home';
 import { addCacheTags, productCacheTags } from '../../features/cache/tags';
 
 const { slug } = Astro.params;
+const locale = Astro.locals.storeLocale;
 const category = slug ? await getCategoryBySlug(env.DB, slug) : null;
 
 if (!category) {
@@ -51,11 +56,18 @@ const { page, offset, totalPages } = paginate(
   MAX_PUBLIC_PAGE,
 );
 const products = await productsInCategory(env.DB, category.id, PAGE_SIZE, offset, order);
+const [categoryText, productText] = await Promise.all([
+  translations(env.DB, locale, 'category', categories.map((item) => item.public_id)),
+  translations(env.DB, locale, 'product', products.map((item) => item.public_id)),
+]);
+const categoriesById = new Map(categories.map((item) => [item.id, item]));
+const categoryName = (item: { id: number; name: string }) =>
+  categoryText.get(categoriesById.get(item.id)?.public_id ?? '')?.title ?? item.name;
 addCacheTags(Astro.response.headers, productCacheTags(products.map((product) => product.public_id)));
 // Presentation models are built here, where the store's image settings are
 // known; only the first card is the LCP image.
 const cards = products.map((product, i) =>
-  buildProductCard(product, {
+  buildProductCard(localizedProduct(product, productText.get(product.public_id ?? '')), {
     baseUrl: getConfig().images.baseUrl,
     currency: getConfig().currency,
     delivery: Astro.locals.settings?.imageDelivery,
@@ -71,25 +83,33 @@ const hrefFor = (p: number) =>
     page: p > 1 ? p : undefined,
   });
 // The catalog is at / until the home page is pointed elsewhere.
+const teal = import.meta.env.MINSHOP_THEME === 'teal';
 const shopHref = catalogPath(Astro.locals.settings?.homePage);
+const sortModel = buildSortModel(base, sort, dir);
+const categoryTabs = [...new Map([...childrenOf(categories, category.parent_id), ...subcats]
+  .map(item => [item.id, {text: categoryName(item), href: '/categories/' + item.slug}])).values()];
 ---
 
-<Layout title={category.name}>
+<Layout title={categoryName(category)}>
+  {teal ? <Catalog model={{ locale, eyebrow: '', heading: categoryName(category), categoryPage: base,
+    categories: categoryTabs, products: cards, sort: sortModel,
+    copy: readSiteCopy(Astro.locals.settings?.siteContent, 'products', locale ?? 'en'),
+    pagination: buildPaginationModel(base, page, totalPages, sort, dir) }} /> : <>
   <nav class="mb-4 flex flex-wrap gap-x-2 text-xs uppercase tracking-widest text-faint">
-    <a href={shopHref} class="hover:text-brand">Shop</a>
+    <a href={shopHref} class="hover:text-brand">{display(locale, 'Shop', '商城')}</a>
     {
       trail.map((c) => (
         <span class="flex gap-x-2">
           <span aria-hidden="true">/</span>
           <a href={`/categories/${c.slug}`} class="hover:text-brand">
-            {c.name}
+            {categoryName(c)}
           </a>
         </span>
       ))
     }
   </nav>
 
-  <h1 class="mb-8 font-serif text-4xl tracking-tight sm:text-5xl">{category.name}</h1>
+  <h1 class="mb-8 font-serif text-4xl tracking-tight sm:text-5xl">{categoryName(category)}</h1>
 
   {
     subcats.length > 0 && (
@@ -99,14 +119,14 @@ const shopHref = catalogPath(Astro.locals.settings?.homePage);
             href={`/categories/${c.slug}`}
             class="border-b border-transparent pb-0.5 hover:border-brand hover:text-brand"
           >
-            {c.name}
+            {categoryName(c)}
           </a>
         ))}
       </div>
     )
   }
 
-  <CatalogSort model={buildSortModel(base, sort, dir)} />
+  <CatalogSort locale={locale} model={sortModel} />
 
   {products.length === 0 && <p class="text-muted">No products in this category yet.</p>}
 
@@ -119,4 +139,5 @@ const shopHref = catalogPath(Astro.locals.settings?.homePage);
   </ul>
 
   <Pagination page={page} totalPages={totalPages} hrefFor={hrefFor} />
+  </>}
 </Layout>

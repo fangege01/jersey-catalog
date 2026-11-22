@@ -411,6 +411,20 @@ if [[ "$robots" != *"Sitemap: https://canonical.example/sitemap.xml"* ]]; then
   exit 1
 fi
 
+catalog_only="$(node --experimental-strip-types --input-type=module -e '
+  import { storeOverrides } from "./src/store.config.ts";
+  process.stdout.write(String(storeOverrides.features?.catalogOnly === true));
+')"
+if [[ "$catalog_only" == "true" ]]; then
+  for path in /cart /checkout /partials/cart /partials/cart-count; do
+    status="$(curl --max-time 30 --silent --output /dev/null --write-out '%{http_code}' "http://127.0.0.1:$test_port$path")"
+    if [[ "$status" != "404" ]]; then
+      echo "D1 integration failed: catalog-only route $path returned HTTP $status" >&2
+      exit 1
+    fi
+  done
+else
+
 # A shopper's cart stays private while the catalog shell remains shared. The
 # count fragment reads only the HttpOnly cookie, and the full drawer resolves
 # all cart rows through the batched product/variant/extra path.
@@ -635,6 +649,8 @@ if [[ "$bare_status" != "404" ]]; then
   exit 1
 fi
 
+fi
+
 # The cron handler only exists because wrangler `main` points at src/worker.ts
 # and the Astro adapter bundles it. If an adapter upgrade stops honouring that,
 # the build still succeeds and every scheduled sweep silently stops running —
@@ -647,4 +663,8 @@ if [[ "$scheduled_status" != "200" ]]; then
   exit 1
 fi
 
-echo "D1 integration passed: migrations + seed + bound reads + paid-order write/read + cron handler"
+if [[ "$catalog_only" == "true" ]]; then
+  echo "D1 integration passed: migrations + seed + bound reads + catalog-only routes + cron handler"
+else
+  echo "D1 integration passed: migrations + seed + bound reads + paid-order write/read + cron handler"
+fi

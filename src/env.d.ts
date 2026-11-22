@@ -32,6 +32,7 @@ interface ImagesBindingMin {
 type CloudflareRuntime = import('@astrojs/cloudflare').Runtime;
 declare namespace App {
   interface Locals extends CloudflareRuntime {
+    storeLocale?: import('./features/i18n/locale').StoreLocale;
     adminEmail?: string;
     /** Runtime settings overlay (store name etc.), loaded once per request. */
     settings?: import('./features/settings/db').StoreSettings;
@@ -43,6 +44,8 @@ declare namespace App {
 
 declare namespace Cloudflare {
   interface Env {
+    PRODUCT_IMPORT_TOKEN?: string;
+    ADMIN_SETUP_TOKEN?: string;
     DB: import('@cloudflare/workers-types').D1Database;
     BUCKET: import('@cloudflare/workers-types').R2Bucket;
     FILES: import('@cloudflare/workers-types').R2Bucket;
@@ -77,8 +80,8 @@ declare namespace Cloudflare {
     CANONICAL_ORIGIN?: string;
     // Admin auth (src/middleware.ts): the password is set in the first-run setup
     // wizard and stored as a PBKDF2 hash in D1 — there is no ADMIN_PASSWORD env var.
-    // Until one is set the wizard is reachable to create it (bootstrap); Cloudflare
-    // Access is the recommended production protection.
+    // Production catalog setup uses ADMIN_SETUP_TOKEN unless the operator has
+    // already authenticated through Cloudflare Access or an admin session.
     // Required together to enable fail-closed Cloudflare Access mode
     // (src/middleware.ts + src/features/auth/access.ts).
     // Non-secret — set both in wrangler.jsonc `vars` to enable forge-proof checks.

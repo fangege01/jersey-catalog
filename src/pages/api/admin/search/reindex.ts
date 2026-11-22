@@ -51,10 +51,10 @@ export const POST: APIRoute = async ({ request, redirect }) => {
   const settings = await getStoreSettings(env.DB);
   const provider = settings.searchProvider ?? getConfig().search.provider;
   if (provider !== 'vector') {
-    return fail('Semantic search is off — enable it in Settings first.');
+    return fail('语义搜索已关闭，请先在设置中启用。');
   }
   if (!env.AI || !env.VECTORIZE) {
-    return fail('Semantic search is unavailable — add the AI and VECTORIZE bindings first.');
+    return fail('语义搜索不可用，请先配置 AI 和 VECTORIZE 绑定。');
   }
 
   const form = await request.formData();
@@ -87,14 +87,15 @@ export const POST: APIRoute = async ({ request, redirect }) => {
       return Response.json({ processed, total, nextCursor, done });
     }
     return done
-      ? back(`Reindexed ${processed} product(s) into the semantic search index.`)
+      ? back(`已重建 ${processed} 件商品的语义索引。`)
       : back(
-          `Reindexed ${processed} of ${total} products. Continue to process the next batch.`,
+          `已重建 ${processed} / ${total} 件商品的语义索引。请继续处理下一批。`,
           nextCursor,
           processed,
         );
   } catch (err) {
-    const message = `Reindex failed: ${(err as Error).message}`;
+    console.error('Admin search reindex failed', err);
+    const message = '重建索引失败，请稍后继续处理。';
     return wantsJson
       ? Response.json({ error: message }, { status: 500 })
       : back(message, cursorPublicId, processedBefore);

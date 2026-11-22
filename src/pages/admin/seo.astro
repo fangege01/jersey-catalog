@@ -1,0 +1,88 @@
+---
+import { env } from 'cloudflare:workers';
+import AdminLayout from '../../layouts/AdminLayout.astro';
+import { getSetting, setSetting } from '../../features/settings/db';
+import { CACHE_TAG } from '../../features/cache/tags';
+import { purgeCacheTags } from '../../features/cache/purge';
+import {
+  crawlerGroups, crawlerKeys, seoControls, verificationKeys, verificationPattern, verificationTags,
+} from '../../features/seo/controls';
+
+const settings = seoControls((await getSetting(env.DB, 'seo_controls')) ?? undefined);
+let error = '';
+if (Astro.request.method === 'POST') {
+  let stored = false;
+  try {
+    const form = await Astro.request.formData();
+    for (const key of crawlerKeys) {
+      const value = form.get(key);
+      if (value !== 'allow' && value !== 'block') { error = '爬虫选项无效。'; break; }
+      settings.crawlers[key] = value === 'allow';
+    }
+    for (const key of verificationKeys) {
+      if (error) break;
+      const raw = form.get(key);
+      const value = typeof raw === 'string' ? raw.trim() : '';
+      if (typeof raw !== 'string' || (value && !verificationPattern.test(value))) {
+        error = '请只填写 ' + verificationTags[key].label + ' 的验证码值。';
+        break;
+      }
+      settings.verification[key] = value;
+    }
+    if (!error) {
+      await setSetting(env.DB, 'seo_controls', JSON.stringify(settings));
+      stored = true;
+      await purgeCacheTags([CACHE_TAG.shell, CACHE_TAG.catalog]);
+      return Astro.redirect('/admin/seo?saved=1', 303);
+    }
+    Astro.response.status = 400;
+  } catch (cause) {
+    console.error('SEO controls update failed', cause);
+    Astro.response.status = 500;
+    error = stored ? '设置已保存，但缓存刷新失败。请重新保存。' : '保存失败，请重试。';
+  }
+}
+const field = 'mt-2 block w-full rounded border border-line px-3 py-2 text-sm';
+---
+<AdminLayout title="SEO 与 AI 爬虫" active="seo">
+  <div lang="zh-CN" class="max-w-3xl space-y-5">
+    <h1 class="font-serif text-3xl">SEO 与 AI 爬虫</h1>
+    {error ? <p role="alert" class="text-sm text-red-700">{error}</p> :
+      Astro.url.searchParams.get('saved') === '1' && <p role="status" class="text-sm text-green-700">设置已保存。</p>}
+    <form method="POST" class="space-y-6 rounded-xl border border-line bg-surface p-5">
+      <section class="space-y-3">
+        <h2 class="font-semibold">AI 爬虫规则</h2>
+        <p class="text-sm text-muted">设置会生成 robots.txt。后台和 API 继续由现有权限保护。Google-Extended 与普通 Google 搜索分开。</p>
+        <div class="grid gap-4 sm:grid-cols-2">
+          {crawlerKeys.map((key) => (
+            <label class="text-sm">{crawlerGroups[key].label}
+              <select class={field} name={key}>
+                <option value="allow" selected={settings.crawlers[key] !== false}>允许访问公开内容</option>
+                <option value="block" selected={settings.crawlers[key] === false}>禁止爬取</option>
+              </select>
+              <small class="mt-1 block text-muted">{crawlerGroups[key].agents.join('、')}</small>
+            </label>
+          ))}
+        </div>
+        <a href="/robots.txt" class="text-sm underline" target="_blank" rel="noopener noreferrer">查看 robots.txt</a>
+      </section>
+      <section class="space-y-3 border-t border-line pt-4">
+        <h2 class="font-semibold">商品图片 SEO</h2>
+        <p class="text-sm text-muted">将图片加入商品相册并上架后，主图会用作分享图，主图和相册会自动纳入商品结构化数据及站点地图。建议在商品编辑页补充每张图片的替代文本。未填写时使用商品名称。</p>
+        <a href="/sitemap.xml" class="text-sm underline" target="_blank" rel="noopener noreferrer">查看站点地图</a>
+      </section>
+      <section class="space-y-3 border-t border-line pt-4">
+        <h2 class="font-semibold">站点所有权验证</h2>
+        <p class="text-sm text-muted">复制验证标签中 content 的值。留空时不输出该平台的标签。</p>
+        <div class="grid gap-4 sm:grid-cols-2">
+          {verificationKeys.map((key) => (
+            <label class="text-sm">{verificationTags[key].label}
+              <input name={key} maxlength="200" autocomplete="off" value={settings.verification[key] ?? ''} class={field} />
+            </label>
+          ))}
+        </div>
+      </section>
+      <button type="submit" class="rounded bg-brand px-4 py-2 text-sm text-white">保存 SEO 设置</button>
+    </form>
+  </div>
+</AdminLayout>

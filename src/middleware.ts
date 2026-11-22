@@ -26,6 +26,9 @@ import {
 } from './features/cache/public';
 import { addCacheTags, responseCacheTags } from './features/cache/tags';
 import { normalizeSearchQuery } from './features/search/query';
+import { getConfig } from './config';
+import { localizedHref } from './features/i18n/locale';
+import { isPurchasePath } from './features/storefront/catalogMode';
 import { isForbiddenFormOrigin } from './features/auth/formOrigin';
 
 /**
@@ -173,7 +176,7 @@ async function gate(context: APIContext, next: MiddlewareNext): Promise<Response
     if (await verifySession(session, signingKey, cred.tagSource, Date.now() / 1000)) return next();
     // Not authenticated: humans go to the login form, API callers get 401.
     if (path.startsWith('/api/')) {
-      return new Response('Authentication required.', { status: 401 });
+      return new Response('请先登录后台。', { status: 401 });
     }
     return context.redirect('/admin/login', 303);
   }
@@ -206,7 +209,7 @@ async function gate(context: APIContext, next: MiddlewareNext): Promise<Response
       context.locals.adminEmail = identity.email;
       return next();
     }
-    return new Response('Invalid Access token.', { status: 403 });
+    return new Response('Cloudflare Access 身份令牌无效。', { status: 403 });
   }
 
   // 4. Bootstrap (first run): no admin password and no Access configuration. The
@@ -216,17 +219,22 @@ async function gate(context: APIContext, next: MiddlewareNext): Promise<Response
   //    Cloudflare Access, to close this window. See README → Admin auth.)
   if (path === '/admin/setup') return next();
   if (path.startsWith('/api/')) {
-    return new Response('Admin not set up yet — complete /admin/setup first.', { status: 401 });
+    return new Response('后台尚未初始化，请先访问 /admin/setup 完成设置。', { status: 401 });
   }
   return context.redirect('/admin/setup', 303);
 }
 
 async function route(context: APIContext, next: MiddlewareNext): Promise<Response> {
   const path = context.url.pathname;
+  if (getConfig().features.catalogOnly && isPurchasePath(path)) {
+    return new Response('Not found', { status: 404, headers: { 'cache-control': 'no-store' } });
+  }
   const productError = path.startsWith('/products/') && context.url.searchParams.has('error');
 
   let response = isForbiddenFormOrigin(context.request, context.url)
-    ? new Response(`Cross-site ${context.request.method} form submissions are forbidden`, {
+    ? new Response(isProtected(path)
+        ? '后台表单仅允许从本站提交。'
+        : `Cross-site ${context.request.method} form submissions are forbidden`, {
         status: 403,
       })
     : await gate(context, next);
@@ -297,5 +305,31 @@ function withSecurityHeaders(res: Response): Response {
 }
 
 export const onRequest = defineMiddleware(async (context, next) => {
-  return withSecurityHeaders(await route(context, next));
+  let response: Response;
+  try {
+    response = await route(context, next);
+  } catch (error) {
+    const path = context.url.pathname;
+    if (!isProtected(path)) throw error;
+    console.error('Admin request failed', { path, method: context.request.method, error });
+    const message = '后台处理请求时发生错误。请刷新页面查看操作结果，或稍后重试。';
+    const options = { status: 500, headers: { 'cache-control': 'no-store' } };
+    response = path.startsWith('/api/admin') && context.request.headers.get('accept')?.includes('application/json')
+      ? Response.json({ error: message }, options)
+      : new Response(message, options);
+  }
+  if (context.originPathname.startsWith('/zh') && context.locals.storeLocale === 'zh-CN' &&
+      context.url.pathname.startsWith('/zh') && response.headers.get('content-type')?.includes('text/html')) {
+    return withSecurityHeaders(new HTMLRewriter()
+      .on('a[href]:not([data-language-switch])', { element(element) {
+        const href = element.getAttribute('href');
+        if (href) element.setAttribute('href', localizedHref(href, 'zh-CN'));
+      } })
+      .on('form[method="GET"][action], form[method="get"][action]', { element(element) {
+        const action = element.getAttribute('action');
+        if (action) element.setAttribute('action', localizedHref(action, 'zh-CN'));
+      } })
+      .transform(response));
+  }
+  return withSecurityHeaders(response);
 });

@@ -77,7 +77,7 @@ const MIGRATION = readFileSync(new URL('../../migrations/0028_nav_menus.sql', im
  */
 const statements = (sql) =>
   sql
-    .split('\n')
+    .split(/\r?\n/)
     .map((line) => line.replace(/^\s*--.*$/, ''))
     .join('\n')
     .split(';')

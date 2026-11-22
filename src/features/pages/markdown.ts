@@ -58,6 +58,7 @@ function inlineTextOf(tokens: Token[]): string {
 }
 
 export interface RenderOptions {
+  resolveLink?: (href: string) => string | null;
   /** config.images.baseUrl — lets page images use a custom image origin. */
   baseUrl?: string;
   /**
@@ -125,6 +126,18 @@ export function renderMarkdown(markdown: string, options: RenderOptions = {}): s
     typographer: false,
   });
   installImageRule(instance, baseUrl, options.dimensions);
+  const resolveLink = options.resolveLink;
+  if (resolveLink) {
+    instance.renderer.rules.link_open = (tokens, index, opts, _env, self) => {
+      const token = tokens[index];
+      const href = resolveLink(String(token.attrGet('href') ?? ''));
+      if (href === null) {
+        const attr = token.attrIndex('href');
+        if (attr >= 0) token.attrs?.splice(attr, 1);
+      } else token.attrSet('href', href);
+      return self.renderToken(tokens, index, opts);
+    };
+  }
 
   if (options.sourceMap) {
     // Block tokens carry `map: [startLine, endLine]`. Stamping the start line on

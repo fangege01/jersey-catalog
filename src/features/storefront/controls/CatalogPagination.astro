@@ -7,20 +7,21 @@ import type { StorefrontPaginationModel } from '../models';
  * which are easy to drop when restyling, and invisible when they go missing.
  */
 interface Props {
+  locale?: import('../../i18n/locale').StoreLocale;
   model: StorefrontPaginationModel;
   class?: string;
 }
 
-const { model, class: className = 'mt-14 flex items-center justify-center gap-1' } = Astro.props;
+const { model, locale, class: className = 'mt-14 flex items-center justify-center gap-1' } = Astro.props;
 const linkCls = 'px-3 py-1.5 text-xs uppercase tracking-widest text-muted hover:text-brand';
 ---
 
 {
   model.totalPages > 1 && (
-    <nav class={className} aria-label="Pagination">
+    <nav class={className} aria-label={locale === 'zh-CN' ? '分页' : 'Pagination'}>
       {model.prevHref && (
         <a href={model.prevHref} class={linkCls} rel="prev">
-          Prev
+          {locale === 'zh-CN' ? '上一页' : 'Prev'}
         </a>
       )}
       {model.items.map((item) =>
@@ -38,7 +39,7 @@ const linkCls = 'px-3 py-1.5 text-xs uppercase tracking-widest text-muted hover:
       )}
       {model.nextHref && (
         <a href={model.nextHref} class={linkCls} rel="next">
-          Next
+          {locale === 'zh-CN' ? '下一页' : 'Next'}
         </a>
       )}
     </nav>

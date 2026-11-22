@@ -21,11 +21,11 @@ export const POST: APIRoute = async ({ request, redirect }) => {
   // still doesn't simply stays queued.
   if (action === 'retry_refund_event') {
     const eventId = String(form.get('event_id') ?? '').trim();
-    if (!eventId) return fail('Missing event.');
+    if (!eventId) return fail('缺少事件记录。');
 
     const events = await listUnmatchedRefundEvents(env.DB);
     const stored = events.find((e) => e.provider_event_id === eventId);
-    if (!stored) return fail('That event is no longer waiting to be reconciled.');
+    if (!stored) return fail('该事件已无需核对。');
 
     // Retry runs the same correlation the webhook did, including the provider
     // session lookup — so a merchant clicking Retry after a transient provider
@@ -53,7 +53,7 @@ export const POST: APIRoute = async ({ request, redirect }) => {
 
     if (outcome.status === 'unmatched') {
       return fail(
-        'Still no order matches that payment. It stays queued — you can retry again after the order’s payment ID is filled in.',
+        '仍未找到此付款对应的订单。退款将保留在待处理列表，补填订单的付款 ID 后可以重试。',
       );
     }
     // Admin URLs carry the order's public ID, never the row id the correlation
@@ -82,7 +82,7 @@ export const POST: APIRoute = async ({ request, redirect }) => {
   // reproduces the conflict, so without this the queue never empties.
   if (action === 'dismiss_refund_event') {
     const eventId = String(form.get('event_id') ?? '').trim();
-    if (!eventId) return fail('Missing event.');
+    if (!eventId) return fail('缺少事件记录。');
     const dismissed = await dismissRefundEvent(
       env.DB,
       eventId,
@@ -98,8 +98,8 @@ export const POST: APIRoute = async ({ request, redirect }) => {
       );
       return fail(
         stillQueued
-          ? 'This refund has not been matched to an order yet, so it can’t be dismissed — that would hide money that really moved. Use Retry once the order’s payment ID exists.'
-          : 'That event is no longer waiting to be reconciled.',
+          ? '退款已实际发生，匹配到订单前需要保留此记录。订单补齐付款 ID 后，请点击重试。'
+          : '该事件已无需核对。',
       );
     }
     return back;

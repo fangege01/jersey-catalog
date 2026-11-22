@@ -19,7 +19,7 @@ export const prerender = false;
 export const POST: APIRoute = async ({ request, params, redirect }) => {
   const publicId = parsePublicId(params.id, 'category');
   const category = publicId ? await getCategoryByPublicId(env.DB, publicId) : null;
-  if (!category) return new Response('Not found', { status: 404 });
+  if (!category) return new Response('未找到记录。', { status: 404 });
   const id = category.id;
 
   const form = await request.formData();
@@ -40,7 +40,7 @@ export const POST: APIRoute = async ({ request, params, redirect }) => {
   let parentId: number | null = null;
   if (parsed.data.parentPublicId) {
     const parent = await getCategoryByPublicId(env.DB, parsed.data.parentPublicId);
-    if (!parent) return fail('That parent category no longer exists.');
+    if (!parent) return fail('所选上级分类已不存在。');
     parentId = parent.id;
   }
 
@@ -48,7 +48,7 @@ export const POST: APIRoute = async ({ request, params, redirect }) => {
   if (parentId != null) {
     const blocked = new Set(await descendantIds(env.DB, id));
     if (blocked.has(parentId)) {
-      return fail('A category cannot be moved under itself or one of its sub-categories.');
+      return fail('不能将分类移到自身或其子分类下。');
     }
   }
 

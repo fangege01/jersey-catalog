@@ -1,0 +1,67 @@
+---
+import type { StorefrontShellModel } from '../../features/storefront/models';
+import StoreSearch from '../../features/storefront/controls/StoreSearch.astro';
+import StoreCartControl from '../../features/storefront/controls/StoreCartControl.astro';
+import StoreAccountControl from '../../features/storefront/controls/StoreAccountControl.astro';
+
+interface Props { model: StorefrontShellModel; }
+const { model } = Astro.props;
+const zh = model.locale === 'zh-CN';
+const links = model.headerLinks;
+const switcher = model.languageSwitch;
+---
+{model.announcement && <div class="bg-brand px-5 py-2 text-center text-sm text-white">
+  {model.announcement.href ? <a class="underline" href={model.announcement.href}>{model.announcement.text}</a> : model.announcement.text}
+</div>}
+<header class="sticky top-0 z-20 border-b border-line bg-white/95 backdrop-blur">
+  <div class="shell">
+    <a href="/" class="identity">
+      {model.logo ? <img class="h-10 max-w-44 object-contain" src={model.logo.src} alt={model.logo.alt} /> : (
+        <>{model.storeName === 'FXF' ? <strong class="mark">FXF</strong> : <strong>{model.storeName}</strong>}</>
+      )}
+    </a>
+    <nav aria-label={zh ? '主导航' : 'Main navigation'} class="desktop-nav">
+      {links.map((link) => <a href={link.href} aria-current={link.current ? 'page' : undefined} class="hover:text-brand">{link.text}</a>)}
+    </nav>
+    <div class="actions">
+      {switcher && <a class="language" data-language-switch lang={switcher.locale} hreflang={switcher.locale} href={switcher.href}>{switcher.label}</a>}
+      {model.whatsappHref && <a class="contact" data-whatsapp-inquiry href={model.whatsappHref}>WhatsApp</a>}
+      {model.cart.enabled && <StoreCartControl href={model.cart.href} />}
+      {model.account.enabled && <StoreAccountControl href={model.account.href} />}
+      {links.length > 0 ? <details class="mobile-nav" data-nav-disclosure>
+        <summary class="language" aria-label={zh ? '菜单' : 'Menu'}>{zh ? '菜单' : 'Menu'}</summary>
+        <nav aria-label={zh ? '移动端导航' : 'Mobile navigation'}>
+          {links.map((link) => <a href={link.href} aria-current={link.current ? 'page' : undefined}>{link.text}</a>)}
+          <a href={model.search.action}>{zh ? '搜索商品' : 'Search jerseys'}</a>
+          {model.whatsappHref && <a data-whatsapp-inquiry href={model.whatsappHref}>WhatsApp</a>}
+        </nav>
+      </details> : <a href={model.search.action} class="mobile-nav language">{zh ? '搜索' : 'Search'}</a>}
+      <div class="desktop-search">
+        <StoreSearch action={model.search.action} query={model.search.query} locale={model.locale} />
+      </div>
+    </div>
+  </div>
+</header>
+
+<style>
+.shell{width:min(100% - 2rem, 76rem);margin:auto;min-height:72px;display:flex;align-items:center;gap:1.5rem;justify-content:space-between;}
+.identity{display:flex;align-items:center;gap:.65rem;line-height:1.2;font-size:1.05rem;min-width:0;}
+.identity strong{overflow-wrap:anywhere;}
+.mark{display:grid;place-items:center;width:39px;height:39px;flex:none;border-radius:12px;background:linear-gradient(140deg,#0d9488,#0f766e);color:white;font-size:.82rem;font-weight:800;}
+.desktop-nav,.actions{display:flex;align-items:center;gap:1.1rem;font-size:.85rem;font-weight:650;}
+.desktop-nav{flex-wrap:wrap;justify-content:center;}
+.desktop-nav a[aria-current=page],.mobile-nav a[aria-current=page]{color:#0f766e;text-decoration:underline;text-underline-offset:.45rem;}
+.actions{gap:.45rem;flex:none;}
+.contact,.language{display:inline-flex;align-items:center;min-height:40px;padding:.55rem .8rem;border-radius:12px;white-space:nowrap;}
+.contact{background:#0f766e;color:white;}
+.language{border:1px solid #dcebe9;}
+.desktop-search{width:9rem;}
+.mobile-nav{display:none;position:relative;}
+.mobile-nav summary{list-style:none;}
+.mobile-nav summary::-webkit-details-marker{display:none;}
+.mobile-nav nav{position:absolute;z-index:2;right:0;top:calc(100% + .6rem);width:min(18rem, calc(100vw - 2rem));padding:.6rem;background:white;border:1px solid #dcebe9;border-radius:16px;box-shadow:0 12px 30px rgba(13,148,136,.14);}
+.mobile-nav nav a{display:block;padding:.65rem .7rem;border-radius:8px;}
+.mobile-nav nav a:hover{background:#f2f9f8;}
+@media(max-width:68rem){.desktop-nav,.desktop-search{display:none;}.mobile-nav{display:block;}}
+@media(max-width:30rem){.shell{width:calc(100% - 1.25rem);min-height:62px;gap:.45rem;}.identity{font-size:.88rem;gap:.4rem;}.mark{width:32px;height:32px;}.actions .contact{display:none;}.language{padding:.4rem .5rem;font-size:.74rem;}}
+</style>

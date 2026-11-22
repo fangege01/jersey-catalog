@@ -59,7 +59,7 @@ export const prerender = false;
 export const POST: APIRoute = async ({ request, params, redirect }) => {
   const publicId = parseOrderOrLegacyPublicId(params.id, 'order');
   const existing = publicId ? await getOrderByPublicId(env.DB, publicId) : null;
-  if (!existing) return new Response('Not found', { status: 404 });
+  if (!existing) return new Response('未找到记录。', { status: 404 });
   const id = existing.id;
 
   const form = await request.formData();
@@ -87,9 +87,9 @@ export const POST: APIRoute = async ({ request, params, redirect }) => {
 
   if (action === 'resolve_inventory_exception') {
     const exceptionId = parsePublicId(form.get('exception_id'), 'inventoryException');
-    if (!exceptionId) return fail('Invalid inventory exception.');
+    if (!exceptionId) return fail('无效的库存异常记录。');
     const resolved = await resolveInventoryException(env.DB, id, exceptionId);
-    return resolved ? notice('Inventory exception marked reconciled.') : fail('That inventory exception is already resolved or does not belong to this order.');
+    return resolved ? notice('库存异常已标记为核对完成。') : fail('该库存异常已处理，或不属于此订单。');
   }
 
   // Rotate the guest access token and email the customer the replacement link.
@@ -99,23 +99,23 @@ export const POST: APIRoute = async ({ request, params, redirect }) => {
   if (action === 'reissue_link') {
     if (!existing.email) {
       return fail(
-        'This order has no customer email, so a new link cannot be delivered. Nothing was changed.',
+        '该订单没有客户邮箱，无法发送新链接。订单记录未改动。',
       );
     }
     if (!shouldSendCustomerOrderEmail(existing.payment_method)) {
-      return fail('Demo orders never email customers, so their link cannot be reissued.');
+      return fail('演示订单不发送客户邮件，无法重新签发链接。');
     }
     if (!existing.public_id?.startsWith('ord_')) {
       // A legacy order's guest link IS its preserved public ID — there is no
       // registry token to rotate.
-      return fail('This order predates revocable guest links and cannot be reissued.');
+      return fail('该旧订单使用不可撤销的访客链接，无法重新签发。');
     }
     // Rotation kills every old link the instant it lands, so refuse up front
     // when no email provider could deliver the replacement — otherwise the
     // customer would lose access with nothing on the way.
     if (!(await getEmailProvider(await getStoreSettings(env.DB)))) {
       return fail(
-        'Email is not configured, so the replacement link could not be delivered. Nothing was changed.',
+        '邮件服务尚未配置，无法发送新链接。订单记录未改动。',
       );
     }
     // Atomic: rotates the token AND queues the versioned
@@ -123,7 +123,7 @@ export const POST: APIRoute = async ({ request, params, redirect }) => {
     // unsettled checkouts (and unknown registry rows).
     const reissued = await reissueGuestAccess(env.DB, existing.public_id);
     if (!reissued) {
-      return fail('Only settled orders with a guest link can be reissued.');
+      return fail('仅可为已结算且有访客链接的订单重新签发。');
     }
     try {
       await deliverOrderNotifications(env.DB, id, new URL(request.url).origin);
@@ -132,7 +132,7 @@ export const POST: APIRoute = async ({ request, params, redirect }) => {
       console.error('Guest-link reissue delivery failed:', err);
     }
     return notice(
-      'The old order links no longer work. A new link is being emailed to the customer.',
+      '旧订单链接已失效，系统正在向客户发送新链接。',
     );
   }
 
@@ -151,10 +151,10 @@ export const POST: APIRoute = async ({ request, params, redirect }) => {
     // in the provider's own dashboard, which syncs back automatically.
     if (order.external_refunded_cents > 0) {
       return fail(
-        'This order already has a manually recorded refund. Issue the remaining amount in your payment provider’s dashboard — it will sync back here automatically.',
+        '该订单已登记过手动退款。请在支付平台退还剩余款项，结果会自动同步。',
       );
     }
-    if (refundableCents(order) <= 0) return fail('This order is already fully refunded.');
+    if (refundableCents(order) <= 0) return fail('该订单已全额退款。');
 
     try {
       // NULL predates payment_method and was always Stripe. Falling through to
@@ -165,12 +165,13 @@ export const POST: APIRoute = async ({ request, params, redirect }) => {
       );
       if (!provider.refund) {
         return fail(
-          'Refunds are not supported for this payment method — return the money yourself, then use "Record refund".',
+          '此付款方式不支持自动退款。请自行退款后点击「登记退款」。',
         );
       }
       await provider.refund(order.provider_session_id);
     } catch (err) {
-      return fail(`Refund failed: ${(err as Error).message}`);
+      console.error('Admin provider refund failed', { orderId: id, error: err });
+      return fail('支付平台退款请求失败。请先在支付平台核对退款状态。');
     }
     // Absolute, not additive: the provider now holds the full total. The
     // charge.refunded webhook that follows reports the same number and is
@@ -195,9 +196,9 @@ export const POST: APIRoute = async ({ request, params, redirect }) => {
   // Record money already returned outside the provider. Moves no money.
   if (action === 'record_refund') {
     const order = await getOrder(env.DB, id);
-    if (!order) return fail('Order not found.');
+    if (!order) return fail('未找到订单。');
     const amount = cents();
-    if (!Number.isFinite(amount) || amount <= 0) return fail('Enter a refund amount above zero.');
+    if (!Number.isFinite(amount) || amount <= 0) return fail('请输入大于零的退款金额。');
 
     const result = await recordExternalRefund(env.DB, {
       orderId: id,
@@ -215,15 +216,15 @@ export const POST: APIRoute = async ({ request, params, redirect }) => {
 
     if (!result.ok) {
       if (result.reason === 'duplicate') {
-        return fail('That refund is already recorded — nothing was changed.');
+        return fail('该笔退款已登记。');
       }
       if (result.reason === 'insufficient_balance') {
         return fail(
-          `That is more than the remaining refundable balance (${formatPrice(refundableCents(order))}).`,
+          `该金额超过剩余可退款金额（${formatPrice(refundableCents(order))}）。`,
         );
       }
-      if (result.reason === 'invalid_amount') return fail('Enter a refund amount above zero.');
-      return fail('This order cannot be refunded.');
+      if (result.reason === 'invalid_amount') return fail('请输入大于零的退款金额。');
+      return fail('该订单无法退款。');
     }
     // sendRefundNotice applies the demo rule itself, so demo orders stay silent.
     await sendRefundNotice(id, amount, new URL(request.url).origin);
@@ -234,11 +235,11 @@ export const POST: APIRoute = async ({ request, params, redirect }) => {
   // when the webhook never arrived. Absolute: this is the provider's total.
   if (action === 'sync_refund') {
     const order = await getOrder(env.DB, id);
-    if (!order) return fail('Order not found.');
+    if (!order) return fail('未找到订单。');
     const amount = cents();
-    if (!Number.isFinite(amount) || amount < 0) return fail('Enter the total refunded so far.');
+    if (!Number.isFinite(amount) || amount < 0) return fail('请输入目前累计退款金额。');
     if (amount > order.amount_total_cents) {
-      return fail('That is more than the order total.');
+      return fail('该金额超过订单总额。');
     }
 
     const result = await syncProviderRefund(env.DB, {
@@ -251,9 +252,9 @@ export const POST: APIRoute = async ({ request, params, redirect }) => {
       createdBy: admin,
     });
 
-    if (!result.ok) return fail('This order cannot be reconciled.');
+    if (!result.ok) return fail('该订单无法核对。');
     if (!result.advanced) {
-      return fail('That total is already recorded — nothing was changed.');
+      return fail('该退款总额已登记。');
     }
     // The provider total can be individually valid yet exceed the order once
     // added to what was recorded by hand. The generated aggregate clamps, so
@@ -263,7 +264,7 @@ export const POST: APIRoute = async ({ request, params, redirect }) => {
     await sendRefundNotice(id, result.deltaCents, new URL(request.url).origin);
     if (conflict) {
       return fail(
-        'Recorded, but the provider total plus refunds recorded here now exceeds the order total. Review the refunds on this order.',
+        '已登记。支付平台退款与手动登记退款的合计超出订单总额，请核对该订单的退款记录。',
       );
     }
     return back;
@@ -275,7 +276,7 @@ export const POST: APIRoute = async ({ request, params, redirect }) => {
   if (action === 'void_refund') {
     const refundPublicId = parseOrderOrLegacyPublicId(form.get('refund_id'), 'refund');
     const target = refundPublicId ? await getRefundByPublicId(env.DB, refundPublicId) : null;
-    if (!target || target.order_id !== id) return fail('Invalid refund.');
+    if (!target || target.order_id !== id) return fail('无效的退款记录。');
     const result = await voidRecordedRefund(env.DB, {
       refundId: target.id,
       idempotencyKey: `void:${target.id}`,
@@ -285,8 +286,8 @@ export const POST: APIRoute = async ({ request, params, redirect }) => {
     if (!result.ok) {
       return fail(
         result.reason === 'duplicate'
-          ? 'That entry has already been voided.'
-          : 'Only manually recorded refunds can be voided.',
+          ? '该笔登记已作废。'
+          : '只能作废手动登记的退款。',
       );
     }
     return back;
@@ -326,8 +327,8 @@ export const POST: APIRoute = async ({ request, params, redirect }) => {
     // Quotes and definitively-failed attempts only. A SUBMITTED purchase may
     // still be completing at Shippo — only reconciliation can settle those.
     return (await discardLabelAttempt(env.DB, id))
-      ? notice('Label attempt discarded. You can fetch rates again.')
-      : fail('There is no discardable label attempt — a submitted purchase must be reconciled with Shippo instead.');
+      ? notice('已放弃该次运单购买，可重新查询运费。')
+      : fail('没有可放弃的运单购买记录。已提交的购买需要先向 Shippo 核对。');
   }
 
   if (action === 'label_force_discard') {
@@ -340,7 +341,7 @@ export const POST: APIRoute = async ({ request, params, redirect }) => {
       ? notice(
           'Attempt force-discarded. If the original request did reach Shippo, its label will appear only in your Shippo dashboard.',
         )
-      : fail('There is no submitted attempt to force-discard.');
+      : fail('没有可强制放弃的已提交记录。');
   }
 
   // Ask Shippo what actually happened to a submitted-but-unsettled attempt.
@@ -349,7 +350,7 @@ export const POST: APIRoute = async ({ request, params, redirect }) => {
   // a live purchase) an ambiguous attempt.
   if (action === 'label_reconcile') {
     const token = await getSecret(env.DB, 'shippo_api_key');
-    if (!token) return fail('Add a Shippo API token in Settings first.');
+    if (!token) return fail('请先在设置中添加 Shippo API 令牌。');
     const record = await getLabelRecord(env.DB, id);
     const settleable =
       record &&
@@ -357,7 +358,7 @@ export const POST: APIRoute = async ({ request, params, redirect }) => {
       record.rate_id &&
       (record.status === 'uncertain' || (record.status === 'purchasing' && isPurchaseStale(record)));
     if (!record || !settleable) {
-      return fail('There is no unsettled label attempt to reconcile.');
+      return fail('没有待核对的运单购买记录。');
     }
 
     // Provider/service/amount come from the shipment's own rate list — the
@@ -369,11 +370,11 @@ export const POST: APIRoute = async ({ request, params, redirect }) => {
       record.rate_id!,
       rate?.provider ?? record.provider ?? 'Carrier',
     );
-    if (!outcome.ok) return fail(`Could not reconcile with Shippo: ${outcome.error}`);
+    if (!outcome.ok) return fail(`无法与 Shippo 核对：${outcome.error}`);
 
     if (outcome.value.state === 'pending') {
       return fail(
-        'Shippo has no settled answer yet — the purchase may still be processing or not yet visible. Try again shortly; nothing was changed.',
+        'Shippo 尚未返回最终结果。运单可能仍在处理或暂未显示。请稍后重试，订单记录未改动。',
       );
     }
     if (outcome.value.state === 'refunded') {
@@ -389,9 +390,9 @@ export const POST: APIRoute = async ({ request, params, redirect }) => {
         labelUrl: refFound.labelUrl,
         carrierCode: carrierCodeFor(refFound.provider),
       });
-      if (!audited) return fail('The attempt changed state while reconciling — reload and check again.');
+      if (!audited) return fail('核对期间运单状态已变化，请刷新后重新检查。');
       return notice(
-        `Shippo shows the label was purchased and then refunded (transaction ${refFound.transactionId}). Recorded — you can fetch rates again.`,
+        `Shippo 已确认运单购买后退款（交易 ${refFound.transactionId}）。结果已登记，可重新查询运费。`,
       );
     }
     if (outcome.value.state === 'none') {
@@ -402,9 +403,9 @@ export const POST: APIRoute = async ({ request, params, redirect }) => {
         'Reconciled with Shippo: the attempt terminated in ERROR without purchasing.',
       );
       if (!failed) {
-        return fail('The attempt changed state while reconciling — reload and check again.');
+        return fail('核对期间运单状态已变化，请刷新后重新检查。');
       }
-      return notice('Shippo explicitly reports the attempt failed without purchasing. You can fetch rates again.');
+      return notice('Shippo 已确认未购买运单，可以重新查询运费。');
     }
     const found = outcome.value.label;
     const recorded = await recordPurchased(env.DB, id, record.claim_token!, {
@@ -417,34 +418,34 @@ export const POST: APIRoute = async ({ request, params, redirect }) => {
       carrierCode: carrierCodeFor(found.provider),
     });
     if (!recorded.recorded) {
-      return fail('The attempt changed state while reconciling — reload and check again.');
+      return fail('核对期间运单状态已变化，请刷新后重新检查。');
     }
     if (!recorded.orderFulfilled) {
       return notice(
-        `Label ${found.trackingNumber} recovered from Shippo and recorded — but the order refused fulfillment (refunded or already fulfilled). Reconcile the shipment by hand.`,
+        `已从 Shippo 找回并登记运单 ${found.trackingNumber}。订单已退款或履约，请手动核对配送。`,
       );
     }
     await queueShippedDelivery(id);
     return notice(
-      `Label ${found.trackingNumber} recovered from Shippo, recorded, and the order fulfilled.`,
+      `已从 Shippo 找回并登记运单 ${found.trackingNumber}，订单已标记为履约。`,
     );
   }
 
   if (action === 'label_rates' || action === 'buy_label') {
     const token = await getSecret(env.DB, 'shippo_api_key');
-    if (!token) return fail('Add a Shippo API token in Settings first.');
-    if (!existing.ship_address) return fail('This order has no shipping address.');
+    if (!token) return fail('请先在设置中添加 Shippo API 令牌。');
+    if (!existing.ship_address) return fail('该订单没有收件地址。');
     let raw: ShippingAddress;
     try {
       raw = JSON.parse(existing.ship_address) as ShippingAddress;
     } catch {
-      return fail('This order’s shipping address could not be read.');
+      return fail('无法读取该订单的收件地址。');
     }
     // The snapshot's fields are nullable (provider shapes vary); a label needs
     // the essentials, so refuse with the gap named rather than 500 at Shippo.
     if (!raw.name || !raw.line1 || !raw.city || !raw.postal || !raw.country) {
       return fail(
-        'This order’s shipping address is incomplete — a label needs name, street, city, postal code, and country.',
+        '收件地址不完整。购买运单需要收件人、街道、城市、邮编和国家或地区。',
       );
     }
     const shipTo = {
@@ -468,14 +469,14 @@ export const POST: APIRoute = async ({ request, params, redirect }) => {
         country: String(form.get('from_country') ?? '').trim().toUpperCase(),
       };
       if (!from.name || !from.street1 || !from.city || !from.zip || from.country.length !== 2) {
-        return fail('Fill in the complete ship-from address (2-letter country).');
+        return fail('请填写完整发件地址，国家或地区使用两位代码。');
       }
       // Domestic only, for now: an international label needs a customs
       // declaration (contents, values, phone numbers) this flow does not
       // collect, so Shippo would refuse or the parcel would stall at export.
       if (from.country !== shipTo.country.toUpperCase()) {
         return fail(
-          `International labels aren’t supported yet (this order ships to ${shipTo.country.toUpperCase()}). Buy this label in your Shippo dashboard, then record the tracking number here.`,
+          `该订单寄往 ${shipTo.country.toUpperCase()}。请在 Shippo 控制台购买国际运单，再到此处登记物流单号。`,
         );
       }
       const settings = await getStoreSettings(env.DB);
@@ -488,7 +489,7 @@ export const POST: APIRoute = async ({ request, params, redirect }) => {
         },
         settings.weightUnit,
       );
-      if (!parsed.parcel) return fail(parsed.error ?? 'Check the parcel fields.');
+      if (!parsed.parcel) return fail(parsed.error ?? '请检查包裹尺寸和重量。');
 
       // Remember for next time regardless of whether a label gets bought.
       await setSetting(env.DB, 'ship_from', JSON.stringify(from));
@@ -515,7 +516,7 @@ export const POST: APIRoute = async ({ request, params, redirect }) => {
       // progress, done, or the order is no longer labelable (unpaid, fulfilled,
       // pickup) — nothing was charged either way.
       if (!(await recordQuote(env.DB, id, rates.value.shipmentId))) {
-        return fail('This order can’t fetch rates right now — a label purchase already exists or the order is no longer eligible.');
+        return fail('当前无法查询运费。该订单已购买运单或已不符合查询条件。');
       }
       return back;
     }
@@ -523,10 +524,10 @@ export const POST: APIRoute = async ({ request, params, redirect }) => {
     // buy_label — the claim flips this order's quote to 'purchasing'; exactly
     // one concurrent submit wins, and the shipment bought from is the row's.
     const rateId = String(form.get('rate') ?? '').trim();
-    if (!rateId) return fail('Pick a rate first.');
+    if (!rateId) return fail('请先选择一项运费报价。');
     const claim = await claimPurchase(env.DB, id, rateId);
     if (!claim) {
-      return fail('No open quote to purchase — fetch rates first (or a purchase is already under way).');
+      return fail('当前没有可购买的报价。请先查询运费，或等待正在进行的购买完成。');
     }
     const rates = await getShipmentRates(token, claim.shipmentId);
     if (!rates.ok) {
@@ -536,7 +537,7 @@ export const POST: APIRoute = async ({ request, params, redirect }) => {
     const rate = rates.value.find((r) => r.rateId === rateId);
     if (!rate) {
       await markLabelFailed(env.DB, id, claim.claimToken, 'Selected rate no longer offered.');
-      return fail('That rate is no longer offered. Fetch rates again.');
+      return fail('原报价已失效，请重新查询运费。');
     }
 
     const bought = await purchaseLabel(token, rate.rateId, rate.provider, existing.public_id);
@@ -547,7 +548,7 @@ export const POST: APIRoute = async ({ request, params, redirect }) => {
         // order id via metadata) before they explicitly discard.
         await markLabelUncertain(env.DB, id, claim.claimToken, bought.error);
         return fail(
-          `Shippo’s answer was lost mid-purchase (${bought.error}) — the label MAY have been bought. Use “Reconcile with Shippo” on this order to settle it either way.`,
+          `购买运单时未收到 Shippo 的确认。运单可能已购买，请先在本订单中与 Shippo 核对。`,
         );
       }
       await markLabelFailed(env.DB, id, claim.claimToken, bought.error);
@@ -571,7 +572,7 @@ export const POST: APIRoute = async ({ request, params, redirect }) => {
       // while Shippo processed it — the label exists ONLY at Shippo. Nothing
       // here was touched, by design; the charge still needs human eyes.
       return fail(
-        `A label (${bought.value.trackingNumber}) was purchased by an attempt that had already been discarded — it is not recorded here. Reconcile it in your Shippo dashboard (order ${existing.public_id}).`,
+        `此前放弃的请求已购买运单（${bought.value.trackingNumber}），但未登记到订单。请在 Shippo 控制台核对订单 ${existing.public_id}。`,
       );
     }
     if (!recorded.orderFulfilled) {
@@ -580,15 +581,15 @@ export const POST: APIRoute = async ({ request, params, redirect }) => {
       // flight. No shipped email was queued. Say so — pretending this
       // succeeded is how paid labels get lost.
       return fail(
-        `Label ${bought.value.trackingNumber} was purchased and saved, but the order could not be marked fulfilled with it — it changed state meanwhile (refunded?). No customer email was sent. Reconcile by hand.`,
+        `运单 ${bought.value.trackingNumber} 已购买并保存。由于订单状态发生变化，系统未标记履约或发送邮件，请手动核对。`,
       );
     }
     const willEmail = await queueShippedDelivery(id);
     return notice(
-      `Label purchased (${rate.provider} ${rate.service}). Tracking ${bought.value.trackingNumber} recorded. ${
+      `已购买运单（${rate.provider} ${rate.service}），已登记物流单号 ${bought.value.trackingNumber}。 ${
         willEmail
-          ? 'The tracking email to the customer has been queued.'
-          : 'No customer email will be sent (demo order, no address, or email not configured).'
+          ? '物流通知邮件已加入发送队列。'
+          : '由于是演示订单、缺少客户邮箱或邮件服务未配置，系统不会发送邮件。'
       }`,
     );
   }
@@ -598,7 +599,7 @@ export const POST: APIRoute = async ({ request, params, redirect }) => {
   const trackingNumber = String(form.get('tracking_number') ?? '').trim() || null;
   if (!(await fulfillOrder(env.DB, id, carrier, trackingNumber))) {
     return fail(
-      'This order has a label purchase in progress or awaiting reconciliation — finish or discard that first.',
+      '该订单有正在购买或待核对的运单，请先处理该记录。',
     );
   }
 

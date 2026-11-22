@@ -6,7 +6,7 @@ import { getConfig } from '../../config';
 import { setSetting, getSetting, getStoreSettings } from '../../features/settings/db';
 import { normalizeTimeZone, allTimeZones } from '../../features/settings/timeZone';
 import { setAdminPassword, adminPasswordHash } from '../../features/auth/admin';
-import { signSession } from '../../features/auth/session';
+import { constantTimeEqual, signSession } from '../../features/auth/session';
 import { catalogIsEmpty, seedDemoCatalog } from '../../features/seed/demo';
 import { CACHE_TAG } from '../../features/cache/tags';
 import { purgeCacheTags } from '../../features/cache/purge';
@@ -22,29 +22,37 @@ const MIN_PW = 8;
 
 let timeZoneError = '';
 let passwordError = '';
+const hasPassword = !!(await getSetting(env.DB, 'admin_password_hash'));
+const behindAccess = !!Astro.locals.adminEmail;
+const needsSetupCode = !import.meta.env.DEV && cfg.features.catalogOnly && !hasPassword && !behindAccess;
+const setupCode = env.ADMIN_SETUP_TOKEN ?? '';
+const setupCodeAvailable = /^[A-Za-z0-9_-]{32,256}$/.test(setupCode);
+let setupError = '';
 
 if (Astro.request.method === 'POST') {
   const form = await Astro.request.formData();
   const name = String(form.get('store_name') ?? '').trim();
   const tz = normalizeTimeZone(String(form.get('time_zone') ?? ''));
   const pw = String(form.get('admin_password') ?? '');
-  const hasPasswordAlready = !!(await getSetting(env.DB, 'admin_password_hash'));
-  // Middleware sets adminEmail only after verifying the Access JWT — a safe signal.
-  const behindAccess = !!Astro.locals.adminEmail;
+  const submitted = form.get('setup_code');
+  if (needsSetupCode && (!setupCodeAvailable || typeof submitted !== 'string' || !constantTimeEqual(submitted, setupCode))) {
+    Astro.response.status = 403;
+    setupError = setupCodeAvailable ? '初始化口令错误。' : '请在 Cloudflare 中配置管理员初始化口令。';
+  }
 
   // Validate everything BEFORE persisting anything, so a bad field never half-saves.
-  if (!tz) timeZoneError = 'Enter a valid IANA time zone, such as UTC or America/New_York.';
-  if (pw && pw.length < MIN_PW) passwordError = `Password must be at least ${MIN_PW} characters.`;
+  if (!tz) timeZoneError = '请输入有效的 IANA 时区名称，例如 UTC 或 America/New_York。';
+  if (pw && pw.length < MIN_PW) passwordError = `密码至少需要 ${MIN_PW} 个字符。`;
   // Finishing without any admin credential would strand the operator (the bootstrap
   // gate keeps bouncing /admin back here, and this page stays public). Require a
   // password — unless one's already set, Access fronts /admin, or this is local dev.
-  const willHaveCredential = hasPasswordAlready || behindAccess || pw.length >= MIN_PW;
+  const willHaveCredential = hasPassword || behindAccess || pw.length >= MIN_PW;
   if (!import.meta.env.DEV && !willHaveCredential && !passwordError) {
     passwordError =
-      'Set an admin password — without one the dashboard is unreachable and this page stays public.';
+      '请设置管理员密码。设置前无法进入仪表盘，初始化页面仍可访问。';
   }
 
-  if (!timeZoneError && !passwordError) {
+  if (!timeZoneError && !passwordError && !setupError) {
     // Empty name → clear the override (fall back to the build-time STORE_NAME).
     await setSetting(env.DB, 'store_name', name || null);
     await setSetting(env.DB, 'time_zone', tz!);
@@ -83,25 +91,23 @@ const settings = await getStoreSettings(env.DB);
 const storeName = settings.storeName ?? cfg.storeName;
 const timeZone = settings.timeZone ?? cfg.timeZone;
 const timeZones = allTimeZones();
-const hasPassword = !!(await getSetting(env.DB, 'admin_password_hash'));
 const catalogEmpty = await catalogIsEmpty(env.DB);
 ---
 
-<AdminLayout title="Setup" active="dashboard">
+<AdminLayout title="初始化设置" active="dashboard">
   <div class="mx-auto max-w-2xl">
-    <h1 class="text-2xl font-bold">Set up your store</h1>
+    <h1 class="text-2xl font-bold">设置你的商店</h1>
     <p class="mt-1 text-sm text-gray-500">
-      A few first-run settings — you can change them any time in Settings. This just gets
-      you running.
+      先完成基本配置。以后可在后台设置中修改。
     </p>
 
     <form method="POST" class="mt-8 space-y-6">
       {/* ── Store basics ─────────────────────────────────────────────────────── */}
       <section class="rounded-lg border border-line bg-white p-5">
-        <h2 class="text-sm font-semibold uppercase tracking-widest text-gray-500">Store basics</h2>
+        <h2 class="text-sm font-semibold uppercase tracking-widest text-gray-500">店铺基本信息</h2>
         <div class="mt-4 flex flex-wrap items-end gap-3">
           <label class="flex flex-col gap-1 text-xs uppercase tracking-widest text-gray-400">
-            Store name
+            店铺名称
             <input
               type="text"
               name="store_name"
@@ -110,7 +116,7 @@ const catalogEmpty = await catalogIsEmpty(env.DB);
             />
           </label>
           <label class="flex flex-col gap-1 text-xs uppercase tracking-widest text-gray-400">
-            Store time zone
+            店铺时区
             <input
               type="text"
               name="time_zone"
@@ -119,7 +125,7 @@ const catalogEmpty = await catalogIsEmpty(env.DB);
               list="tz-list"
               data-time-zone
               data-auto-detect={settings.timeZone ? 'false' : 'true'}
-              placeholder="Search e.g. America/New_York"
+              placeholder="搜索时区，例如 America/New_York"
               class="w-64 rounded-md border border-gray-300 px-3 py-2 text-sm normal-case tracking-normal focus:border-brand focus:outline-none"
             />
             <datalist id="tz-list">
@@ -129,30 +135,36 @@ const catalogEmpty = await catalogIsEmpty(env.DB);
         </div>
         {timeZoneError && <p class="mt-2 text-xs text-red-600">{timeZoneError}</p>}
         <p class="mt-3 text-xs text-gray-400">
-          Currency stays a build-time setting (it's wired through every price) — set
-          <code class="rounded bg-gray-100 px-1">currency</code> in
-          <code class="rounded bg-gray-100 px-1">src/config.ts</code>. Current:
+          币种是构建时设置，可在
+          <code class="rounded bg-gray-100 px-1">src/store.config.ts</code> 中的
+          <code class="rounded bg-gray-100 px-1">currency</code> 设置。当前为
           {' '}{cfg.currency.toUpperCase()}.
         </p>
       </section>
 
       {/* ── Admin password ───────────────────────────────────────────────────── */}
       <section class="rounded-lg border border-line bg-white p-5">
-        <h2 class="text-sm font-semibold uppercase tracking-widest text-gray-500">Admin password</h2>
+        <h2 class="text-sm font-semibold uppercase tracking-widest text-gray-500">管理员密码</h2>
+        {needsSetupCode && <label class="mt-4 flex flex-col gap-1 text-sm">
+          初始化口令
+          <input name="setup_code" type="password" autocomplete="off" minlength="32" maxlength="256" required
+            class="w-64 rounded-md border border-gray-300 px-3 py-2" />
+        </label>}
+        {needsSetupCode && !setupCodeAvailable && <p class="mt-2 text-sm text-muted">请先在 Cloudflare Worker 中设置 ADMIN_SETUP_TOKEN。</p>}
+        {setupError && <p role="alert" class="mt-2 text-sm text-red-600">{setupError}</p>}
         <p class="mt-1 text-sm text-gray-500">
-          Password for <code class="rounded bg-gray-100 px-1">/admin/login</code> — stored hashed
-          (PBKDF2), never plaintext.{' '}
-          {hasPassword ? 'A password is already set; leave blank to keep it.' : 'Required to finish.'}
-          {' '}Cloudflare Access is the recommended production auth; this is the simpler stopgap.
+          为 <code class="rounded bg-gray-100 px-1">/admin/login</code> 设置密码，系统将使用 PBKDF2 哈希保存。{' '}
+          {hasPassword ? '已设置密码。留空可保留原密码。' : '请填写以完成设置。'}
+          {' '}此设置用于管理员密码登录。生产环境也支持 Cloudflare Access。
         </p>
         <label class="mt-4 flex flex-col gap-1 text-xs uppercase tracking-widest text-gray-400">
-          {hasPassword ? 'New password (optional)' : 'New password'}
+          {hasPassword ? '新密码（选填）' : '新密码'}
           <input
             type="password"
             name="admin_password"
             autocomplete="new-password"
             minlength="8"
-            placeholder="at least 8 characters"
+            placeholder="至少 8 个字符"
             class="w-64 rounded-md border border-gray-300 px-3 py-2 text-sm normal-case tracking-normal focus:border-brand focus:outline-none"
           />
         </label>
@@ -160,14 +172,13 @@ const catalogEmpty = await catalogIsEmpty(env.DB);
       </section>
 
       {/* ── Payments (configured later in Settings — not needed to get running) ─ */}
-      <section class="rounded-lg border border-line bg-white p-5">
-        <h2 class="text-sm font-semibold uppercase tracking-widest text-gray-500">Payments</h2>
+      {!cfg.features.catalogOnly && <section class="rounded-lg border border-line bg-white p-5">
+        <h2 class="text-sm font-semibold uppercase tracking-widest text-gray-500">支付设置</h2>
         <p class="mt-2 text-sm text-gray-500">
-          <strong>Demo</strong> checkout works right away. Set up real payment methods (card via
-          Stripe, Bitcoin Lightning, or OpenNode) whenever you're ready in
-          {' '}<strong>Settings → Payments</strong> — no need to do it now.
+          <strong>Demo</strong> 结账可立即使用。需要收款时，可在
+          {' '}<strong>站点设置 → 支付</strong> 配置实际付款方式，例如 Stripe 银行卡、闪电网络或 OpenNode。
         </p>
-      </section>
+      </section>}
 
       {/* ── Optional demo catalog + single finish button ─────────────────────── */}
       {catalogEmpty && (
@@ -178,8 +189,7 @@ const catalogEmpty = await catalogIsEmpty(env.DB);
             class="mt-0.5 rounded border-gray-300 text-brand focus:ring-brand"
           />
           <span>
-            Load the <strong>demo catalog</strong> — 30 sample products across 6 categories,
-            to explore the storefront. Leave unchecked to start empty and add your own.
+            加载 <strong>演示商品目录</strong> （包含 6 个分类和 30 个示例商品）。取消勾选可从空目录开始，自行添加商品。
           </span>
         </label>
       )}
@@ -187,7 +197,7 @@ const catalogEmpty = await catalogIsEmpty(env.DB);
         type="submit"
         class="w-fit rounded-md bg-brand px-5 py-2.5 text-sm font-medium text-white hover:bg-brand-hover"
       >
-        Finish setup
+        完成设置
       </button>
     </form>
   </div>

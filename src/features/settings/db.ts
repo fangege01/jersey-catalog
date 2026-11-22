@@ -1,4 +1,5 @@
 import type { D1Database } from '@cloudflare/workers-types';
+import type { SiteContentSettings, SiteCopyKey, SiteImageKey, SiteImages } from '../site-content/copy';
 import { normalizeTimeZone } from './timeZone';
 import {
   parseRuntimeShippingConfig,
@@ -15,6 +16,13 @@ import { defaultWeightUnit, isWeightUnit, type WeightUnit } from '../shipping/we
 /** Keys we store. Kept narrow on purpose — most config remains build-time. */
 export type SettingKey =
   | 'setup_complete' // '1' once the wizard has been finished
+  | 'ad_pixels'
+  | 'contact_popup'
+  | 'seo_controls'
+  | 'testimonials'
+  | SiteCopyKey
+  | SiteImageKey
+  | 'whatsapp_number'
   | 'store_name' // overrides config.storeName
   | 'time_zone' // IANA zone for store/admin date display; absent = config/env default
   | 'stripe_webhook_secret' // captured by webhook auto-registration (env wins if set)
@@ -59,6 +67,13 @@ export type SettingKey =
 export type FeatureKey = 'cart_enabled' | 'buy_now_enabled';
 
 export interface StoreSettings {
+  adPixels?: string;
+  contactPopup?: string;
+  seoControls?: string;
+  testimonials?: string;
+  siteContent?: SiteContentSettings;
+  siteImages?: SiteImages;
+  whatsappNumber?: string | null;
   setupComplete: boolean;
   storeName: string | null;
   /** Runtime IANA time zone, or null to use TIME_ZONE / UTC. */
@@ -182,6 +197,13 @@ export function parseStoreSettings(
     storeName: map.get('store_name') ?? null,
     timeZone: normalizeTimeZone(map.get('time_zone')),
     stripeWebhookSecret: map.get('stripe_webhook_secret') ?? null,
+    adPixels: map.get('ad_pixels'),
+    contactPopup: map.get('contact_popup'),
+    seoControls: map.get('seo_controls'),
+    testimonials: map.get('testimonials'),
+    siteContent: Object.fromEntries([...map].filter(([key]) => key.startsWith('site_content:'))),
+    siteImages: Object.fromEntries([...map].filter(([key]) => key.startsWith('site_image:'))),
+    whatsappNumber: map.get('whatsapp_number') ?? null,
     disabledPaymentMethods: (map.get('payment_methods_disabled') ?? '')
       .split(',')
       .map((s) => s.trim())

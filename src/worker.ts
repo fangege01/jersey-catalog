@@ -2,6 +2,7 @@ import { handle } from '@astrojs/cloudflare/handler';
 import { env } from 'cloudflare:workers';
 import { sweepStaleNotifications } from './features/email/outbox';
 import { releaseExpiredReservations } from './features/orders/reservations';
+import { pruneTrafficEvents } from './features/analytics/report';
 import { getSetting } from './features/settings/db';
 
 /**
@@ -33,6 +34,12 @@ async function runScheduledSweeps(): Promise<void> {
     await releaseExpiredReservations(db, 50);
   } catch (err) {
     console.error('Scheduled reservation sweep failed:', err);
+  }
+
+  try {
+    await pruneTrafficEvents(db);
+  } catch (err) {
+    console.error('Scheduled traffic cleanup failed:', err);
   }
 
   // Notification retry needs an origin to build order links with, and a cron

@@ -26,6 +26,7 @@ export interface SiteConfig {
    */
   timeZone: string;
   features: {
+    catalogOnly: boolean;
     /**
      * Customer accounts (passwordless magic-link login + /account order history).
      * Off by default. When on, needs the AUTH_SECRET secret (signs the login token
@@ -191,6 +192,7 @@ function defaultConfig(): SiteConfig {
     currency: 'usd', // store-wide currency (ISO 4217, lowercase)
     timeZone: env.TIME_ZONE ?? 'UTC', // setup/admin settings can override this at runtime
     features: {
+      catalogOnly: false,
       accounts: false, // magic-link customer login; needs AUTH_SECRET + email
     },
     images: {

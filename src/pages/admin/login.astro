@@ -1,7 +1,8 @@
 ---
 export const prerender = false;
 import { env } from 'cloudflare:workers';
-import Layout from '../../layouts/Layout.astro';
+import { getConfig } from '../../config';
+import '../../styles/admin.css';
 import { verifyConfiguredTurnstile, TURNSTILE_FIELD } from '../../features/auth/turnstile';
 import { signSession, verifySession } from '../../features/auth/session';
 import { adminCredential } from '../../features/auth/admin';
@@ -27,6 +28,7 @@ if (
   return Astro.redirect('/admin', 303);
 }
 
+const storeName = Astro.locals.settings?.storeName ?? getConfig().storeName;
 const SESSION_TTL = 7 * 24 * 3600; // 7 days
 let error = '';
 
@@ -46,9 +48,9 @@ if (Astro.request.method === 'POST') {
   const pwOk = await cred.verify(form.get('password')?.toString() ?? '');
 
   if (!tsOk) {
-    error = 'Verification failed — please try again.';
+    error = '验证失败，请重试。';
   } else if (!pwOk) {
-    error = 'Incorrect password.';
+    error = '密码错误。';
   } else {
     const token = await signSession(signingKey, cred.tagSource, SESSION_TTL, now);
     Astro.cookies.set('admin_session', token, {
@@ -63,9 +65,21 @@ if (Astro.request.method === 'POST') {
 }
 ---
 
-<Layout title="Admin login">
-  <div class="mx-auto max-w-sm py-10">
-    <h1 class="mb-6 text-2xl font-bold">Admin sign in</h1>
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex, nofollow" />
+    <title>管理员登录 — {storeName}</title>
+  </head>
+  <body class="grid min-h-screen place-items-center bg-paper px-4 py-10 text-ink antialiased">
+  <main class="w-full max-w-md overflow-hidden rounded-2xl border border-line bg-surface shadow-lg">
+    <header class="bg-[#102c34] px-6 py-7 text-white sm:px-8">
+      <p class="text-sm text-teal-100">{storeName}</p>
+      <h1 class="mt-2 text-2xl font-bold">管理员登录</h1>
+    </header>
+    <div class="space-y-5 p-6 sm:p-8">
 
     {
       error && (
@@ -77,7 +91,7 @@ if (Astro.request.method === 'POST') {
 
     <form method="POST" action="/admin/login" class="space-y-4">
       <label class="block text-sm">
-        <span class="mb-1 block font-medium">Password</span>
+        <span class="mb-1 block font-medium">密码</span>
         <input
           type="password"
           name="password"
@@ -96,8 +110,11 @@ if (Astro.request.method === 'POST') {
         type="submit"
         class="w-full rounded-md bg-brand px-4 py-2.5 font-medium text-white hover:bg-brand-hover"
       >
-        Sign in
+        登录
       </button>
     </form>
-  </div>
-</Layout>
+    <a href="/" class="inline-flex text-sm font-medium text-brand hover:underline">返回网站</a>
+    </div>
+  </main>
+  </body>
+</html>

@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
 import { Miniflare } from 'miniflare';
 import {
   createMediaRecord,
@@ -100,7 +101,8 @@ try {
        name TEXT NOT NULL,
        slug TEXT,
        active INTEGER NOT NULL DEFAULT 1,
-       image_key TEXT)`,
+       image_key TEXT,
+       description TEXT)`,
     `CREATE TABLE product_images (
        id INTEGER PRIMARY KEY AUTOINCREMENT,
        public_id TEXT UNIQUE,
@@ -129,6 +131,18 @@ try {
   ]) {
     await db.prepare(sql).run();
   }
+
+  const testimonialMigration = await readFile(
+    new URL('../../migrations/0042_customer_testimonials.sql', import.meta.url), 'utf8',
+  );
+  for (const statement of testimonialMigration.split(';').map((sql) => sql.trim()).filter(Boolean)) {
+    await db.prepare(statement).run();
+  }
+
+  const translationMigration = await readFile(
+    new URL('../../migrations/0043_storefront_translations.sql', import.meta.url), 'utf8',
+  );
+  await db.prepare(translationMigration).run();
 
   const newMedia = async (key, name = key) =>
     createMediaRecord(db, {
@@ -283,6 +297,22 @@ try {
     assert.equal(await deleteMediaRecord(db, m.id), m.image_key, 'freed media still refused');
   });
 
+  await check('published or draft Markdown references protect media in all languages', async () => {
+    const image = await newMedia('media/translation-only.png');
+    const body = '![Fixture](/images/' + image.image_key + ')';
+    await db.prepare("INSERT INTO pages (id, public_id, title, slug) VALUES (-1, 'page_testimage1', 'Size Guide', 'translation-size-guide')").run();
+    await db.prepare("INSERT INTO products (id, public_id, name, description) VALUES (-1, 'prod_testimage1', 'Team Kit', ?)").bind(body).run();
+    await db.prepare("INSERT INTO storefront_translations VALUES ('zh-CN', 'page', 'page_testimage1', '尺码表', ?)").bind(body).run();
+    const usage = await mediaUsage(db, image.id);
+    assert.deepEqual(usage.pages.map((page) => page.title), ['Size Guide']);
+    assert.deepEqual(usage.products.map((product) => product.name), ['Team Kit']);
+    assert.equal(await deleteMediaRecord(db, image.id), null);
+    await db.prepare("UPDATE products SET description = NULL WHERE public_id = 'prod_testimage1'").run();
+    assert.equal(await deleteMediaRecord(db, image.id), null, 'translated content was the only remaining reference');
+    await db.prepare("DELETE FROM storefront_translations WHERE public_id = 'page_testimage1'").run();
+    assert.equal(await deleteMediaRecord(db, image.id), image.image_key);
+  });
+
   console.log('\nguarded association writes');
 
   await check('a stale selection cannot attach media that was already deleted', async () => {
@@ -291,7 +321,7 @@ try {
     assert.equal(await deleteMediaRecord(db, m.id), 'media/vanishing.png');
     const result = await attachMediaToProduct(db, 903, m.id);
     assert.equal(result.ok, false);
-    assert.match(result.error, /no longer in the media library/);
+    assert.match(result.error, /已不在素材库/);
     const rows = await db
       .prepare('SELECT COUNT(*) c FROM product_images WHERE product_id = 903')
       .first();
@@ -304,7 +334,7 @@ try {
     assert.equal((await attachMediaToProduct(db, 904, m.id)).ok, true);
     const second = await attachMediaToProduct(db, 904, m.id);
     assert.equal(second.ok, false);
-    assert.match(second.error, /already in this product/);
+    assert.match(second.error, /已在商品相册/);
   });
 
   await check('attaching appends at the next gallery position', async () => {

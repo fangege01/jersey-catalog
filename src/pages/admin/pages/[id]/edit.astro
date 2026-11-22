@@ -12,7 +12,7 @@ import { parsePublicId } from '../../../../features/ids/publicId';
 // The route param is the page_ public ID; numeric row ids are not accepted.
 const publicId = parsePublicId(Astro.params.id, 'page');
 const page = publicId ? await getPageByPublicId(env.DB, publicId) : null;
-if (!page) return new Response('Not found', { status: 404 });
+if (!page) return new Response('未找到记录。', { status: 404 });
 
 const error = Astro.url.searchParams.get('error');
 const warning = Astro.url.searchParams.get('warning');
@@ -47,17 +47,18 @@ const tools = [
   { action: 'wrap', value: '**', label: 'B', title: 'Bold' },
   { action: 'wrap', value: '_', label: 'I', title: 'Italic' },
   { action: 'link', value: '', label: 'Link', title: 'Link' },
-  { action: 'prefix', value: '- ', label: 'List', title: 'Bulleted list' },
-  { action: 'prefix', value: '1. ', label: '1.', title: 'Numbered list' },
+  { action: 'prefix', value: '- ', label: 'List', title: '项目符号列表' },
+  { action: 'prefix', value: '1. ', label: '1.', title: '编号列表' },
   { action: 'prefix', value: '> ', label: 'Quote', title: 'Blockquote' },
-  { action: 'wrap', value: '`', label: 'Code', title: 'Inline code' },
+  { action: 'wrap', value: '`', label: 'Code', title: '行内代码' },
 ];
 ---
 
 <AdminLayout title={`Edit ${page.title}`} active="pages">
-  <a href="/admin/pages" class="text-sm text-gray-500 hover:text-brand">&larr; Back to pages</a>
+  <a class="mb-4 inline-block text-sm underline" href={'/admin/translations?entity=page&id=' + publicId}>编辑中文译文</a>
+  <a href="/admin/pages" class="text-sm text-gray-500 hover:text-brand">&larr; 返回页面列表</a>
   <div class="mt-4 mb-6 flex flex-wrap items-center justify-between gap-4">
-    <h1 class="font-serif text-3xl tracking-tight">Edit page</h1>
+    <h1 class="font-serif text-3xl tracking-tight">编辑页面</h1>
     {
       page.published !== 0 && (
         <a
@@ -66,7 +67,7 @@ const tools = [
           rel="noopener"
           class="text-sm text-accent hover:underline"
         >
-          View on store ↗
+          在前台查看 ↗
         </a>
       )
     }
@@ -89,7 +90,7 @@ const tools = [
   {
     saved && !warning && (
       <p class="mb-6 rounded-md border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800">
-        Saved.
+        已保存。
       </p>
     )
   }
@@ -97,7 +98,7 @@ const tools = [
   <form method="POST" action={`/api/admin/pages/${page.public_id}`} data-page-form>
     <div class="flex flex-wrap gap-4">
       <label class="block flex-1 text-xs uppercase tracking-widest text-gray-400">
-        Title
+        标题
         <input
           type="text"
           name="title"
@@ -108,7 +109,7 @@ const tools = [
         />
       </label>
       <label class="block flex-1 text-xs uppercase tracking-widest text-gray-400">
-        Slug
+        网址别名
         <input
           type="text"
           name="slug"
@@ -128,7 +129,7 @@ const tools = [
         data-modes
         hidden
         role="group"
-        aria-label="Editor view"
+        aria-label="编辑器视图"
         class="flex items-center gap-1 border-b border-line px-2 py-2"
       >
         <button
@@ -145,7 +146,7 @@ const tools = [
           class="rounded px-3 py-1.5 text-xs uppercase tracking-widest text-gray-500"
           aria-pressed="false"
         >
-          Split
+          分屏
         </button>
         <button
           type="button"
@@ -153,7 +154,7 @@ const tools = [
           class="rounded px-3 py-1.5 text-xs uppercase tracking-widest text-gray-500"
           aria-pressed="false"
         >
-          Preview
+          预览
         </button>
       </div>
 
@@ -187,7 +188,7 @@ const tools = [
                 preview in split view. */}
             <MediaPicker
               id="page-body"
-              label="Image"
+              label="图片"
               buttonClass="rounded px-2 py-1 text-xs text-gray-600 hover:bg-gray-100 hover:text-brand"
             />
           </div>
@@ -217,7 +218,7 @@ const tools = [
           <div
             class="flex h-11 items-center justify-between border-b border-line px-4 text-xs uppercase tracking-widest text-gray-400"
           >
-            <span>Preview <span class="normal-case tracking-normal">· click to find the source</span></span>
+            <span>预览 <span class="normal-case tracking-normal">· 点击查看源文本</span></span>
             {/* Reserved space, so the row doesn't reflow each time it renders. */}
             <span data-preview-status class="text-gray-300"></span>
           </div>
@@ -232,7 +233,7 @@ const tools = [
     {/* Options are generated from features/pages/layouts.ts — adding a preset
         there adds it here with no change to this file. */}
     <label class="mt-6 block max-w-sm text-xs uppercase tracking-widest text-gray-400">
-      Layout
+      版式
       <select
         name="layout"
         data-layout-select
@@ -258,17 +259,16 @@ const tools = [
     <div class="mt-6 flex flex-wrap items-center gap-4">
       <label class="flex items-center gap-2 text-sm text-gray-700">
         <input type="checkbox" name="published" checked={page.published !== 0} class="rounded" />
-        Published
+        已发布
       </label>
       <button
         type="submit"
         class="rounded-md bg-brand px-4 py-2 text-xs font-medium uppercase tracking-wider text-white hover:bg-brand-hover"
       >
-        Save
+        保存
       </button>
       <span class="text-xs text-gray-400">
-        Published pages appear in the footer and sitemap. Storefront caching means a change
-        can take up to a minute to appear.
+        已发布的页面会显示在页脚和站点地图中。前台有短时缓存，更新最多需要一分钟显示。
       </span>
     </div>
   </form>
@@ -318,7 +318,7 @@ const tools = [
     // and the filename is rarely a good description.
     document.addEventListener('media:selected', (event) => {
       const detail = (event as CustomEvent).detail as { imageKey: string; url: string };
-      const raw = window.prompt('Describe this image for screen readers:', '') ?? '';
+      const raw = window.prompt('请填写供屏幕阅读器使用的图片描述：', '') ?? '';
       // Escape \ [ and ]. A lone ] closes the alt span early; a lone [ opens a
       // link, so "Photo of [blue shirt" turns the rest into a link instead of
       // an image. The backslash has to be escaped too or it eats the next char.
@@ -375,7 +375,7 @@ const tools = [
           body,
           signal: controller.signal,
         });
-        if (!res.ok) throw new Error(`Preview failed (${res.status})`);
+        if (!res.ok) throw new Error(`预览加载失败 (${res.status})`);
         // Server-rendered by the same renderer the storefront uses, with raw
         // HTML disabled, so this is the storefront's own escaped output.
         preview.innerHTML = await res.text();
@@ -384,7 +384,7 @@ const tools = [
       } catch (err) {
         if (controller.signal.aborted) return; // superseded, not a failure
         if (status) status.textContent = '';
-        preview.textContent = err instanceof Error ? err.message : 'Preview failed.';
+        preview.textContent = err instanceof Error ? err.message : '预览加载失败.';
       } finally {
         if (inFlight === controller) inFlight = null;
       }

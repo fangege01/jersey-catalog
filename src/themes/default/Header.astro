@@ -58,6 +58,7 @@ const { model } = Astro.props;
     <StoreSearch
       action={model.search.action}
       query={model.search.query}
+      locale={model.locale}
       class="ml-auto hidden flex-1 justify-end sm:flex"
     />
     {/* ml-auto pins the whole nav to the right edge of the header row, so it
@@ -72,7 +73,7 @@ const { model } = Astro.props;
     >
       <StoreNav links={model.headerLinks} />
       {/* Search input is desktop-only; give mobile a link to the search page. */}
-      <a href={model.search.action} class="hover:text-brand sm:hidden">Search</a>
+      <a href={model.search.action} class="hover:text-brand sm:hidden">{model.locale === 'zh-CN' ? '搜索' : 'Search'}</a>
       {model.cart.enabled && <StoreCartControl href={model.cart.href} />}
       {model.account.enabled && <StoreAccountControl href={model.account.href} />}
     </nav>

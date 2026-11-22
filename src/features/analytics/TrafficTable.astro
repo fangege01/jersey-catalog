@@ -1,0 +1,40 @@
+---
+import type { TrafficCounts } from './report';
+
+interface Props {
+  title: string;
+  heading: string;
+  rows: Array<TrafficCounts & { label: string; detail: string | null }>;
+  format?: (value: string) => string;
+  formatDetail?: (value: string) => string;
+}
+
+const { title, heading, rows, format = (value) => value, formatDetail = (value) => value } = Astro.props;
+---
+<section class="min-w-0 rounded-xl border border-line bg-surface p-4 sm:p-5">
+  <h2 class="mb-3 text-base font-semibold">{title}</h2>
+  {rows.length ? (
+    <div class="overflow-x-auto">
+      <table class="w-full min-w-[28rem] border-collapse text-left text-sm">
+        <thead class="bg-paper text-muted">
+          <tr>
+            <th class="p-2">{heading}</th><th class="p-2">访客</th><th class="p-2">会话</th>
+            <th class="p-2">浏览</th><th class="p-2">点击</th><th class="p-2">点击人数</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row) => (
+            <tr class="border-b border-line">
+              <th scope="row" class="break-all p-2 font-medium">
+                {format(row.label) || '未知'}
+                {row.detail && <small class="block text-muted">{formatDetail(row.detail)}</small>}
+              </th>
+              <td class="p-2">{row.visitors}</td><td class="p-2">{row.visits}</td>
+              <td class="p-2">{row.views}</td><td class="p-2">{row.clicks}</td><td class="p-2">{row.clickers}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  ) : <p class="text-sm text-muted">当前筛选条件下暂无数据。</p>}
+</section>

@@ -5,6 +5,14 @@ import { publicOrigin } from '../features/http/origin';
 import { normalizeSearchQuery } from '../features/search/query';
 import { EMPTY_MENUS, visibleItems } from '../features/navigation/db';
 import { getEmailProvider } from '../features/email';
+import { isPurchasePath, managedWhatsAppHref, whatsappInquiryUrl } from '../features/storefront/catalogMode';
+import { display, languages, originalStorefrontPath, translatedPath } from '../features/i18n/locale';
+import { isTrafficPath } from '../features/analytics/events';
+import ContactPopup from '../features/popup/ContactPopup.astro';
+import { seoControls, verificationKeys, verificationTags } from '../features/seo/controls';
+import Testimonials from '../features/testimonials/Testimonials.astro';
+import Tracking from '../features/analytics/Tracking.astro';
+import { readSiteCopy, siteSections } from '../features/site-content/copy';
 import { buildShellModel } from '../features/storefront/shell';
 import StoreHeader from '#theme/Header.astro';
 import StoreFooter from '#theme/Footer.astro';
@@ -15,14 +23,31 @@ interface Props {
   description?: string;
   /** Root-relative or absolute image for social cards (made absolute below). */
   image?: string;
+  imageAlt?: string;
+  exactTitle?: boolean;
   /** Override the canonical URL. Used where two routes render the same content
    *  — the catalog is at both / and /products — so only one is indexable. */
   canonical?: string;
 }
 
-const { title, description, image, canonical: canonicalOverride } = Astro.props;
+const { title, description, image, imageAlt, exactTitle, canonical: canonicalOverride } = Astro.props;
 const config = getConfig();
+const locale = Astro.locals.storeLocale ?? (Astro.url.pathname.startsWith('/admin/') ? 'zh-CN' : 'en');
+const t = (english: string, chinese: string) => display(locale, english, chinese);
+const basePath = originalStorefrontPath(Astro.originPathname);
+const showLanguages = isTrafficPath(basePath);
+const otherLocale = locale === 'en' ? 'zh-CN' : 'en';
+const teal = import.meta.env.MINSHOP_THEME === 'teal';
+const languageSwitch: { locale: keyof typeof languages; label: string; href: string } | undefined = showLanguages ? {
+  locale: otherLocale,
+  label: languages[otherLocale],
+  href: translatedPath(basePath, otherLocale) + Astro.url.search,
+} : undefined;
 const { features } = config;
+const verification = seoControls(Astro.locals.settings?.seoControls).verification;
+const whatsappHref = features.catalogOnly
+  ? whatsappInquiryUrl(Astro.locals.settings?.whatsappNumber)
+  : null;
 // Runtime override (set by the setup wizard) wins over the build-time default.
 const storeName = Astro.locals.settings?.storeName ?? config.storeName;
 // Optional header logo. Falls back to the text store name whenever unset, so
@@ -34,10 +59,19 @@ const logoImageKey = Astro.locals.settings?.logoImageKey ?? null;
 // here rather than rendered as dead links — the storefront has no way to explain
 // the problem to a shopper, so admin is where it gets surfaced.
 const menus = Astro.locals.menus ?? EMPTY_MENUS;
-const headerItems = visibleItems(menus.header);
-const footerItems = visibleItems(menus.footer);
+const resolveContactHref = (href: string) => features.catalogOnly
+  ? managedWhatsAppHref(href, Astro.locals.settings?.whatsappNumber ?? null)
+  : href;
+const storefrontLinks = (items: typeof menus.header) => visibleItems(items).flatMap((item) => {
+  const href = resolveContactHref(teal && item.targetType === 'catalog' ? '/products' : item.href);
+  if (!href || (features.catalogOnly && URL.canParse(href, Astro.url) &&
+      isPurchasePath(new URL(href, Astro.url).pathname))) return [];
+  return [{ ...item, href }];
+});
+const headerItems = storefrontLinks(menus.header);
+const footerItems = storefrontLinks(menus.footer);
 // Cart can be switched off at runtime → browse-only catalog (hide the cart link).
-const cartEnabled = Astro.locals.settings?.cartEnabled ?? true;
+const cartEnabled = !features.catalogOnly && (Astro.locals.settings?.cartEnabled ?? true);
 // Accounts nav link: the runtime toggle wins over the build-time default.
 // The header must use the SAME predicate as /account, or it advertises a link
 // that immediately redirects. The route requires the flag, AUTH_SECRET, and a
@@ -55,8 +89,8 @@ const accountsOn =
 // Announcement bar: the message is its own on/off switch (empty = hidden). Astro
 // escapes both values on render, so admin-entered text can't inject markup.
 const announcement = Astro.locals.settings?.announcement ?? '';
-const announcementHref = Astro.locals.settings?.announcementHref ?? '';
-const pageTitle = title ? `${title} — ${storeName}` : storeName;
+const announcementHref = resolveContactHref(Astro.locals.settings?.announcementHref ?? '') ?? '';
+const pageTitle = title ? (exactTitle ? title : `${title} — ${storeName}`) : storeName;
 const query =
   Astro.url.pathname === '/search'
     ? normalizeSearchQuery(Astro.url.searchParams.get('q') ?? '')
@@ -64,13 +98,14 @@ const query =
 
 const desc = (description ?? `Shop ${storeName}.`).slice(0, 160);
 const origin = publicOrigin(Astro.url.origin, env.CANONICAL_ORIGIN);
-const canonical = canonicalOverride ?? new URL(Astro.url.pathname, origin).href;
+const canonicalBase = canonicalOverride ? new URL(canonicalOverride) : new URL(Astro.url.pathname, origin);
+const canonical = new URL(translatedPath(canonicalBase.pathname, locale) + canonicalBase.search, canonicalBase.origin).href;
 const ogImage = image ? new URL(image, origin).href : undefined;
 
 // The header and footer are store-owned, so they receive a model rather than
 // request context. Built from values middleware already loaded — no extra D1
 // read, on routes (checkout, pay) least able to afford one.
-const shell = buildShellModel({
+const shellModel = buildShellModel({
   storeName,
   logoImageKey,
   imageBaseUrl: config.images.baseUrl,
@@ -82,13 +117,31 @@ const shell = buildShellModel({
   cartEnabled,
   accountsEnabled: accountsOn,
 });
+const copy = readSiteCopy(Astro.locals.settings?.siteContent, 'global', locale);
+const mainLinks = [
+  { href: '/', text: copy.navHome },
+  { href: '/products', text: copy.navProducts },
+  { href: siteSections.factory.url, text: copy.navFactory },
+  { href: siteSections.about.url, text: copy.navAbout },
+  { href: siteSections.contact.url, text: copy.navContact },
+];
+const uniqueLinks = (links: typeof shellModel.headerLinks) =>
+  links.filter((link, index) => links.findIndex(item => item.href === link.href) === index);
+const themedMenu = teal ? {
+  headerLinks: mainLinks.map(link => ({ ...link, current: link.href === '/' ? basePath === '/' :
+    basePath.replace(/\/$/, '') === link.href || (link.href === '/products' && /^\/(products|categories)\//.test(basePath)) })),
+  footerCopy: copy.footer,
+  footerLinks: uniqueLinks([...mainLinks.slice(1), ...shellModel.footerLinks]),
+} : {};
+const shell = { ...shellModel, ...themedMenu, locale, languageSwitch, whatsappHref };
 ---
 
 <!doctype html>
-<html lang="en">
+<html lang={locale}>
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    {verificationKeys.map((key) => verification[key] && <meta name={verificationTags[key].meta} content={verification[key]} />)}
     <link rel="icon" href="/favicon.ico" sizes="16x16 32x32 48x48" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     {/* Declared so Safari stops probing the site root for it. Those probes are
@@ -100,6 +153,10 @@ const shell = buildShellModel({
     <title>{pageTitle}</title>
     <meta name="description" content={desc} />
     <link rel="canonical" href={canonical} />
+    {showLanguages && Object.keys(languages).map((code) => (
+      <link rel="alternate" hreflang={code} href={new URL(translatedPath(canonicalBase.pathname, code === 'zh-CN' ? 'zh-CN' : 'en'), origin).href} />
+    ))}
+    {showLanguages && <link rel="alternate" hreflang="x-default" href={new URL(canonicalBase.pathname, origin).href} />}
 
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content={storeName} />
@@ -107,11 +164,13 @@ const shell = buildShellModel({
     <meta property="og:description" content={desc} />
     <meta property="og:url" content={canonical} />
     {ogImage && <meta property="og:image" content={ogImage} />}
+    {ogImage && imageAlt && <meta property="og:image:alt" content={imageAlt} />}
 
     <meta name="twitter:card" content={ogImage ? 'summary_large_image' : 'summary'} />
     <meta name="twitter:title" content={pageTitle} />
     <meta name="twitter:description" content={desc} />
     {ogImage && <meta name="twitter:image" content={ogImage} />}
+    {ogImage && imageAlt && <meta name="twitter:image:alt" content={imageAlt} />}
 
     {/* Progressive image reveal, site-wide. The marker class is added in <head>,
         before any image markup is parsed, so incomplete images start on their
@@ -132,16 +191,29 @@ const shell = buildShellModel({
   </head>
   <body class="flex min-h-screen flex-col bg-paper text-ink antialiased">
     <StoreHeader model={shell} />
+    {!teal && showLanguages && <nav class="mx-auto flex w-full max-w-6xl justify-end px-6 pt-3 text-sm" aria-label={t('Language', '语言')}>
+      <a data-language-switch lang={otherLocale} hreflang={otherLocale}
+        class="underline" href={translatedPath(basePath, otherLocale) + Astro.url.search}>{languages[otherLocale]}</a>
+    </nav>}
 
     <main class="page-shell">
       <slot />
     </main>
 
+    {basePath === '/' && <Testimonials locale={locale} settings={Astro.locals.settings?.testimonials} />}
+    {!teal && whatsappHref && (
+      <div class="mx-auto max-w-6xl px-6 pb-6">
+        <a class="inline-flex rounded-md bg-brand px-5 py-3 text-sm font-medium text-on-brand hover:bg-brand-hover"
+          href={whatsappHref} data-whatsapp-inquiry>{t('Contact us on WhatsApp', '通过 WhatsApp 联系我们')}</a>
+      </div>
+    )}
     <StoreFooter model={shell} />
+    <ContactPopup locale={locale} path={Astro.response.status === 200 ? Astro.url.pathname : ''} settings={Astro.locals.settings?.contactPopup} href={whatsappHref} />
+    <Tracking locale={locale} path={Astro.response.status === 200 ? Astro.url.pathname : ''} pixelSettings={Astro.locals.settings?.adPixels} />
 
     {/* Slide-out cart drawer. Progressive enhancement: hidden + inert until JS
         opens it; the /cart page and plain form posts are the no-JS baseline. */}
-    <div
+    {!features.catalogOnly && <div
       data-cart-drawer
       class="invisible pointer-events-none fixed inset-0 z-40"
       role="dialog"
@@ -171,7 +243,7 @@ const shell = buildShellModel({
         </div>
         <div data-cart-body class="flex-1 overflow-y-auto px-6 py-5"></div>
       </aside>
-    </div>
+    </div>}
 
     <script>
       // @ts-nocheck -- plain-JS client script (annotations would ship to the browser)

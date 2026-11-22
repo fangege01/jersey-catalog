@@ -27,7 +27,7 @@ interface Props {
 
 const {
   id,
-  label = 'Choose from Media',
+  label = '从素材库选择',
   allowUpload = true,
   buttonClass = 'rounded-md border border-line px-4 py-2 text-xs font-medium uppercase tracking-wider text-muted hover:border-brand hover:text-brand',
 } = Astro.props;
@@ -53,15 +53,15 @@ const {
 
   <dialog
     data-picker-dialog
-    aria-label="Choose an image"
+    aria-label="选择图片"
     class="w-[min(56rem,92vw)] rounded-md border border-line p-0 backdrop:bg-black/40"
   >
     <div class="flex items-center justify-between border-b border-line px-5 py-4">
-      <h2 class="font-serif text-xl tracking-tight">Choose an image</h2>
+      <h2 class="font-serif text-xl tracking-tight">选择图片</h2>
       <button
         type="button"
         data-picker-close
-        aria-label="Close"
+        aria-label="关闭"
         class="text-2xl leading-none text-faint hover:text-brand"
       >
         &times;
@@ -82,7 +82,7 @@ const {
             data-picker-upload
             class="rounded-md bg-brand px-3 py-1.5 text-xs font-medium uppercase tracking-wider text-on-brand hover:bg-brand-hover"
           >
-            Upload
+            上传
           </button>
         </div>
       )
@@ -91,7 +91,7 @@ const {
     <p data-picker-error class="hidden px-5 pt-3 text-sm text-red-700"></p>
 
     <div data-picker-grid class="grid max-h-[60vh] grid-cols-3 gap-4 overflow-y-auto p-5 sm:grid-cols-4">
-      <p class="col-span-full py-8 text-center text-sm text-muted">Loading…</p>
+      <p class="col-span-full py-8 text-center text-sm text-muted">正在加载…</p>
     </div>
 
     <div class="flex items-center justify-between border-t border-line px-5 py-3 text-xs">
@@ -102,14 +102,14 @@ const {
           data-picker-prev
           class="rounded-md border border-line px-3 py-1.5 uppercase tracking-widest text-muted disabled:opacity-40"
         >
-          Previous
+          上一页
         </button>
         <button
           type="button"
           data-picker-next
           class="rounded-md border border-line px-3 py-1.5 uppercase tracking-widest text-muted disabled:opacity-40"
         >
-          Next
+          下一页
         </button>
       </span>
     </div>
@@ -160,17 +160,17 @@ const {
 
     async function load() {
       clearError();
-      grid.innerHTML = '<p class="col-span-full py-8 text-center text-sm text-muted">Loading…</p>';
+      grid.innerHTML = '<p class="col-span-full py-8 text-center text-sm text-muted">正在加载…</p>';
       let payload: PickerPage;
       try {
         const res = await fetch(`/api/admin/media?limit=${PAGE_SIZE}&offset=${offset}`, {
           headers: { accept: 'application/json' },
         });
-        if (!res.ok) throw new Error(`Media list failed (${res.status})`);
+        if (!res.ok) throw new Error(`素材库加载失败 (${res.status})`);
         payload = (await res.json()) as PickerPage;
       } catch (err) {
         grid.innerHTML = '';
-        showError(err instanceof Error ? err.message : 'Could not load media.');
+        showError(err instanceof Error ? err.message : '无法加载素材库，请重试。');
         return;
       }
 
@@ -178,7 +178,7 @@ const {
       grid.innerHTML = '';
       if (payload.media.length === 0) {
         grid.innerHTML =
-          '<p class="col-span-full py-8 text-center text-sm text-muted">No images yet.</p>';
+          '<p class="col-span-full py-8 text-center text-sm text-muted">素材库暂无图片。</p>';
       }
       for (const item of payload.media) {
         const button = document.createElement('button');
@@ -227,7 +227,7 @@ const {
     uploadBtn?.addEventListener('click', async () => {
       const input = root.querySelector<HTMLInputElement>('[data-picker-file]')!;
       const file = input.files?.[0];
-      if (!file) return showError('Choose a file first.');
+      if (!file) return showError('请先选择文件。');
       clearError();
       uploadBtn.disabled = true;
       try {
@@ -239,12 +239,12 @@ const {
           body,
         });
         const payload = (await res.json()) as { error?: string };
-        if (!res.ok) throw new Error(payload.error ?? 'Upload failed.');
+        if (!res.ok) throw new Error(payload.error ?? '上传失败，请重试。');
         input.value = '';
         offset = 0; // newest first, so the upload lands on page one
         await load();
       } catch (err) {
-        showError(err instanceof Error ? err.message : 'Upload failed.');
+        showError(err instanceof Error ? err.message : '上传失败，请重试。');
       } finally {
         uploadBtn.disabled = false;
       }

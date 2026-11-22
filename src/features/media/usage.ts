@@ -1,10 +1,14 @@
 import type { D1Database } from '@cloudflare/workers-types';
 
+import { imageSections, siteImageKey, siteSections, type ImageSection } from '../site-content/copy.ts';
+
 /** Everywhere one media item is currently used. Empty everywhere = deletable. */
 export interface MediaUsage {
   products: Array<{ id: number; public_id: string | null; name: string }>;
   pages: Array<{ id: number; public_id: string | null; title: string }>;
+  testimonials?: Array<{ id: string; name: string }>;
   logo: boolean;
+  siteImages?: ImageSection[];
 }
 
 export function emptyUsage(): MediaUsage {
@@ -12,7 +16,7 @@ export function emptyUsage(): MediaUsage {
 }
 
 export function isUnused(usage: MediaUsage): boolean {
-  return usage.products.length === 0 && usage.pages.length === 0 && !usage.logo;
+  return usage.products.length === 0 && usage.pages.length === 0 && !usage.testimonials?.length && !usage.logo && !usage.siteImages?.length;
 }
 
 /**
@@ -35,14 +39,27 @@ const PRODUCT_USAGE_SQL = `
     ) refs ON refs.image_key = m.image_key
     JOIN products p ON p.id = refs.product_id
    WHERE m.id IN (%IDS%)
-   ORDER BY p.name`;
+   UNION
+   SELECT m.id, p.id, p.public_id, p.name
+    FROM media m CROSS JOIN products p
+   WHERE m.id IN (%IDS%) AND (
+     instr(p.description, m.image_key) > 0 OR EXISTS (
+       SELECT 1 FROM storefront_translations t
+       WHERE t.entity = 'product' AND t.public_id = p.public_id AND instr(t.body, m.image_key) > 0
+     )
+   )
+   ORDER BY product_name`;
 
 const PAGE_USAGE_SQL = `
   SELECT pm.media_id AS media_id, pg.id AS page_id, pg.public_id AS page_public_id, pg.title AS page_title
     FROM page_media pm
     JOIN pages pg ON pg.id = pm.page_id
    WHERE pm.media_id IN (%IDS%)
-   ORDER BY pg.title`;
+   UNION
+   SELECT m.id, p.id, p.public_id, p.title
+    FROM media m CROSS JOIN storefront_translations t JOIN pages p ON p.public_id = t.public_id
+   WHERE m.id IN (%IDS%) AND t.entity = 'page' AND instr(t.body, m.image_key) > 0
+   ORDER BY page_title`;
 
 /**
  * Usage for a whole grid page in a bounded number of statements — never one
@@ -57,11 +74,14 @@ export async function mediaUsageForIds(
   for (const id of ids) usage.set(id, emptyUsage());
   if (ids.length === 0) return usage;
 
-  const placeholders = ids.map(() => '?').join(', ');
-  const [products, pages, logo] = await db.batch<Record<string, unknown>>([
-    db.prepare(PRODUCT_USAGE_SQL.replace('%IDS%', placeholders)).bind(...ids),
-    db.prepare(PAGE_USAGE_SQL.replace('%IDS%', placeholders)).bind(...ids),
-    db.prepare("SELECT value FROM settings WHERE key = 'logo_image_key'"),
+  const placeholders = ids.map((_, index) => '?' + (index + 1)).join(', ');
+  const [products, pages, logo, testimonials] = await db.batch<Record<string, unknown>>([
+    db.prepare(PRODUCT_USAGE_SQL.replaceAll('%IDS%', placeholders)).bind(...ids),
+    db.prepare(PAGE_USAGE_SQL.replaceAll('%IDS%', placeholders)).bind(...ids),
+    db.prepare(`SELECT s.key, m.id FROM settings s JOIN media m ON m.image_key = s.value
+      WHERE s.key IN ('logo_image_key', 'site_image:home', 'site_image:factory', 'site_image:about', 'site_image:contact')
+        AND m.id IN (${placeholders})`).bind(...ids),
+    db.prepare(`SELECT avatar_media_id AS media_id, id, name FROM customer_testimonials WHERE avatar_media_id IN (${placeholders}) ORDER BY name`).bind(...ids),
   ]);
 
   for (const row of (products.results ?? []) as Array<{
@@ -85,15 +105,17 @@ export async function mediaUsageForIds(
       ?.pages.push({ id: row.page_id, public_id: row.page_public_id, title: row.page_title });
   }
 
-  const logoKey = ((logo.results ?? []) as Array<{ value: string }>)[0]?.value;
-  if (logoKey) {
-    // One extra lookup for the single logo key, not one per row.
-    const row = await db
-      .prepare('SELECT id FROM media WHERE image_key = ?')
-      .bind(logoKey)
-      .first<{ id: number }>();
-    const entry = row ? usage.get(row.id) : undefined;
-    if (entry) entry.logo = true;
+  for (const row of testimonials.results as Array<{ media_id: number; id: string; name: string }>) {
+    const entry = usage.get(row.media_id);
+    if (entry) (entry.testimonials ??= []).push({ id: row.id, name: row.name });
+  }
+
+  for (const row of logo.results as Array<{ id: number; key: string }>) {
+    const entry = usage.get(row.id);
+    if (!entry) continue;
+    if (row.key === 'logo_image_key') entry.logo = true;
+    const section = imageSections.find(section => siteImageKey(section) === row.key);
+    if (section) (entry.siteImages ??= []).push(section);
   }
 
   return usage;
@@ -108,7 +130,7 @@ export async function mediaUsage(db: D1Database, id: number): Promise<MediaUsage
 export interface UsageLink {
   href: string;
   label: string;
-  kind: 'product' | 'page' | 'logo';
+  kind: 'product' | 'page' | 'logo' | 'testimonial' | 'site-image';
   /** Tooltip. Per-kind rather than templated: "the logo that uses this image"
    *  reads wrong, because the logo IS the use rather than a thing having one. */
   title: string;
@@ -125,22 +147,34 @@ export function usageLinks(usage: MediaUsage): UsageLink[] {
       href: `/admin/products/${p.public_id}/edit`,
       label: p.name,
       kind: 'product' as const,
-      title: `Edit ${p.name}`,
+      title: `编辑商品：${p.name}`,
     })),
     ...usage.pages.map((p) => ({
       href: `/admin/pages/${p.public_id}/edit`,
       label: p.title,
       kind: 'page' as const,
-      title: `Edit the ${p.title} page`,
+      title: `编辑页面：${p.title}`,
+    })),
+    ...(usage.testimonials ?? []).map((review) => ({
+      href: '/admin/testimonials?edit=' + review.id + '#review-editor',
+      label: review.name,
+      kind: 'testimonial' as const,
+      title: '编辑客户好评',
+    })),
+    ...(usage.siteImages ?? []).map(section => ({
+      href: '/admin/site-content?section=' + section,
+      label: siteSections[section].image,
+      kind: 'site-image' as const,
+      title: '在网站内容中更换图片',
     })),
     // The logo is a setting, not a row, so it links to where it is chosen.
     ...(usage.logo
       ? [
           {
             href: '/admin/settings',
-            label: 'Store logo',
+            label: '网站标志',
             kind: 'logo' as const,
-            title: 'Change the logo in Settings',
+            title: '前往设置更换网站标志',
           },
         ]
       : []),
@@ -152,18 +186,20 @@ export function describeUsage(usage: MediaUsage): string {
   const parts: string[] = [];
   if (usage.products.length > 0) {
     parts.push(
-      `${usage.products.length} product${usage.products.length === 1 ? '' : 's'} (${usage.products
+      `${usage.products.length} 件商品（${usage.products
         .map((p) => p.name)
         .join(', ')})`,
     );
   }
   if (usage.pages.length > 0) {
     parts.push(
-      `${usage.pages.length} page${usage.pages.length === 1 ? '' : 's'} (${usage.pages
+      `${usage.pages.length} 个页面（${usage.pages
         .map((p) => p.title)
         .join(', ')})`,
     );
   }
-  if (usage.logo) parts.push('the store logo');
-  return parts.join(' and ');
+  if (usage.testimonials?.length) parts.push('客户好评：' + usage.testimonials.map((review) => review.name).join(', '));
+  for (const section of usage.siteImages ?? []) parts.push(siteSections[section].image);
+  if (usage.logo) parts.push('网站标志');
+  return parts.join('、');
 }

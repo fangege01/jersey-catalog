@@ -184,7 +184,7 @@ describe('effectiveShippingConfig', () => {
       enabled: true,
       zones: [{ countries: ['US'], rates: [], freeOverCents: null }],
     };
-    expect(validateBuildTimeShipping(empty)).toMatch(/at least one shipping rate/i);
+    expect(validateBuildTimeShipping(empty)).toMatch(/至少添加一项运费规则/);
   });
   it('accepts an ordinary build-time configuration', () => {
     expect(validateBuildTimeShipping(buildTime)).toBeNull();
@@ -203,7 +203,7 @@ describe('validateShippingDocument', () => {
   });
   it('requires a zone and rate before enabling', () => {
     expect(messages(doc({ zones: [] }))).toContain(
-      'Add at least one zone with one rate before turning shipping on.',
+      '启用配送前，请至少添加一个含运费规则的配送区域。',
     );
   });
   it('rejects a country appearing in two zones', () => {
@@ -213,7 +213,7 @@ describe('validateShippingDocument', () => {
         { ...doc().zones[0]!, name: 'B' },
       ],
     });
-    expect(messages(two).some((m) => /already in another zone/.test(m))).toBe(true);
+    expect(messages(two).some((m) => /已在另一配送区域中/.test(m))).toBe(true);
   });
   it('rejects duplicate zone names case-insensitively', () => {
     const two = doc({
@@ -222,23 +222,23 @@ describe('validateShippingDocument', () => {
         { ...doc().zones[0]!, name: 'HOME', countries: ['CA'] },
       ],
     });
-    expect(messages(two)).toContain('Another zone already uses this name.');
+    expect(messages(two)).toContain('该区域名称已被使用。');
   });
   it('rejects an unknown country code', () => {
     expect(messages(doc({ zones: [{ ...doc().zones[0]!, countries: ['ZZ'] }] }))).toContain(
-      'ZZ is not a country code.',
+      'ZZ 不是有效的国家或地区代码。',
     );
   });
   it('keeps the catch-all alone and last', () => {
     const mixed = doc({ zones: [{ ...doc().zones[0]!, countries: ['*', 'US'] }] });
-    expect(messages(mixed)).toContain('Rest of world cannot be combined with specific countries.');
+    expect(messages(mixed)).toContain('全球其余地区不能和指定国家或地区混用。');
     const notLast = doc({
       zones: [
         { ...doc().zones[0]!, name: 'World', countries: ['*'] },
         { ...doc().zones[0]!, name: 'US', countries: ['US'] },
       ],
     });
-    expect(messages(notLast)).toContain('Rest of world must be the last zone.');
+    expect(messages(notLast)).toContain('请将全球其余地区设为最后一个区域。');
   });
   it('rejects duplicate rate labels within a zone', () => {
     const dupe = doc({
@@ -252,7 +252,7 @@ describe('validateShippingDocument', () => {
         },
       ],
     });
-    expect(messages(dupe)).toContain('Another rate in this zone uses this label.');
+    expect(messages(dupe)).toContain('该区域已存在同名运费规则。');
   });
   it('reserves the free-shipping label while a threshold is set', () => {
     const collide = doc({
@@ -264,7 +264,7 @@ describe('validateShippingDocument', () => {
         },
       ],
     });
-    expect(messages(collide).some((m) => /reserved/.test(m))).toBe(true);
+    expect(messages(collide).some((m) => /保留/.test(m))).toBe(true);
   });
   it('enforces the five-option ceiling with the synthesized free option', () => {
     const rates = ['A', 'B', 'C', 'D', 'E'].map((label) => ({
@@ -295,7 +295,7 @@ describe('validateShippingDocument', () => {
         },
       ],
     });
-    expect(messages(bands)).toContain('Each band must be heavier than the one above it.');
+    expect(messages(bands)).toContain('后一个区间的重量上限须大于前一个。');
   });
   it('allows no maximum only on the final band', () => {
     const bands = doc({
@@ -317,7 +317,7 @@ describe('validateShippingDocument', () => {
         },
       ],
     });
-    expect(messages(bands)).toContain('Only the last band can have no maximum.');
+    expect(messages(bands)).toContain('仅最后一个区间可不设重量上限。');
   });
   it('accepts a pickup rate and validates its fee like a flat price', () => {
     const pickup = doc({
@@ -337,7 +337,7 @@ describe('validateShippingDocument', () => {
         },
       ],
     });
-    expect(messages(bad)).toContain('Enter a price.');
+    expect(messages(bad)).toContain('请填写运费。');
   });
   it('requires at least one band on a weight rate', () => {
     const empty = doc({
@@ -348,7 +348,7 @@ describe('validateShippingDocument', () => {
         },
       ],
     });
-    expect(messages(empty)).toContain('Add at least one weight band.');
+    expect(messages(empty)).toContain('请至少添加一个重量区间。');
   });
 });
 
