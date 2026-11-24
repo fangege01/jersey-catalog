@@ -25,6 +25,7 @@ describe('localized storefront', () => {
     expect(popupDelays([5, 10, 10, 20])).toBeNull();
     const robots = robotsContent('https://shop.example', seoControls('{"crawlers":{"openai":true,"training":false}}'));
     expect(robots).toContain('User-agent: OAI-SearchBot\nAllow: /\nDisallow: /admin');
-    expect(robots).toContain('User-agent: GPTBot\nUser-agent: ClaudeBot\nDisallow: /');
+    expect(robots).toContain('User-agent: GPTBot\nDisallow: /\n\n');
+    expect(robots).toContain('User-agent: ClaudeBot\nDisallow: /\n\n');
   });
 });

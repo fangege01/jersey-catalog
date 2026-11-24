@@ -67,7 +67,9 @@ export function getTestimonial(db: D1Database, id: string) {
 export async function publicTestimonials(db: D1Database) {
   const [entries, summary] = await db.batch([
     db.prepare(`SELECT ${COLUMNS} ${FROM} WHERE t.published = 1 ORDER BY t.position, t.id LIMIT 12`),
-    db.prepare('SELECT COUNT(*) AS count, AVG(CASE WHEN rating_recorded = 1 THEN rating END) AS average FROM customer_testimonials WHERE published = 1'),
+    db.prepare(`SELECT COUNT(*) AS count,
+      ROUND(AVG(CASE WHEN rating_recorded = 1 THEN ROUND(rating * 10) END)) / 10.0 AS average
+      FROM customer_testimonials WHERE published = 1`),
   ]);
   return {
     entries: entries.results as unknown as Testimonial[],
@@ -79,8 +81,11 @@ export async function saveTestimonial(db: D1Database, form: FormData, id: string
   const name = reviewText(form, 'name', 100, true);
   const attribution = reviewText(form, 'attribution', 120);
   const quote = reviewText(form, 'quote', 1200, true);
-  const rating = reviewText(form, 'rating', 1);
-  if (rating && !/^[1-5]$/.test(rating)) throw new TestimonialInputError('评分必须为 1 到 5 星。');
+  const rating = form.get('rating');
+  const score = typeof rating === 'string' ? rating.trim() : null;
+  if (score === null || (score && !/^(?:[1-4](?:\.[0-9])?|5(?:\.0)?)$/.test(score))) {
+    throw new TestimonialInputError('评分须在 1 到 5 分之间，最多一位小数，例如 4.9。留空表示未评分。');
+  }
   const published = form.get('published') === '1' ? 1 : 0;
   const avatar = reviewText(form, 'avatar', 26);
   const mediaId = parsePublicId(avatar, 'media');
@@ -93,7 +98,7 @@ export async function saveTestimonial(db: D1Database, form: FormData, id: string
     english: { attribution: existing.attribution, quote: existing.quote },
   } : undefined);
   // Keep the existing required rating column compatible with older rows.
-  const values = [name, translated.attribution, translated.quote, attribution, quote, Number(rating || '1'), Number(Boolean(rating)), published, media?.id ?? null] as const;
+  const values = [name, translated.attribution, translated.quote, attribution, quote, Number(score || '1'), Number(Boolean(score)), published, media?.id ?? null] as const;
   if (id) {
     const result = await db.prepare(`UPDATE customer_testimonials
       SET name = ?, attribution = ?, quote = ?, source_attribution = ?, source_quote = ?, rating = ?, rating_recorded = ?, published = ?, avatar_media_id = ? WHERE id = ?`)

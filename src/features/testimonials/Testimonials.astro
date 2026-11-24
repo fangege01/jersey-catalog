@@ -27,8 +27,8 @@ const baseUrl = getConfig().images.baseUrl;
     <ul class="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
       {data.entries.map((review) => (
         <li class="flex flex-col rounded-xl border border-line bg-surface p-5">
-          {review.rating !== null && <p class="text-sm text-brand" aria-label={display(locale, review.rating + ' out of 5 stars', review.rating + ' 星')}>
-            <span aria-hidden="true">{'★'.repeat(review.rating)}{'☆'.repeat(5 - review.rating)}</span>
+          {review.rating !== null && <p class="text-sm font-semibold text-brand">
+            <span aria-hidden="true">★ </span>{review.rating.toFixed(1)} / 5
           </p>}
           <blockquote class="my-4 flex-1 whitespace-pre-line break-words text-sm leading-relaxed text-ink">{display(locale, review.quote, review.sourceQuote ?? review.quote)}</blockquote>
           <div class="flex items-center gap-3 border-t border-line pt-3">

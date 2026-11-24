@@ -95,7 +95,7 @@ const primary = 'rounded bg-brand px-4 py-2 text-sm text-white';
       <label class="block text-sm">前台简介（可选）
         <textarea name="intro" maxlength="500" rows="2" class={field}>{action === 'settings' ? fromForm('intro') : settings.sourceIntro}</textarea>
       </label>
-      <p class="text-sm text-muted">综合评分按已公开评价自动计算。</p>
+      <p class="text-sm text-muted">综合评分根据已公开且有评分的评价计算。</p>
       <button type="submit" class={primary}>保存模块设置</button>
     </form>
 
@@ -117,12 +117,12 @@ const primary = 'rounded bg-brand px-4 py-2 text-sm text-white';
         </textarea>
       </label>
       <div class="flex flex-wrap items-end gap-4">
-        <label class="text-sm">评分
-          <select name="rating" class={field}>
-            <option value="" selected={editor?.rating == null}>未评分</option>
-            {[5, 4, 3, 2, 1].map((rating) =>
-              <option value={rating} selected={editor?.rating === rating}>{rating} 星</option>)}
-          </select>
+        <label class="text-sm">评分（选填）
+          <input type="number" name="rating" min="1" max="5" step="0.1" inputmode="decimal"
+            placeholder="例如 4.9" aria-describedby="review-rating-help"
+            value={action === 'edit' || action === 'create' ? fromForm('rating') : editor?.rating ?? ''}
+            class={field} />
+          <span id="review-rating-help" class="mt-1 block text-xs text-muted">1 到 5 分，最多一位小数。留空表示未评分。</span>
         </label>
         <div class="flex flex-wrap items-center gap-2">
           <input type="hidden" name="avatar" id="review-avatar" value={editor?.avatarPublicId ?? ''} />
@@ -148,7 +148,7 @@ const primary = 'rounded bg-brand px-4 py-2 text-sm text-white';
           <div class="flex min-w-0 items-start gap-3">
             {item.avatarKey && <img src={mediaUrl(item.avatarKey, getConfig().images.baseUrl)} alt="" loading="lazy" width="40" height="40" class="h-10 w-10 shrink-0 rounded-full object-cover" />}
             <div class="min-w-0">
-              <p class="text-sm font-semibold">{item.name} · {item.rating === null ? '未评分' : item.rating + ' 星'} · {item.published ? '公开' : '未公开'}</p>
+              <p class="text-sm font-semibold">{item.name} · {item.rating === null ? '未评分' : item.rating.toFixed(1) + ' / 5'} · {item.published ? '公开' : '未公开'}</p>
               {item.attribution && <p class="text-xs text-muted">{item.sourceAttribution ?? item.attribution}</p>}
               <p class="mt-2 line-clamp-3 whitespace-pre-line break-words text-sm">{item.sourceQuote ?? item.quote}</p>
             </div>
