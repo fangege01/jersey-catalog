@@ -1,4 +1,5 @@
 import type { D1Database } from '@cloudflare/workers-types';
+import { sourceCopyStatement, type SourceCopy } from '../i18n/db.ts';
 import type { Product } from '../products/db';
 import { withPublicId } from '../ids/publicId.ts';
 
@@ -68,21 +69,23 @@ export async function getCategoriesByPublicIds(
   return results ?? [];
 }
 
-export async function createCategory(db: D1Database, c: CategoryFields): Promise<number> {
+export async function createCategory(db: D1Database, c: CategoryFields, source?: SourceCopy): Promise<number> {
   return withPublicId('category', async (publicId) => {
-    const row = await db
+    const insert = db
       .prepare('INSERT INTO categories (name, slug, parent_id, public_id) VALUES (?, ?, ?, ?) RETURNING id')
-      .bind(c.name, c.slug, c.parent_id, publicId)
-      .first<{ id: number }>();
+      .bind(c.name, c.slug, c.parent_id, publicId);
+    const row = source ? (await db.batch<{ id: number }>([insert, sourceCopyStatement(db, 'category', publicId, source)]))[0].results[0]
+      : await insert.first<{ id: number }>();
     return row!.id;
   });
 }
 
-export async function updateCategory(db: D1Database, id: number, c: CategoryFields): Promise<void> {
-  await db
+export async function updateCategory(db: D1Database, id: number, c: CategoryFields, copy?: { publicId: string; source: SourceCopy }): Promise<void> {
+  const update = db
     .prepare('UPDATE categories SET name = ?, slug = ?, parent_id = ? WHERE id = ?')
-    .bind(c.name, c.slug, c.parent_id, id)
-    .run();
+    .bind(c.name, c.slug, c.parent_id, id);
+  if (copy) await db.batch([update, sourceCopyStatement(db, 'category', copy.publicId, copy.source)]);
+  else await update.run();
 }
 
 /**

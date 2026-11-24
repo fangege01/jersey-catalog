@@ -20,6 +20,9 @@ export type SettingKey =
   | 'contact_popup'
   | 'seo_controls'
   | 'testimonials'
+  | 'showcase_cases_enabled'
+  | 'showcase_cases_options'
+  | 'showcase_factory_enabled'
   | SiteCopyKey
   | SiteImageKey
   | 'whatsapp_number'

@@ -5,21 +5,23 @@ import { readSiteCopy, siteImageKey, type InformationPage } from './copy';
 import { buildStorefrontImage } from '../storefront/productCard';
 import { whatsappInquiryUrl } from '../storefront/catalogMode';
 import StoreImage from '../storefront/controls/StoreImage.astro';
+import Showcase from './Showcase.astro';
 import ContactInquiry from './ContactInquiry.astro';
 
-interface Props { section: InformationPage; }
+interface Props { section: Exclude<InformationPage, 'factory'>; }
 const { section } = Astro.props;
 const locale = Astro.locals.storeLocale ?? 'en';
 const zh = locale === 'zh-CN';
 const settings = Astro.locals.settings;
 const copy = readSiteCopy(settings?.siteContent, section, locale);
+const contactCopy = section === 'contact' ? readSiteCopy(settings?.siteContent, 'contact', locale) : null;
 const number = whatsappInquiryUrl(settings?.whatsappNumber);
 const key = settings?.siteImages?.[siteImageKey(section)];
 const image = key ? buildStorefrontImage(key, copy.imageAlt, {
   baseUrl: getConfig().images.baseUrl, delivery: settings?.imageDelivery, sizes: '(min-width: 768px) 44vw, 92vw',
   priority: true,
 }) : section === 'contact' ? null : {
-  src: section === 'factory' ? '/teal/jersey-customization.webp' : '/teal/football-kits-900.webp',
+  src: '/teal/football-kits-900.webp',
   alt: copy.imageAlt, priority: true,
 };
 const points = [[copy.point1Title, copy.point1Text], [copy.point2Title, copy.point2Text], [copy.point3Title, copy.point3Text]];
@@ -31,11 +33,12 @@ const points = [[copy.point1Title, copy.point1Text], [copy.point2Title, copy.poi
         <a class="hover:underline" href="/">{zh ? '首页' : 'Home'}</a>
         <span aria-hidden="true">/</span><span aria-current="page">{copy.title}</span>
       </nav>
+      {contactCopy && <p class="mb-3 text-sm font-semibold tracking-wider text-teal-100 uppercase">{contactCopy.kicker}</p>}
       <h1 class="break-words text-4xl font-bold tracking-tight sm:text-5xl">{copy.title}</h1>
       <p class="mt-4 max-w-2xl whitespace-pre-wrap text-teal-50">{copy.intro}</p>
       {section !== 'contact' && number && <a href={number} data-whatsapp-inquiry class="mt-5 inline-flex min-h-11 items-center rounded-md bg-sky-200 px-4 font-semibold text-ink">{copy.cta}</a>}
     </section>
-    {section === 'contact' && <ContactInquiry copy={readSiteCopy(settings?.siteContent, 'contact', locale)} number={number} zh={zh} />}
+    {contactCopy ? <ContactInquiry copy={contactCopy} number={number} zh={zh} /> : <>
     <section class:list={['grid gap-5 rounded-xl border border-line bg-surface p-5 sm:p-8', image && 'items-center md:grid-cols-2']}>
       <div>
         <h2 class="text-2xl font-bold">{copy.panelTitle}</h2>
@@ -49,9 +52,11 @@ const points = [[copy.point1Title, copy.point1Text], [copy.point2Title, copy.poi
         <p class="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-muted">{description}</p>
       </section>)}
     </div>
+    {section === 'about' && <Showcase section="factory" />}
     <div class="flex flex-wrap gap-3">
       {number && <a href={number} data-whatsapp-inquiry class="inline-flex min-h-11 items-center rounded-md bg-brand px-4 text-sm font-semibold text-on-brand">{copy.cta}</a>}
       <a href="/products" class="inline-flex min-h-11 items-center rounded-md border border-line px-4 text-sm font-semibold">{zh ? '查看产品目录' : 'View products'}</a>
     </div>
+    </>}
   </article>
 </Layout>

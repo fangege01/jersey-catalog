@@ -5,7 +5,7 @@ export const trafficRanges = {
   '1': '今日',
   yesterday: '昨日',
   '3': '近三日',
-  '7': '近7日',
+  '7': '近七日',
   '30': '近30日',
 } as const;
 

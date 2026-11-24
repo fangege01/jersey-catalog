@@ -3,6 +3,8 @@ import { env } from 'cloudflare:workers';
 import { sweepStaleNotifications } from './features/email/outbox';
 import { releaseExpiredReservations } from './features/orders/reservations';
 import { pruneTrafficEvents } from './features/analytics/report';
+import { sweepPublicationUploads } from './features/products/publicationUploads';
+import { getStorage } from './features/storage';
 import { getSetting } from './features/settings/db';
 
 /**
@@ -40,6 +42,12 @@ async function runScheduledSweeps(): Promise<void> {
     await pruneTrafficEvents(db);
   } catch (err) {
     console.error('Scheduled traffic cleanup failed:', err);
+  }
+
+  try {
+    await sweepPublicationUploads(db, getStorage());
+  } catch (err) {
+    console.error('Scheduled publication image cleanup failed:', err);
   }
 
   // Notification retry needs an origin to build order links with, and a cron

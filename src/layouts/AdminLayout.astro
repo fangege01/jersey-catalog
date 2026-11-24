@@ -21,13 +21,18 @@ type Section =
   | 'pages'
   | 'navigation'
   | 'siteContent'
+  | 'contactPage'
+  | 'bottomInquiry'
+  | 'orderWorkflow'
   | 'inquiries'
   | 'traffic'
   | 'adTracking'
   | 'contactPopup'
   | 'seo'
-  | 'translations'
   | 'testimonials'
+  | 'customerCases'
+  | 'factoryShowcase'
+  | 'factorySupply'
   | 'whatsapp'
   | 'shipping'
   | 'settings';
@@ -55,6 +60,7 @@ type Item = { key: Section; label: string; href: string };
 const groups: { label: string; links: Item[] }[] = [
   { label: '总览', links: [
     { key: 'dashboard', label: '工作台', href: '/admin' },
+    { key: 'traffic', label: '流量分析', href: '/admin/traffic' },
   ] },
   { label: '商品与素材', links: [
     { key: 'products', label: '商品管理', href: '/admin/products' },
@@ -70,16 +76,20 @@ const groups: { label: string; links: Item[] }[] = [
   ] }] : []),
   { label: '网站内容', links: [
     { key: 'siteContent', label: '页面内容', href: '/admin/site-content' },
-    { key: 'translations', label: '前台语言', href: '/admin/translations' },
+    ...(import.meta.env.MINSHOP_THEME === 'teal' ? [{ key: 'orderWorkflow' as const, label: '首页订购流程', href: '/admin/site-content?section=home&focus=process-copy' }] : []),
+    { key: 'contactPage', label: '联系页面设置', href: '/admin/site-content?section=contact' },
+    ...(catalogOnly ? [{ key: 'bottomInquiry' as const, label: '底部询盘设置', href: '/admin/site-content?section=home&focus=bottom-inquiry#bottom-inquiry' }] : []),
     { key: 'pages', label: '自定义页面', href: '/admin/pages' },
     { key: 'navigation', label: import.meta.env.MINSHOP_THEME === 'teal' ? '页脚导航' : '导航', href: '/admin/navigation' },
+    { key: 'customerCases', label: '客户案例', href: '/admin/showcase?section=cases' },
+    { key: 'factorySupply', label: '供应与质量', href: '/admin/site-content?section=factory' },
+    { key: 'factoryShowcase', label: '工厂展示', href: '/admin/showcase?section=factory' },
     { key: 'testimonials', label: '客户好评', href: '/admin/testimonials' },
   ] },
   { label: '询价与营销', links: [
     { key: 'inquiries', label: '询盘管理', href: '/admin/inquiries' },
     ...(catalogOnly ? [{ key: 'whatsapp' as const, label: 'WhatsApp 管理', href: '/admin/whatsapp' }] : []),
     { key: 'contactPopup', label: '智能弹窗', href: '/admin/contact-popup' },
-    { key: 'traffic', label: '流量分析', href: '/admin/traffic' },
     { key: 'adTracking', label: '广告追踪', href: '/admin/ad-tracking' },
     { key: 'seo', label: 'SEO 与 AI 爬虫', href: '/admin/seo' },
   ] },
@@ -137,7 +147,7 @@ const currentLabel = title ?? group?.links.find(link => link.key === navKey)?.la
           </div>
           <div class="admin-top-actions">
             <a href="/" target="_blank" rel="noopener">查看网站 <span aria-hidden="true">↗</span></a>
-            {active !== 'media' && <a href="/admin/media">上传图片</a>}
+            {active !== 'media' && <a href="/admin/media" class="admin-upload">上传图片</a>}
             {showLogout && <a class="admin-signout" href="/admin/logout">退出登录</a>}
           </div>
         </header>

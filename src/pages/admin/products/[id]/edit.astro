@@ -17,6 +17,7 @@ import { productImageSources } from '../../../../features/products/image';
 import { zonesRequireWeight } from '../../../../features/shipping/calculator';
 import { formatWeightValue } from '../../../../features/shipping/weight';
 import { shippingFor } from '../../../../features/shipping/effective';
+import { localizedProduct, translations } from '../../../../features/i18n/db';
 
 // The route param is the prod_ public ID; numeric row ids are not accepted.
 const publicId = parsePublicId(Astro.params.id, 'product');
@@ -27,6 +28,9 @@ if (!product) {
 }
 
 const categoryOptions = flattenTree(buildTree(await listCategories(env.DB)));
+const publication = await env.DB.prepare('SELECT published_at, image_count FROM product_publications WHERE product_id = ?')
+  .bind(product.id).first<{ published_at: string; image_count: number }>().catch(() => null);
+const original = localizedProduct(product, (await translations(env.DB, 'zh-CN', 'product', [publicId])).get(publicId!));
 const selectedCategoryIds = (await categoriesForProduct(env.DB, product.id)).map((c) => c.id);
 const images = await listProductImages(env.DB, product.id);
 const error = Astro.url.searchParams.get('error');
@@ -59,8 +63,8 @@ const weightUnit = Astro.locals.settings?.weightUnit ?? 'g';
 const weightRequired = zonesRequireWeight(shippingFor(Astro.locals.settings).config);
 ---
 
-<AdminLayout title={`Edit ${product.name}`} active="products">
-  <a class="mb-4 inline-block text-sm underline" href={'/admin/translations?entity=product&id=' + publicId}>编辑中文译文</a>
+<AdminLayout title="编辑商品" active="products">
+  {publication && <p class="text-sm text-gray-500">FXF 正式发布记录 · {publication.published_at} UTC · {publication.image_count} 张图片</p>}
   <a href="/admin/products" class="text-sm text-gray-500 hover:text-brand">&larr; 返回商品列表</a>
   <div class="mt-4 mb-6 flex items-center justify-between gap-4">
     <h1 class="text-2xl font-bold">编辑商品</h1>
@@ -76,7 +80,7 @@ const weightRequired = zonesRequireWeight(shippingFor(Astro.locals.settings).con
   <ProductForm
     action={`/api/admin/products/${product.public_id}`}
     submitLabel="保存修改"
-    product={product}
+    product={original}
     categoryOptions={categoryOptions}
     selectedCategoryIds={selectedCategoryIds}
     error={error}
@@ -573,7 +577,9 @@ const weightRequired = zonesRequireWeight(shippingFor(Astro.locals.settings).con
           await send(new FormData(form));
           const btn = form.querySelector('button[type="submit"]');
           if (btn) {
-            const original = btn.textContent;
+            const publication = await env.DB.prepare('SELECT published_at, image_count FROM product_publications WHERE product_id = ?')
+  .bind(product.id).first<{ published_at: string; image_count: number }>().catch(() => null);
+const original = btn.textContent;
             btn.textContent = 'Saved';
             setTimeout(() => {
               btn.textContent = original;

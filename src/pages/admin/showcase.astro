@@ -1,0 +1,193 @@
+---
+import { env } from 'cloudflare:workers';
+import AdminLayout from '../../layouts/AdminLayout.astro';
+import MediaPicker from '../../features/media/MediaPicker.astro';
+import { getConfig } from '../../config';
+import { mediaUrl } from '../../features/media/url';
+import { getSetting, setSetting } from '../../features/settings/db';
+import { CACHE_TAG } from '../../features/cache/tags';
+import { purgeCacheTags } from '../../features/cache/purge';
+import { caseCopyFields, caseCopyLimits, factorySlots, listShowcase, readCaseOptions, readCaseOptionsForm,
+  readShowcaseItem, showcaseLimits, type FactorySlot } from '../../features/site-content/showcase';
+import { englishCopy, EnglishTranslationError } from '../../features/i18n/english';
+
+const cases = Astro.url.searchParams.get('section') === 'cases';
+const section = cases ? 'cases' : 'factory';
+const title = cases ? '客户案例' : '工厂与定制展示';
+const page = '/admin/showcase?section=' + section;
+const key = cases ? 'showcase_cases_enabled' : 'showcase_factory_enabled';
+let enabled = (await getSetting(env.DB, key)) !== '0';
+let caseOptions = readCaseOptions(cases ? await getSetting(env.DB, 'showcase_cases_options') : null);
+const items = await listShowcase(env.DB, section);
+let submittedForm: FormData | undefined;
+let error = '';
+if (Astro.request.method === 'POST') {
+  let stored = false;
+  try {
+    const form = await Astro.request.formData();
+    submittedForm = form;
+    const action = form.get('action');
+    const id = form.get('id');
+    const validId = typeof id === 'string' && /^\d{1,15}$/.test(id) && Number(id) > 0;
+    if (action === 'toggle') {
+      const options = cases ? readCaseOptionsForm(form) : null;
+      if (!cases || options) {
+        enabled = form.get('enabled') === '1';
+        if (options) {
+          const english = await englishCopy(env.AI, options.copy, caseCopyLimits, {
+            source: caseOptions.copy['zh-CN'], english: caseOptions.copy.en,
+          });
+          const translated = { ...options, copy: { 'zh-CN': options.copy, en: english } };
+          await env.DB.batch([
+            env.DB.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)').bind(key, enabled ? '1' : '0'),
+            env.DB.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('showcase_cases_options', ?)").bind(JSON.stringify(translated)),
+          ]);
+          caseOptions = translated;
+        } else {
+          await setSetting(env.DB, key, enabled ? '1' : '0');
+        }
+        stored = true;
+      }
+    } else if (action === 'remove' && validId) {
+      const result = await env.DB.prepare('DELETE FROM storefront_showcase_items WHERE id = ? AND section = ?').bind(Number(id), section).run();
+      stored = !!result.meta.changes;
+    } else if (action === 'save' && (id === null || validId)) {
+      const item = readShowcaseItem(form, section);
+      const rawSlot = form.get('slot');
+      const slot = !cases && typeof rawSlot === 'string' && Object.hasOwn(factorySlots, rawSlot) ? rawSlot as FactorySlot : null;
+      if (item && (cases || slot)) {
+        const position = slot ? Object.keys(factorySlots).indexOf(slot) : item.position;
+        const previous = items.find(entry => slot ? entry.slot === slot : entry.id === Number(id));
+        const english = await englishCopy(env.AI, { title: item.title_zh, body: item.body_zh, alt: item.alt_zh },
+          { title: showcaseLimits.title_en, body: showcaseLimits.body_en, alt: showcaseLimits.alt_en },
+          previous && {
+            source: { title: previous.title_zh, body: previous.body_zh, alt: previous.alt_zh },
+            english: { title: previous.title_en, body: previous.body_en, alt: previous.alt_en },
+          });
+        const args = [position, item.visible, english.title, item.title_zh, english.body, item.body_zh, english.alt, item.alt_zh];
+        const stmt = cases && validId ? env.DB.prepare(`
+          UPDATE storefront_showcase_items SET image_id = (SELECT id FROM media WHERE image_key = ?1),
+            position = ?2, visible = ?3, title_en = ?4, title_zh = ?5, body_en = ?6, body_zh = ?7, alt_en = ?8, alt_zh = ?9
+          WHERE id = ?10 AND section = 'cases' AND EXISTS (SELECT 1 FROM media WHERE image_key = ?1)
+        `).bind(item.imageKey, ...args, Number(id)) : env.DB.prepare(`
+          INSERT INTO storefront_showcase_items (section, slot, image_id, position, visible, title_en, title_zh, body_en, body_zh, alt_en, alt_zh)
+          SELECT ?, ?, id, ?, ?, ?, ?, ?, ?, ?, ? FROM media WHERE image_key = ?
+          ON CONFLICT (section, slot) DO UPDATE SET image_id = excluded.image_id, visible = excluded.visible,
+            title_en = excluded.title_en, title_zh = excluded.title_zh, body_en = excluded.body_en, body_zh = excluded.body_zh,
+            alt_en = excluded.alt_en, alt_zh = excluded.alt_zh
+        `).bind(section, slot, ...args, item.imageKey);
+        stored = !!(await stmt.run()).meta.changes;
+      }
+    }
+    if (!stored) {
+      Astro.response.status = 400;
+      error = action === 'toggle' ? '无法保存模块设置。请核对轮播间隔和文案长度。'
+        : '无法保存。请核对标题、替代文字、顺序，并选择仍在素材库中的图片。';
+    } else {
+      await purgeCacheTags([CACHE_TAG.shell, CACHE_TAG.catalog]);
+      return Astro.redirect(page + '&saved=1', 303);
+    }
+  } catch (cause) {
+    if (cause instanceof EnglishTranslationError) {
+      Astro.response.status = 503;
+      error = cause.message;
+    } else {
+      console.error('Showcase update failed', { section, cause });
+      Astro.response.status = 500;
+      error = stored ? '已保存，缓存刷新失败。' : '保存失败，请重试。';
+    }
+  }
+}
+const editors = cases
+  ? [...items.map(item => ({ label: item.title_zh, item, slot: null })), { label: '新增案例', item: undefined, slot: null }]
+  : Object.entries(factorySlots).map(([slot, label]) => ({ label, slot, item: items.find(item => item.slot === slot) }));
+const field = 'mt-1 block w-full rounded border border-line bg-paper px-3 py-2';
+const button = 'rounded bg-brand px-4 py-2 text-sm font-medium text-white';
+const fields = { title_zh: '标题', body_zh: '说明', alt_zh: '图片替代文字' } as const;
+const fieldKeys = Object.keys(fields) as Array<keyof typeof fields>;
+const copyLabels = { label: '小标题', title: '模块标题', description: '模块简介' } as const;
+const value = (form: FormData | undefined, name: string, fallback = '') => {
+  const posted = form?.get(name);
+  return typeof posted === 'string' ? posted : fallback;
+};
+const optionsDraft = submittedForm?.get('action') === 'toggle' ? submittedForm : undefined;
+---
+<AdminLayout title={title} active={cases ? 'customerCases' : 'factoryShowcase'}>
+  <div class="max-w-4xl space-y-5">
+    <h1 class="font-serif text-3xl">{title}</h1>
+    <p class="text-sm text-muted">可填中文或英文。中文自动翻译后同步英文前台。</p>
+    <a href={cases ? '/#customer-cases' : '/about#factory-showcase'} class="text-sm underline">查看前台展示</a>
+    {error && <p role="alert" class="text-red-700">{error}</p>}
+    {!error && Astro.url.searchParams.has('saved') && <p role="status">已保存。</p>}
+    <form method="POST" class="space-y-4 rounded-xl border border-line bg-surface p-5">
+      <input type="hidden" name="action" value="toggle" />
+      <h2 class="text-lg font-semibold">模块设置</h2>
+      <label class="block"><input type="checkbox" name="enabled" value="1" checked={enabled} /> 启用模块</label>
+      {cases && <>
+        <div class="flex flex-wrap gap-4 text-sm">
+          <label><input type="checkbox" name="autoplay" value="1" checked={caseOptions.autoplay} /> 自动轮播</label>
+          <label><input type="checkbox" name="arrows" value="1" checked={caseOptions.arrows} /> 显示切换箭头</label>
+          <label><input type="checkbox" name="dots" value="1" checked={caseOptions.dots} /> 显示缩略图导航</label>
+        </div>
+        <label class="block max-w-xs text-sm">轮播间隔（秒）
+          <input class={field} name="interval" type="number" min="2" max="30" required value={caseOptions.interval / 1000} />
+        </label>
+        <div class="grid gap-4 sm:grid-cols-2">
+              {caseCopyFields.map(key => (
+                <label class="block text-sm">{copyLabels[key]}
+                  {key === 'description'
+                    ? <textarea class={field} name={key} maxlength={caseCopyLimits[key]} rows="3">{value(optionsDraft, key, caseOptions.copy['zh-CN'][key])}</textarea>
+                    : <input class={field} name={key} maxlength={caseCopyLimits[key]} value={value(optionsDraft, key, caseOptions.copy['zh-CN'][key])} />}
+                </label>
+              ))}
+        </div>
+      </>}
+      <button class={button}>保存模块设置</button>
+    </form>
+    {editors.map(({label, slot, item}, index) => {
+      const draft = submittedForm?.get('action') === 'save' &&
+        value(submittedForm, 'slot') === (slot ?? '') && value(submittedForm, 'id') === (item ? String(item.id) : '')
+        ? submittedForm : undefined;
+      const image = value(draft, 'image_key', item?.imageKey);
+      return (
+      <section class="rounded-xl border border-line bg-surface p-5">
+        <h2 class="mb-3 text-lg font-semibold">{label}</h2>
+        <form method="POST" data-showcase-editor class="space-y-4">
+          {item && <input type="hidden" name="id" value={item.id} />}
+          {slot && <input type="hidden" name="slot" value={slot} />}
+          <input type="hidden" name="image_key" value={image} />
+          <img data-showcase-preview src={image ? mediaUrl(image, getConfig().images.baseUrl) : undefined}
+            hidden={!image} alt="已选图片" class="max-h-36 max-w-full rounded object-contain" />
+          <MediaPicker id={'showcase-' + index} />
+          <div class="grid gap-3 sm:grid-cols-2">
+            {fieldKeys.map(fieldKey => (
+              <label class="text-sm">{fields[fieldKey]}
+                {fieldKey.startsWith('body')
+                  ? <textarea class={field} name={fieldKey} maxlength={showcaseLimits[fieldKey]} rows="3">{value(draft, fieldKey, item?.[fieldKey])}</textarea>
+                  : <input class={field} name={fieldKey} required maxlength={showcaseLimits[fieldKey]} value={value(draft, fieldKey, item?.[fieldKey])} />}
+              </label>
+            ))}
+          </div>
+          {cases ? <label class="block text-sm">显示顺序（数字越小越靠前）
+            <input class={field} type="number" name="position" min="0" max="10000" required value={item?.position ?? (items.at(-1)?.position ?? 0)} />
+          </label> : <input type="hidden" name="position" value="0" />}
+          <label class="block text-sm"><input type="checkbox" name="visible" value="1" checked={item?.visible === 1} /> 前台显示</label>
+          <button class={button} name="action" value="save">保存</button>
+          {item && <button name="action" value="remove" formnovalidate class="ml-3 text-sm text-red-700"
+            onclick="return confirm('从展示模块移除此项？素材库图片仍可使用。')">移除展示项</button>}
+        </form>
+      </section>
+    )})}
+  </div>
+</AdminLayout>
+<script>
+  for (const form of document.querySelectorAll<HTMLFormElement>('[data-showcase-editor]')) {
+    form.addEventListener('media:selected', (event) => {
+      const { imageKey, url } = (event as CustomEvent<{ imageKey: string; url: string }>).detail;
+      const input = form.querySelector<HTMLInputElement>('input[name="image_key"]');
+      const preview = form.querySelector<HTMLImageElement>('[data-showcase-preview]');
+      if (input) input.value = imageKey;
+      if (preview) { preview.src = url; preview.hidden = false; }
+    });
+  }
+</script>

@@ -10,14 +10,16 @@ import {
   descendantIds,
 } from '../../../../features/categories/db';
 import { parsePublicId } from '../../../../features/ids/publicId';
+import { translations } from '../../../../features/i18n/db';
 
 // The route param is the cat_ public ID; numeric row ids are not accepted.
 const publicId = parsePublicId(Astro.params.id, 'category');
 const category = publicId ? await getCategoryByPublicId(env.DB, publicId) : null;
 
-if (!category) {
+if (!category || !publicId) {
   return new Response('未找到记录。', { status: 404 });
 }
+const original = (await translations(env.DB, 'zh-CN', 'category', [publicId])).get(publicId);
 
 // A category can't be moved under itself or one of its descendants — exclude them.
 const blocked = new Set(await descendantIds(env.DB, category.id));
@@ -27,14 +29,13 @@ const parentOptions = flattenTree(buildTree(await listCategories(env.DB))).filte
 const error = Astro.url.searchParams.get('error');
 ---
 
-<AdminLayout title={`Edit ${category.name}`} active="categories">
-  <a class="mb-4 inline-block text-sm underline" href={'/admin/translations?entity=category&id=' + publicId}>编辑中文译文</a>
+<AdminLayout title="编辑分类" active="categories">
   <a href="/admin/categories" class="text-sm text-gray-500 hover:text-brand">&larr; 返回分类列表</a>
   <h1 class="mt-4 mb-6 text-2xl font-bold">编辑分类</h1>
   <CategoryForm
     action={`/api/admin/categories/${category.public_id}`}
     submitLabel="保存修改"
-    category={category}
+    category={{ ...category, name: original?.title ?? category.name }}
     parentOptions={parentOptions}
     error={error}
   />

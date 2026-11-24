@@ -1,11 +1,12 @@
 import type { D1Database } from '@cloudflare/workers-types';
 
-import { imageSections, siteImageKey, siteSections, type ImageSection } from '../site-content/copy.ts';
+import { imageSections, siteImageKey, siteImageEditor, siteImageLabel, type ImageSection } from '../site-content/copy.ts';
 
 /** Everywhere one media item is currently used. Empty everywhere = deletable. */
 export interface MediaUsage {
   products: Array<{ id: number; public_id: string | null; name: string }>;
   pages: Array<{ id: number; public_id: string | null; title: string }>;
+  showcases?: Array<{ section: 'cases' | 'factory'; title: string }>;
   testimonials?: Array<{ id: string; name: string }>;
   logo: boolean;
   siteImages?: ImageSection[];
@@ -16,7 +17,7 @@ export function emptyUsage(): MediaUsage {
 }
 
 export function isUnused(usage: MediaUsage): boolean {
-  return usage.products.length === 0 && usage.pages.length === 0 && !usage.testimonials?.length && !usage.logo && !usage.siteImages?.length;
+  return usage.products.length === 0 && usage.pages.length === 0 && !usage.testimonials?.length && !usage.showcases?.length && !usage.logo && !usage.siteImages?.length;
 }
 
 /**
@@ -75,14 +76,20 @@ export async function mediaUsageForIds(
   if (ids.length === 0) return usage;
 
   const placeholders = ids.map((_, index) => '?' + (index + 1)).join(', ');
-  const [products, pages, logo, testimonials] = await db.batch<Record<string, unknown>>([
+  const [products, pages, logo, testimonials, showcases] = await db.batch<Record<string, unknown>>([
     db.prepare(PRODUCT_USAGE_SQL.replaceAll('%IDS%', placeholders)).bind(...ids),
     db.prepare(PAGE_USAGE_SQL.replaceAll('%IDS%', placeholders)).bind(...ids),
     db.prepare(`SELECT s.key, m.id FROM settings s JOIN media m ON m.image_key = s.value
-      WHERE s.key IN ('logo_image_key', 'site_image:home', 'site_image:factory', 'site_image:about', 'site_image:contact')
+      WHERE (s.key = 'logo_image_key' OR s.key GLOB 'site_image:*')
         AND m.id IN (${placeholders})`).bind(...ids),
     db.prepare(`SELECT avatar_media_id AS media_id, id, name FROM customer_testimonials WHERE avatar_media_id IN (${placeholders}) ORDER BY name`).bind(...ids),
+    db.prepare(`SELECT image_id, section, title_zh FROM storefront_showcase_items WHERE image_id IN (${placeholders}) ORDER BY id`).bind(...ids),
   ]);
+
+  for (const row of showcases.results as Array<{ image_id: number; section: 'cases' | 'factory'; title_zh: string }>) {
+    const entry = usage.get(row.image_id);
+    if (entry) (entry.showcases ??= []).push({ section: row.section, title: row.title_zh });
+  }
 
   for (const row of (products.results ?? []) as Array<{
     media_id: number;
@@ -161,9 +168,13 @@ export function usageLinks(usage: MediaUsage): UsageLink[] {
       kind: 'testimonial' as const,
       title: '编辑客户好评',
     })),
+    ...(usage.showcases ?? []).map(item => ({
+      href: '/admin/showcase?section=' + item.section, label: item.title,
+      kind: 'site-image' as const, title: '编辑展示项',
+    })),
     ...(usage.siteImages ?? []).map(section => ({
-      href: '/admin/site-content?section=' + section,
-      label: siteSections[section].image,
+      href: '/admin/site-content?section=' + siteImageEditor(section),
+      label: siteImageLabel(section),
       kind: 'site-image' as const,
       title: '在网站内容中更换图片',
     })),
@@ -199,7 +210,8 @@ export function describeUsage(usage: MediaUsage): string {
     );
   }
   if (usage.testimonials?.length) parts.push('客户好评：' + usage.testimonials.map((review) => review.name).join(', '));
-  for (const section of usage.siteImages ?? []) parts.push(siteSections[section].image);
+  for (const item of usage.showcases ?? []) parts.push(item.title);
+  for (const section of usage.siteImages ?? []) parts.push(siteImageLabel(section));
   if (usage.logo) parts.push('网站标志');
   return parts.join('、');
 }

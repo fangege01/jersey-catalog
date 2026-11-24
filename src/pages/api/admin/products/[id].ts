@@ -37,6 +37,8 @@ import { indexProduct, unindexProduct } from '../../../../features/search';
 import { parsePublicId } from '../../../../features/ids/publicId';
 import { CACHE_TAG } from '../../../../features/cache/tags';
 import { purgeCacheTags } from '../../../../features/cache/purge';
+import { saveCopyInEnglish } from '../../../../features/i18n/adminCopy';
+import { EnglishTranslationError } from '../../../../features/i18n/english';
 
 export const prerender = false;
 
@@ -145,6 +147,14 @@ export const POST: APIRoute = async ({ request, params, redirect, locals }) => {
   // Public-ID → row-id translation for the variants editor, before any write.
   const badReference = await resolveVariantFormIds(form, env.DB, id);
   if (badReference) return fail(badReference);
+  let copy;
+  try {
+    copy = await saveCopyInEnglish(env.DB, env.AI, 'product', { title: parsed.data.name, body: parsed.data.description },
+      { title: existing.name, body: existing.description, publicId });
+  } catch (cause) {
+    if (cause instanceof EnglishTranslationError) return fail(cause.message);
+    throw cause;
+  }
 
   // The uploaded key is NOT written to products.image_key here: that reference
   // would be unguarded, and the media row is deletable until something claims
@@ -188,7 +198,8 @@ export const POST: APIRoute = async ({ request, params, redirect, locals }) => {
     }
   }
 
-  await updateProduct(env.DB, id, { ...parsed.data, image_key, slug });
+  await updateProduct(env.DB, id, { ...parsed.data, name: copy.title, description: copy.body, image_key, slug },
+    copy.source && { publicId, source: copy.source });
   if (attachmentActive() && deliverable instanceof File && deliverable.size > 0) {
     await setProductFile(env.DB, id, await uploadDigitalFile(getFileStorage(), deliverable));
   } else if (attachmentActive() && form.get('remove_deliverable') != null) {

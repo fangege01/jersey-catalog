@@ -1,0 +1,42 @@
+---
+import { env } from 'cloudflare:workers';
+import { getConfig } from '../../config';
+import { getSetting } from '../settings/db';
+import { mediaUrl } from '../media/url';
+import CaseGallery from './CaseGallery.astro';
+import { listShowcase, readCaseOptions, type ShowcaseSection } from './showcase';
+
+interface Props { section: ShowcaseSection }
+const { section } = Astro.props;
+const isCases = section === 'cases';
+const zh = Astro.locals.storeLocale === 'zh-CN';
+const key = isCases ? 'showcase_cases_enabled' : 'showcase_factory_enabled';
+const [enabled, rawOptions] = await Promise.all([
+  getSetting(env.DB, key),
+  isCases ? getSetting(env.DB, 'showcase_cases_options') : null,
+]);
+const items = enabled === '0' ? [] : await listShowcase(env.DB, section, true);
+const imageBase = getConfig().images.baseUrl;
+---
+{items.length > 0 && (isCases ? (
+  <CaseGallery {items} options={readCaseOptions(rawOptions)} {imageBase} {zh} />
+) : (
+  <section id="factory-showcase" class="min-w-0 space-y-5" aria-labelledby="factory-showcase-title">
+    <h2 id="factory-showcase-title" class="text-2xl font-bold">{zh ? '工厂与定制展示' : 'Factory & Customization'}</h2>
+    <div class="grid gap-4">
+      {items.map((item, index) => (
+        <article class="grid min-w-0 items-center overflow-hidden rounded-xl border border-line bg-surface sm:grid-cols-2">
+          <img src={mediaUrl(item.imageKey, imageBase)} alt={zh ? item.alt_zh : item.alt_en}
+            width={item.width ?? undefined} height={item.height ?? undefined} loading="lazy" decoding="async"
+            class:list={['aspect-4/3 w-full bg-paper object-contain', index % 2 === 1 && 'sm:order-last']} />
+          <div class="space-y-2 p-5">
+            <h3 class="break-words font-semibold">{zh ? item.title_zh : item.title_en}</h3>
+            {(zh ? item.body_zh : item.body_en) && <p class="whitespace-pre-wrap break-words text-sm text-muted">
+              {zh ? item.body_zh : item.body_en}
+            </p>}
+          </div>
+        </article>
+      ))}
+    </div>
+  </section>
+))}

@@ -1,0 +1,21 @@
+---
+import type { SiteCopy } from './copy';
+import { localizedHref, type StoreLocale } from '../i18n/locale';
+
+interface Props { copy: SiteCopy<'home'>; locale: StoreLocale; whatsappHref: string | null }
+const { copy, locale, whatsappHref } = Astro.props;
+---
+<section id="bottom-cta" aria-labelledby="bottom-cta-title" class="mx-4 mb-10 rounded-[2rem] bg-linear-[120deg,var(--color-brand),var(--color-teal-sky)] px-5 py-14 text-center text-white shadow-lg shadow-teal-deep/10 sm:mx-6 sm:mb-14 sm:py-18">
+  <div class="mx-auto max-w-4xl">
+    <h2 id="bottom-cta-title" class="text-3xl font-bold tracking-tight sm:text-5xl">{copy.closingTitle}</h2>
+    <p class="mx-auto mt-5 max-w-3xl whitespace-pre-line text-base leading-relaxed text-white sm:text-lg">{copy.closingBody}</p>
+    <div class="mt-6 flex flex-wrap justify-center gap-3">
+      <a class="inline-flex min-h-12 items-center justify-center rounded-lg border border-white/40 bg-teal-deep/35 px-6 py-3 font-semibold text-white hover:bg-teal-deep/60"
+        href={localizedHref('/products', locale)}>{copy.closingBrowse}</a>
+      <a class="inline-flex min-h-12 items-center justify-center rounded-lg bg-white px-6 py-3 font-semibold text-ink hover:bg-surface"
+        href={whatsappHref ?? localizedHref('/contact#contact-inquiry', locale)}
+        data-whatsapp-inquiry={whatsappHref ? '' : undefined} target={whatsappHref ? '_blank' : undefined}
+        rel={whatsappHref ? 'noopener' : undefined}>{whatsappHref ? copy.closingLink : (locale === 'zh-CN' ? '提交询盘' : 'Send an inquiry')}</a>
+    </div>
+  </div>
+</section>

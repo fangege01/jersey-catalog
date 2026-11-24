@@ -1,17 +1,21 @@
-import type { D1Database } from '@cloudflare/workers-types';
+import type { Ai, D1Database } from '@cloudflare/workers-types';
 import { getMediaByPublicId } from '../media/db';
 import { parsePublicId } from '../ids/publicId';
+import { englishCopy } from '../i18n/english';
 
-export const DEFAULT_TESTIMONIAL_SETTINGS = { enabled: false, title: 'Customer reviews', intro: '' };
+export const DEFAULT_TESTIMONIAL_SETTINGS = { enabled: false, title: 'Customer reviews', intro: '', sourceTitle: '客户评价', sourceIntro: '' };
 
 export function testimonialSettings(value?: string) {
   if (!value) return DEFAULT_TESTIMONIAL_SETTINGS;
   try {
     const data = JSON.parse(value);
+    const title = typeof data?.title === 'string' ? data.title.slice(0, 100) || DEFAULT_TESTIMONIAL_SETTINGS.title : DEFAULT_TESTIMONIAL_SETTINGS.title;
+    const intro = typeof data?.intro === 'string' ? data.intro.slice(0, 500) : '';
     return {
       enabled: data?.enabled === true,
-      title: typeof data?.title === 'string' ? data.title.slice(0, 100) || DEFAULT_TESTIMONIAL_SETTINGS.title : DEFAULT_TESTIMONIAL_SETTINGS.title,
-      intro: typeof data?.intro === 'string' ? data.intro.slice(0, 500) : '',
+      title, intro,
+      sourceTitle: typeof data?.sourceTitle === 'string' ? data.sourceTitle : title === DEFAULT_TESTIMONIAL_SETTINGS.title ? DEFAULT_TESTIMONIAL_SETTINGS.sourceTitle : title,
+      sourceIntro: typeof data?.sourceIntro === 'string' ? data.sourceIntro : intro,
     };
   } catch {
     return DEFAULT_TESTIMONIAL_SETTINGS;
@@ -23,13 +27,15 @@ export interface Testimonial {
   name: string;
   attribution: string;
   quote: string;
+  sourceQuote: string | null;
+  sourceAttribution: string | null;
   rating: number;
   published: number;
   avatarKey: string | null;
   avatarPublicId: string | null;
 }
 
-const COLUMNS = 't.id, t.name, t.attribution, t.quote, t.rating, t.published, media.image_key AS avatarKey, media.public_id AS avatarPublicId';
+const COLUMNS = 't.id, t.name, t.attribution, t.quote, t.source_quote AS sourceQuote, t.source_attribution AS sourceAttribution, t.rating, t.published, media.image_key AS avatarKey, media.public_id AS avatarPublicId';
 const FROM = 'FROM customer_testimonials t LEFT JOIN media ON media.id = t.avatar_media_id';
 const idPattern = /^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/;
 
@@ -69,7 +75,7 @@ export async function publicTestimonials(db: D1Database) {
   };
 }
 
-export async function saveTestimonial(db: D1Database, form: FormData, id: string | null) {
+export async function saveTestimonial(db: D1Database, form: FormData, id: string | null, ai?: Ai) {
   const name = reviewText(form, 'name', 100, true);
   const attribution = reviewText(form, 'attribution', 120);
   const quote = reviewText(form, 'quote', 1200, true);
@@ -80,15 +86,21 @@ export async function saveTestimonial(db: D1Database, form: FormData, id: string
   const mediaId = parsePublicId(avatar, 'media');
   const media = mediaId ? await getMediaByPublicId(db, mediaId) : null;
   if (avatar && !media) throw new TestimonialInputError('头像素材已不存在，请重新选择。');
-  const values = [name, attribution, quote, Number(rating), published, media?.id ?? null] as const;
+  const existing = id ? await getTestimonial(db, id) : null;
+  if (id && !existing) throw new TestimonialInputError('这条评价已不存在。');
+  const translated = await englishCopy(ai, { attribution, quote }, { attribution: 120, quote: 1200 }, existing ? {
+    source: { attribution: existing.sourceAttribution ?? existing.attribution, quote: existing.sourceQuote ?? existing.quote },
+    english: { attribution: existing.attribution, quote: existing.quote },
+  } : undefined);
+  const values = [name, translated.attribution, translated.quote, attribution, quote, Number(rating), published, media?.id ?? null] as const;
   if (id) {
     const result = await db.prepare(`UPDATE customer_testimonials
-      SET name = ?, attribution = ?, quote = ?, rating = ?, published = ?, avatar_media_id = ? WHERE id = ?`)
+      SET name = ?, attribution = ?, quote = ?, source_attribution = ?, source_quote = ?, rating = ?, published = ?, avatar_media_id = ? WHERE id = ?`)
       .bind(...values, id).run();
     if (result.meta.changes !== 1) throw new TestimonialInputError('这条评价已不存在。');
   } else {
-    await db.prepare(`INSERT INTO customer_testimonials (name, attribution, quote, rating, published, avatar_media_id, id, position)
-      VALUES (?, ?, ?, ?, ?, ?, ?, (SELECT COALESCE(MAX(position), 0) + 1 FROM customer_testimonials))`)
+    await db.prepare(`INSERT INTO customer_testimonials (name, attribution, quote, source_attribution, source_quote, rating, published, avatar_media_id, id, position)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, (SELECT COALESCE(MAX(position), 0) + 1 FROM customer_testimonials))`)
       .bind(...values, crypto.randomUUID()).run();
   }
 }

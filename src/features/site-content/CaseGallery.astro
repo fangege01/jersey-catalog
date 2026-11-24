@@ -1,0 +1,213 @@
+---
+import { mediaUrl } from '../media/url';
+import type { readCaseOptions, ShowcaseItem } from './showcase';
+
+interface Props {
+  items: ShowcaseItem[];
+  options: ReturnType<typeof readCaseOptions>;
+  imageBase: string;
+  zh: boolean;
+}
+const { items, options, imageBase, zh } = Astro.props;
+const copy = options.copy[zh ? 'zh-CN' : 'en'];
+const carousel = items.length > 1;
+const slides = items.map(item => {
+  const title = zh ? item.title_zh : item.title_en;
+  return {
+    src: mediaUrl(item.imageKey, imageBase),
+    alt: zh ? item.alt_zh : item.alt_en,
+    width: item.width,
+    height: item.height,
+    title: /^(?:客户案例|customer case)\s*\d*$/iu.test(title.trim()) ? '' : title,
+    body: zh ? item.body_zh : item.body_en,
+  };
+});
+---
+<section id="customer-cases" class="gallery" aria-labelledby="customer-cases-title"
+  data-case-carousel={carousel ? '' : undefined} data-interval={carousel && options.autoplay ? options.interval : undefined}>
+  <div class="case-heading">
+    {copy.label && <p class="gallery-label">{copy.label}</p>}
+    <h2 id="customer-cases-title">{copy.title}</h2>
+    {copy.description && <p class="gallery-intro">{copy.description}</p>}
+  </div>
+  <div class="gallery-stage">
+    <div class:list={['gallery-track', carousel && 'gallery-scroll']} data-case-track
+      tabindex={carousel ? 0 : undefined} role={carousel ? 'region' : undefined}
+      aria-label={carousel ? (zh ? '案例相册' : 'Case gallery') : undefined}>
+      {slides.map(slide => (
+        <figure class="gallery-card">
+          <div class="gallery-image">
+            <img src={slide.src} alt={slide.alt} draggable="false"
+              width={slide.width ?? undefined} height={slide.height ?? undefined} loading="lazy" decoding="async" />
+          </div>
+          {(slide.title || slide.body) && <figcaption>
+            {slide.title && <h3>{slide.title}</h3>}
+            {slide.body && <p>{slide.body}</p>}
+          </figcaption>}
+        </figure>
+      ))}
+    </div>
+  </div>
+  {carousel && (options.arrows || options.dots || options.autoplay) && (
+    <div data-case-controls hidden>
+      <div class="gallery-toolbar">
+        {options.arrows && <button type="button" class="gallery-control" data-case-step="-1" aria-label={zh ? '上一个案例' : 'Previous case'}>←</button>}
+        {options.dots && <div class="gallery-thumbnails">
+          {slides.map((slide, index) => (
+            <button type="button" data-case-index={index} aria-current={index === 0 ? 'true' : 'false'}
+              aria-label={zh ? `查看案例 ${index + 1}` : `View case ${index + 1}`}>
+              <img src={slide.src} loading="lazy" decoding="async" alt="" draggable="false" />
+            </button>
+          ))}
+        </div>}
+        {options.arrows && <button type="button" class="gallery-control" data-case-step="1" aria-label={zh ? '下一个案例' : 'Next case'}>→</button>}
+        {options.autoplay && <button type="button" class="gallery-control" data-case-pause aria-pressed="false" aria-label={zh ? '暂停轮播' : 'Pause slideshow'}>
+          <span class="pause-mark" aria-hidden="true">Ⅱ</span><span class="play-mark" aria-hidden="true">▶</span>
+        </button>}
+      </div>
+    </div>
+  )}
+</section>
+
+<style>
+  .gallery { width: min(calc(100% - 3rem), 75rem); min-width: 0; margin-inline: auto; padding-block: clamp(2.75rem, 6vw, 5rem); scroll-margin-block-start: 5rem; }
+  .case-heading { margin-bottom: 1.3rem; }
+  .case-heading h2 { margin: 0; font-size: clamp(1.8rem, 3.2vw, 2.65rem); font-weight: 750; color: var(--color-ink); line-height: 1.2; }
+  .gallery-label { margin-bottom: .55rem; color: var(--color-brand); font-size: .8rem; font-weight: 750; letter-spacing: .06em; }
+  .gallery-intro { max-width: 40rem; margin-top: .75rem; color: var(--color-muted); line-height: 1.65; white-space: pre-wrap; }
+  .gallery-stage {
+    overflow: hidden;
+    border: 1px solid var(--color-line);
+    border-radius: 1.4rem;
+    background: linear-gradient(145deg, var(--color-surface), var(--color-paper));
+    box-shadow: 0 12px 34px rgb(15 118 110 / 9%);
+  }
+  .gallery-track { position: relative; }
+  .gallery-scroll {
+    display: grid;
+    grid-auto-flow: column;
+    grid-auto-columns: 100%;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    scroll-snap-type: x mandatory;
+    scrollbar-width: none;
+  }
+  .gallery-scroll::-webkit-scrollbar { display: none; }
+  .gallery-scroll[data-drag-ready] { cursor: grab; }
+  .gallery-scroll[data-dragging] { cursor: grabbing; scroll-snap-type: none; user-select: none; }
+  .gallery-card {
+    min-width: 0;
+    margin: 0;
+    scroll-snap-align: start;
+    padding: clamp(.6rem, 1.6vw, 1.25rem);
+  }
+  .gallery-image {
+    display: grid;
+    place-items: center;
+    block-size: clamp(12rem, 42vw, 32rem);
+    overflow: hidden;
+    border-radius: .9rem;
+    background: var(--color-surface);
+  }
+  .gallery-image img { display: block; width: 100%; height: 100%; min-height: 0; object-fit: contain; }
+  .gallery-card figcaption { padding: .85rem .2rem 0; }
+  .gallery-card h3 { margin: 0; font-size: 1rem; font-weight: 700; overflow-wrap: anywhere; }
+  .gallery-card p { margin-top: .4rem; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--color-muted); font-size: .9rem; }
+  .gallery-toolbar { display: flex; justify-content: center; align-items: center; gap: .5rem; margin-top: 1rem; }
+  .gallery-control {
+    display: grid; flex: none; width: 2.75rem; height: 2.75rem; place-items: center; border: 1px solid var(--color-line);
+    border-radius: 50%; background: var(--color-paper); color: var(--color-brand); font-size: 1.1rem;
+  }
+  .gallery-control:hover { background: var(--color-surface); border-color: var(--color-brand); }
+  .gallery-control .play-mark, .gallery-control[aria-pressed="true"] .pause-mark { display: none; }
+  .gallery-control[aria-pressed="true"] .play-mark { display: inline; }
+  .gallery-thumbnails { display: flex; min-width: 0; max-width: 25rem; gap: .4rem; overflow-x: auto; padding: .25rem; scrollbar-width: thin; }
+  .gallery-thumbnails button {
+    flex: none; width: 4rem; height: 2.9rem; padding: 2px; border: 2px solid transparent;
+    border-radius: .6rem; background: var(--color-surface);
+  }
+  .gallery-thumbnails button:hover { border-color: var(--color-line); }
+  .gallery-thumbnails button[aria-current="true"] { border-color: var(--color-brand); }
+  .gallery-thumbnails img { display: block; width: 100%; height: 100%; border-radius: .3rem; object-fit: cover; }
+  .gallery :is(button, [tabindex]):focus-visible { outline: 2px solid var(--color-brand); outline-offset: 3px; }
+  @media (max-width: 47rem) {
+    .gallery { width: calc(100% - 2rem); }
+    .gallery-stage { border-radius: 1rem; }
+    .gallery-toolbar { gap: .35rem; }
+    .gallery-thumbnails button { width: 3.1rem; height: 2.75rem; }
+  }
+</style>
+
+<script>
+  for (const gallery of document.querySelectorAll<HTMLElement>('[data-case-carousel]')) {
+    const track = gallery.querySelector<HTMLElement>('[data-case-track]');
+    if (!track) continue;
+    const slides = Array.from(track.querySelectorAll<HTMLElement>('.gallery-card'));
+    const thumbnails = Array.from(gallery.querySelectorAll<HTMLButtonElement>('[data-case-index]'));
+    const motion = matchMedia('(prefers-reduced-motion: reduce)');
+    const interval = Number(gallery.dataset.interval);
+    let current = 0;
+    let paused = false;
+    let frame = 0;
+    let drag: { pointer: number; x: number; left: number } | undefined;
+    const nearestIndex = () => Math.max(0, Math.min(slides.length - 1, Math.round(track.scrollLeft / Math.max(1, track.clientWidth))));
+    const position = (slide: HTMLElement) => Math.min(slide.offsetLeft, track.scrollWidth - track.clientWidth);
+    const show = (index: number) => {
+      const target = slides[(index + slides.length) % slides.length];
+      track.scrollTo({ left: position(target), behavior: motion.matches ? 'instant' : 'smooth' });
+    };
+
+    gallery.querySelectorAll<HTMLElement>('[data-case-controls]').forEach(control => { control.hidden = false; });
+    track.setAttribute('data-drag-ready', '');
+    track.addEventListener('scroll', () => {
+      if (frame) return;
+      frame = requestAnimationFrame(() => {
+        frame = 0;
+        current = nearestIndex();
+        thumbnails.forEach((thumbnail, index) => thumbnail.setAttribute('aria-current', String(index === current)));
+      });
+    }, { passive: true });
+    track.addEventListener('keydown', event => {
+      if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+      event.preventDefault();
+      show(current + (event.key === 'ArrowLeft' ? -1 : 1));
+    });
+    track.addEventListener('pointerdown', event => {
+      if (event.pointerType !== 'mouse' || event.button !== 0) return;
+      drag = { pointer: event.pointerId, x: event.clientX, left: track.scrollLeft };
+      track.setPointerCapture(event.pointerId);
+    });
+    track.addEventListener('pointermove', event => {
+      if (!drag || event.pointerId !== drag.pointer || !event.buttons) return;
+      if (Math.abs(drag.x - event.clientX) < 4 && !track.hasAttribute('data-dragging')) return;
+      track.setAttribute('data-dragging', '');
+      track.scrollLeft = drag.left + drag.x - event.clientX;
+      event.preventDefault();
+    });
+    track.addEventListener('lostpointercapture', () => {
+      const dragged = track.hasAttribute('data-dragging');
+      const index = nearestIndex();
+      drag = undefined;
+      track.removeAttribute('data-dragging');
+      if (dragged) show(index);
+    });
+
+    gallery.addEventListener('click', event => {
+      const button = (event.target as Element).closest<HTMLButtonElement>('button');
+      if (!button) return;
+      if (button.hasAttribute('data-case-pause')) {
+        paused = !paused;
+        button.setAttribute('aria-pressed', String(paused));
+      } else if (button.dataset.caseIndex !== undefined) {
+        show(Number(button.dataset.caseIndex));
+      } else if (button.dataset.caseStep !== undefined) {
+        show(current + Number(button.dataset.caseStep));
+      }
+    });
+    if (interval >= 2000 && interval <= 30000) {
+      window.setInterval(() => {
+        if (!paused && !drag && !motion.matches && !document.hidden && !gallery.matches(':hover, :focus-within')) show(current + 1);
+      }, interval);
+    }
+  }
+</script>

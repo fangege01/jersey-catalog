@@ -26,7 +26,7 @@ const cards = [
   {
     label: '净收入',
     value: formatPrice(stats.revenue_cents),
-    sub: stats.refunded_cents > 0 ? `${formatPrice(stats.refunded_cents)} refunded` : null,
+    sub: stats.refunded_cents > 0 ? `已退款 ${formatPrice(stats.refunded_cents)}` : null,
   },
   { label: '订单', value: String(stats.count), sub: null },
   { label: '商品管理', value: String(productCount), sub: null },
@@ -115,7 +115,7 @@ const cards = [
                 </td>
                 <td class="py-2 text-right tabular-nums">
                   <span class={0 >= p.stock ? 'text-red-600' : 'text-amber-700'}>
-                    {p.stock} left
+                    剩余 {p.stock} 件
                   </span>
                 </td>
               </tr>

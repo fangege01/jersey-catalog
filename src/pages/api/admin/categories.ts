@@ -5,6 +5,8 @@ import { parseCategoryForm } from '../../../features/categories/form';
 import { uniqueCategorySlug } from '../../../features/categories/slug';
 import { CACHE_TAG } from '../../../features/cache/tags';
 import { purgeCacheTags } from '../../../features/cache/purge';
+import { saveCopyInEnglish } from '../../../features/i18n/adminCopy';
+import { EnglishTranslationError } from '../../../features/i18n/english';
 
 export const prerender = false;
 
@@ -25,12 +27,19 @@ export const POST: APIRoute = async ({ request, redirect }) => {
     parentId = parent.id;
   }
 
-  const slug = await uniqueCategorySlug(env.DB, parsed.data.slugInput || parsed.data.name);
+  let copy;
+  try {
+    copy = await saveCopyInEnglish(env.DB, env.AI, 'category', { title: parsed.data.name, body: null });
+  } catch (cause) {
+    if (cause instanceof EnglishTranslationError) return redirect(fail(cause.message), 303);
+    throw cause;
+  }
+  const slug = await uniqueCategorySlug(env.DB, parsed.data.slugInput || copy.title);
   await createCategory(env.DB, {
-    name: parsed.data.name,
+    name: copy.title,
     slug,
     parent_id: parentId,
-  });
+  }, copy.source);
   await purgeCacheTags([CACHE_TAG.catalog]);
   return redirect('/admin/categories', 303);
 };

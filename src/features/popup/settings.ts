@@ -1,14 +1,14 @@
 export const defaultPopup = {
   enabled: false,
   delays: [60, 240, 500, 900],
-  title: 'Get a jersey quote',
-  body: 'Ask us about styles, sizes, and wholesale pricing.',
-  button: 'Chat on WhatsApp',
-  dismiss: 'Maybe later',
-  titleZh: '咨询球衣报价',
-  bodyZh: '欢迎咨询款式、尺码和批发价格。',
-  buttonZh: '通过 WhatsApp 询价',
-  dismissZh: '暂时不用',
+  title: 'Get the Jersey Catalog on WhatsApp',
+  body: 'Chat with us to request the latest jersey catalog and a quote.',
+  button: 'Chat on WhatsApp Now',
+  dismiss: 'No thanks, I’m just looking',
+  titleZh: '添加商家 WhatsApp 获取球衣目录',
+  bodyZh: '点击下方按钮，通过 WhatsApp 获取最新球衣目录与报价。',
+  buttonZh: '立即 WhatsApp 咨询',
+  dismissZh: '暂不需要',
 };
 
 export function popupDelays(input: unknown): number[] | null {

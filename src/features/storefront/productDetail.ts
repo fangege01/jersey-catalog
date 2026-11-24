@@ -159,7 +159,7 @@ export async function loadProductDetail(
       // The first frame is what a shopper sees before scrolling, so it is the
       // page's LCP candidate. Saying so on the model keeps the rendered
       // attributes and the fade decision from drifting apart.
-      hero: { ...hero, alt: image.alt?.trim() || product.name, priority: index === 0 },
+      hero: { ...hero, alt: image.alt?.trim() ?? product.name, priority: index === 0 },
       thumbnail: { ...thumbnail, alt: '', priority: false },
     };
   });
@@ -177,15 +177,21 @@ export async function loadProductDetail(
   const imageUrls = imageKeys.map((key) => new URL(productImageUrl(key, options.imageBaseUrl), options.origin).href);
   const imagePath = imageUrls[0];
   const imageAlt = imageKeys[0] ? galleryByKey.get(imageKeys[0])?.alt?.trim() || product.name : undefined;
+  const importedSeo = (() => {
+    if (options.locale === 'zh-CN' || !product.import_seo_json) return null;
+    try { return JSON.parse(product.import_seo_json) as { title: string; metaDescription: string; h1: string; intro: string; description: string; ogTitle?: string; ogDescription?: string }; }
+    catch { return null; }
+  })();
+  const detailDescription = [importedSeo?.intro, importedSeo?.description].filter(Boolean).join('\n\n') || product.description;
   const jsonLd = {
     '@context': 'https://schema.org',
     '@type': 'Product',
     name: product.name,
     // Structured data wants prose, not Markdown syntax characters.
-    ...(product.description ? { description: markdownExcerpt(product.description, 5000) } : {}),
+    ...(detailDescription ? { description: markdownExcerpt(detailDescription, 5000) } : {}),
     url: inquiryProduct.url,
     ...(imageUrls.length > 0 && { image: imageUrls }),
-    ...(!options.catalogOnly && { offers: {
+    ...(!options.catalogOnly && (!importedSeo || displayPriceCents > 0) && { offers: {
       '@type': 'Offer',
       // The SAME currency the page displays. These previously disagreed: the
       // header formatted in the store currency while JSON-LD and the live-price
@@ -207,9 +213,11 @@ export async function loadProductDetail(
     backfillRelated:
       storedRelated === null ? () => storeRelatedIds(product.id, RELATED_TARGET) : null,
     seo: {
-      title: product.name,
+      ogTitle: importedSeo?.ogTitle,
+      ogDescription: importedSeo?.ogDescription,
+      title: importedSeo?.title || product.name,
       // Meta/og description: plain text, truncated on a word boundary.
-      description: product.description ? markdownExcerpt(product.description, 160) : null,
+      description: importedSeo?.metaDescription || (detailDescription ? markdownExcerpt(detailDescription, 160) : null),
       imagePath,
       imageAlt,
       // Escape "<" so a product name can't break out of the <script> tag.
@@ -218,10 +226,10 @@ export async function loadProductDetail(
     model: {
       ...(options.locale === 'zh-CN' && { locale: options.locale }),
       id: requirePublicId(product.public_id, product.id, 'product'),
-      name: product.name,
-      description: product.description,
-      descriptionHtml: product.description
-        ? renderMarkdown(product.description, {
+      name: importedSeo?.h1 || product.name,
+      description: detailDescription,
+      descriptionHtml: detailDescription
+        ? renderMarkdown(detailDescription, {
             baseUrl: options.imageBaseUrl,
             resolveLink: options.catalogOnly ? (href) => managedWhatsAppHref(href, inquiryNumber ?? null) : undefined,
           })
@@ -240,7 +248,7 @@ export async function loadProductDetail(
         href: `/categories/${category.slug}`,
       })),
       images,
-      heroImage: heroImage(product, options),
+      heroImage: images[gallery.findIndex(image => image.image_key === product.image_key)]?.hero ?? heroImage(product, options),
       related: related.map((candidate) =>
         buildProductCard(localizedProduct(candidate, productText.get(candidate.public_id ?? '')), {
           baseUrl: options.imageBaseUrl,

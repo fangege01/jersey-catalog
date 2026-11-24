@@ -11,6 +11,8 @@ import { uniqueCategorySlug } from '../../../../features/categories/slug';
 import { parsePublicId } from '../../../../features/ids/publicId';
 import { CACHE_TAG } from '../../../../features/cache/tags';
 import { purgeCacheTags } from '../../../../features/cache/purge';
+import { saveCopyInEnglish } from '../../../../features/i18n/adminCopy';
+import { EnglishTranslationError } from '../../../../features/i18n/english';
 
 export const prerender = false;
 
@@ -19,7 +21,7 @@ export const prerender = false;
 export const POST: APIRoute = async ({ request, params, redirect }) => {
   const publicId = parsePublicId(params.id, 'category');
   const category = publicId ? await getCategoryByPublicId(env.DB, publicId) : null;
-  if (!category) return new Response('未找到记录。', { status: 404 });
+  if (!category || !publicId) return new Response('未找到记录。', { status: 404 });
   const id = category.id;
 
   const form = await request.formData();
@@ -52,12 +54,20 @@ export const POST: APIRoute = async ({ request, params, redirect }) => {
     }
   }
 
-  const slug = await uniqueCategorySlug(env.DB, parsed.data.slugInput || parsed.data.name, id);
+  let copy;
+  try {
+    copy = await saveCopyInEnglish(env.DB, env.AI, 'category', { title: parsed.data.name, body: null },
+      { title: category.name, body: null, publicId });
+  } catch (cause) {
+    if (cause instanceof EnglishTranslationError) return fail(cause.message);
+    throw cause;
+  }
+  const slug = await uniqueCategorySlug(env.DB, parsed.data.slugInput || category.slug || copy.title, id);
   await updateCategory(env.DB, id, {
-    name: parsed.data.name,
+    name: copy.title,
     slug,
     parent_id: parentId,
-  });
+  }, copy.source && { publicId, source: copy.source });
   await purgeCacheTags([CACHE_TAG.catalog]);
   return redirect('/admin/categories', 303);
 };

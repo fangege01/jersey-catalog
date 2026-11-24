@@ -16,6 +16,7 @@ const steps = [
   [copy.step1Title, copy.step1Text],
   [copy.step2Title, copy.step2Text],
   [copy.step3Title, copy.step3Text],
+  [copy.step4Title, copy.step4Text],
 ];
 ---
 <section class="hero" data-wide-catalog>
@@ -102,29 +103,30 @@ const steps = [
   </div>
 </section>
 
-<section class="section deep" id="how-to-order">
+<section class="section order-workflow" id="how-to-order" aria-labelledby="order-workflow-title">
   <div class="frame">
-    <h2 class="center">{copy.processTitle}</h2>
+    <header class="order-heading">
+      <p class="order-kicker">{copy.processKicker}</p>
+      <h2 id="order-workflow-title">{copy.processTitle}</h2>
+      <p class="order-intro">{copy.processIntro}</p>
+    </header>
     <ol class="steps">
       {steps.map(([title, description], i) => (
-        <li><span class="circle">{i + 1}</span><h3>{title}</h3><p>{description}</p></li>
+        <li><b aria-hidden="true">{String(i + 1).padStart(2, '0')}</b><h3>{title}</h3><p>{description}</p></li>
       ))}
     </ol>
   </div>
 </section>
 
-<section class="section">
+<slot name="homepage-cases" />
+
+<section class="section" id="faq" aria-labelledby="home-faq-title">
   <div class="frame">
-    <h2>{copy.faqTitle}</h2>
+    <h2 id="home-faq-title">{copy.faqTitle}</h2>
     <div class="questions">
       <details><summary>{copy.question1}</summary><p>{copy.answer1}</p></details>
       <details><summary>{copy.question2}</summary><p>{copy.answer2}</p></details>
       <details><summary>{copy.question3}</summary><p>{copy.answer3}</p></details>
-    </div>
-    <div class="closing">
-      <h2>{copy.closingTitle}</h2>
-      {contact ? <a class="button bright" data-whatsapp-inquiry href={contact}>{copy.closingLink}</a> :
-        <a class="button bright" href="/products">{copy.browseCta}</a>}
     </div>
   </div>
 </section>
@@ -150,10 +152,9 @@ const steps = [
 .center{text-align:center;margin-bottom:1.7rem;}
 .grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:1.1rem;}
 .box{min-width:0;border-radius:20px;padding:1.3rem;background:white;box-shadow:0 12px 30px rgba(13,148,136,.1);border:1px solid #e8f3f1;}
-.box h3,.steps h3{margin:.6rem 0 .45rem;font-size:1.06rem;font-weight:750;}
+.box h3{margin:.6rem 0 .45rem;font-size:1.06rem;font-weight:750;}
 .box p,.questions p{color:#4a5f63;font-size:.95rem;line-height:1.6;}
-.circle{display:grid;place-items:center;width:2.8rem;height:2.8rem;border-radius:50%;background:#e6f7f4;color:#0f766e;font-weight:800;font-size:1.15rem;}
-.pale{background:#f2f9f8;}.deep{background:#0b2b2a;color:white;}
+.pale{background:#f2f9f8;}
 .section-head{display:flex;justify-content:space-between;align-items:baseline;gap:1rem;flex-wrap:wrap;margin-bottom:1.3rem;}
 .section-head a,.category-grid a{font-weight:750;color:#0f766e;}
 .category-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,12rem),1fr));gap:.85rem;}
@@ -164,14 +165,20 @@ const steps = [
 .team-layout p{color:#4a5f63;margin:1rem 0;line-height:1.65;}
 .team-link{color:#0f766e;font-weight:750;}
 .team-link:hover{text-decoration:underline;}
-.steps{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:1rem;}
-.steps li{padding:1.25rem;border:1px solid #ffffff35;border-radius:20px;}
-.steps p{color:#c7e9e5;line-height:1.55;}
+.order-workflow{background:#f2f6f8;color:#0e1b2c;}
+.order-heading{max-width:46rem;margin-bottom:clamp(1.75rem,3vw,2.75rem);}
+.order-kicker,.steps b{color:#047857;font-size:.875rem;font-weight:800;letter-spacing:.04em;}
+.order-heading h2{margin:.75rem 0 1rem;}
+.order-intro,.steps p{color:#526579;line-height:1.7;overflow-wrap:anywhere;}
+.order-intro{font-size:1.05rem;}
+.steps{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:clamp(1rem,2vw,1.7rem);padding:0;list-style:none;}
+.steps li{min-width:0;border-block-start:2px solid #10b981;padding-block-start:1.2rem;}
+.steps b{font-variant-numeric:tabular-nums;}
+.steps h3{margin:.65rem 0 .5rem;font-size:clamp(1.05rem,1.55vw,1.3rem);font-weight:750;line-height:1.4;overflow-wrap:anywhere;}
 .questions{display:grid;gap:.55rem;margin-top:1.2rem;}
 .questions details{border:1px solid #dcebe9;border-radius:12px;padding:.9rem 1rem;}
 .questions summary{font-weight:650;}.questions p{padding-top:.5rem;}
-.closing{display:flex;gap:1rem;flex-wrap:wrap;align-items:center;justify-content:space-between;padding:clamp(1.25rem,4vw,2.5rem);margin-top:2rem;border-radius:26px;background:linear-gradient(115deg,#0f766e,#08769f);color:white;}
-@media(max-width:62rem){.grid{grid-template-columns:repeat(2,minmax(0,1fr));}}
+@media(max-width:62rem){.grid,.steps{grid-template-columns:repeat(2,minmax(0,1fr));}}
 @media(max-width:47rem){.frame{width:calc(100% - 2rem);}.hero{border-radius:0 0 32px 32px;}.hero-layout{grid-template-columns:1fr;gap:1.75rem;}.hero-visual{max-width:32rem;}.hero-options{grid-template-columns:repeat(2,minmax(0,1fr));}.steps,.team-layout{grid-template-columns:1fr;}}
 @media(max-width:27rem){.grid{gap:.65rem;}.box{padding:.8rem;}.box p{font-size:.85rem;}}
 </style>

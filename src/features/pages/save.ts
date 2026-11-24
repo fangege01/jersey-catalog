@@ -2,6 +2,7 @@ import type { D1Database } from '@cloudflare/workers-types';
 import { findMediaByKeys, pageMediaClaimStatements } from '../media/db.ts';
 import { extractMediaKeys } from './markdown.ts';
 import { type Page } from './db.ts';
+import { sourceCopyStatement, type SourceCopy } from '../i18n/db.ts';
 
 export interface SaveResult {
   /** Keys the body references that are not in the media library. */
@@ -38,7 +39,7 @@ export async function savePageBody(
     published: number;
     layout: string;
   },
-  options: { baseUrl?: string } = {},
+  options: { baseUrl?: string; original?: SourceCopy } = {},
 ): Promise<SaveResult> {
   const referenced = extractMediaKeys(fields.body_markdown, { baseUrl: options.baseUrl });
   const resolved = await findMediaByKeys(db, referenced);
@@ -80,6 +81,7 @@ export async function savePageBody(
         okValue,
         blockedValue,
       ),
+    ...(options.original && existing.public_id ? [sourceCopyStatement(db, 'page', existing.public_id, options.original)] : []),
   ]);
 
   // Read back what the transaction actually stored rather than assuming.
@@ -100,13 +102,12 @@ export async function savePageBody(
 export function saveWarning(result: SaveResult): string {
   if (result.unresolved.length === 0 && !result.publishRefused) return '';
   const count = Math.max(result.unresolved.length, 1);
-  const images = `${count} image${count === 1 ? '' : 's'}`;
-  const is = count === 1 ? 'is' : 'are';
+  const images = `${count} 张图片在素材库中缺失`;
   if (result.publishRefused) {
-    return `Changes saved, but this page was not published because ${images} ${is} missing from the media library.`;
+    return `改动已保存。由于有 ${images}，页面仍为草稿。`;
   }
   if (result.published === 1) {
-    return `Changes saved and live, but ${images} ${is} missing from the media library and will render broken.`;
+    return `改动已发布。有 ${images}，前台无法显示这些图片。`;
   }
-  return `Draft saved, but ${images} ${is} missing from the media library.`;
+  return `草稿已保存。有 ${images}。`;
 }

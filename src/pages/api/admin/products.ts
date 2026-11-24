@@ -23,6 +23,8 @@ import { uploadDigitalFile, validateDigitalFile } from '../../../features/produc
 import { attachmentActive } from '../../../features/digitalDelivery/rollout.ts';
 import { CACHE_TAG } from '../../../features/cache/tags';
 import { purgeCacheTags } from '../../../features/cache/purge';
+import { saveCopyInEnglish } from '../../../features/i18n/adminCopy';
+import { EnglishTranslationError } from '../../../features/i18n/english';
 
 export const prerender = false;
 
@@ -40,6 +42,13 @@ export const POST: APIRoute = async ({ request, redirect, locals }) => {
     requireWeight: zonesRequireWeight(shippingFor(locals.settings).config),
   });
   if ('error' in parsed) return redirect(fail(parsed.error), 303);
+  let copy;
+  try {
+    copy = await saveCopyInEnglish(env.DB, env.AI, 'product', { title: parsed.data.name, body: parsed.data.description });
+  } catch (cause) {
+    if (cause instanceof EnglishTranslationError) return redirect(fail(cause.message), 303);
+    throw cause;
+  }
 
   let mediaId: number | null = null;
   const file = form.get('image');
@@ -58,14 +67,14 @@ export const POST: APIRoute = async ({ request, redirect, locals }) => {
   }
 
   // Slug from the optional slug field, else the name; made unique.
-  const slugBase = String(form.get('slug') ?? '').trim() || parsed.data.name;
+  const slugBase = String(form.get('slug') ?? '').trim() || copy.title;
   const slug = await uniqueSlug(env.DB, slugBase);
 
   // image_key starts null and is derived from the gallery by syncPrimaryImage.
   // Writing the uploaded key here directly would be an UNGUARDED reference: the
   // media row is unreferenced until the attach lands, so a concurrent library
   // delete could leave the product pointing at an object that no longer exists.
-  const productId = await createProduct(env.DB, { ...parsed.data, image_key: null, slug });
+  const productId = await createProduct(env.DB, { ...parsed.data, name: copy.title, description: copy.body, image_key: null, slug }, copy.source);
   if (attachmentActive() && deliverable instanceof File && deliverable.size > 0) {
     await setProductFile(env.DB, productId, await uploadDigitalFile(getFileStorage(), deliverable));
   }

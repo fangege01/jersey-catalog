@@ -9,7 +9,9 @@ const { model } = Astro.props;
 const copy = model.copy;
 const zh = model.locale === 'zh-CN';
 ---
-{model.landing ? <Home model={model} landing={model.landing} /> : (
+{model.landing ? <Home model={model} landing={model.landing}>
+  <slot name="homepage-cases" slot="homepage-cases" />
+</Home> : (
   <div class="catalog" data-wide-catalog>
     <section class="catalog-banner">
       <div class="frame">

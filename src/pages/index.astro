@@ -5,6 +5,7 @@ import ProductList from '../features/products/ProductList.astro';
 import { resolveHomePath } from '../features/settings/home';
 import { localizedHref } from '../features/i18n/locale';
 import { readSiteCopy, siteImageKey } from '../features/site-content/copy';
+import Showcase from '../features/site-content/Showcase.astro';
 import { buildStorefrontImage } from '../features/storefront/productCard';
 import { whatsappInquiryUrl } from '../features/storefront/catalogMode';
 import { getConfig } from '../config';
@@ -37,6 +38,8 @@ const image = imageKey ? buildStorefrontImage(imageKey, copy.heroAlt, {
 ---
 
 <Layout title={landing ? copy.seoTitle : undefined} exactTitle={landing} description={landing ? copy.seoDescription : undefined}
-  image={landing ? image.src : undefined} imageAlt={landing ? image.alt : undefined}>
-  <ProductList landing={landing ? { copy, image, whatsappHref: whatsappInquiryUrl(settings?.whatsappNumber) } : undefined} />
+  image={landing ? image.src : undefined} imageAlt={landing ? image.alt : undefined} hasInlineCases={landing}>
+  <ProductList landing={landing ? { copy, image, whatsappHref: whatsappInquiryUrl(settings?.whatsappNumber) } : undefined}>
+    <Fragment slot="homepage-cases">{landing && <Showcase section="cases" />}</Fragment>
+  </ProductList>
 </Layout>

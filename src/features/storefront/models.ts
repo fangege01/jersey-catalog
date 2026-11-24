@@ -198,6 +198,8 @@ export interface ProductPurchaseModel {
 /** Metadata the ROUTE emits. Never handed to a template: escaping and canonical
  *  correctness are not presentation decisions. */
 export interface ProductSeoModel {
+  ogTitle?: string;
+  ogDescription?: string;
   title: string;
   description: string | null;
   /** Root-relative image path for the social card. */

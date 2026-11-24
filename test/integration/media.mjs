@@ -144,6 +144,9 @@ try {
   );
   await db.prepare(translationMigration).run();
 
+  const showcaseMigration = await readFile(new URL('../../migrations/0045_storefront_showcases.sql', import.meta.url), 'utf8');
+  for (const sql of showcaseMigration.split(';').map(sql => sql.trim()).filter(Boolean)) await db.prepare(sql).run();
+
   const newMedia = async (key, name = key) =>
     createMediaRecord(db, {
       image_key: key,

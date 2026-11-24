@@ -7,7 +7,7 @@ const shanghai = (value: string, now = '2026-11-22T02:30:00Z') =>
 
 describe('traffic calendar ranges', () => {
   it('exposes the five requested ranges in order', () => {
-    expect(trafficRangeOrder.map(key => trafficRanges[key])).toEqual(['今日', '昨日', '近三日', '近7日', '近30日']);
+    expect(trafficRangeOrder.map(key => trafficRanges[key])).toEqual(['今日', '昨日', '近三日', '近七日', '近30日']);
   });
 
   it('flips today and yesterday at Beijing midnight, including the current second', () => {

@@ -29,19 +29,12 @@ export const inquiryOptions = {
 } satisfies Record<string, Record<string, Labels>>;
 
 export const inquiryTextFields = {
-  name: { label: ['Your Name', '姓名'], max: 100, type: 'text', autocomplete: 'name', required: true },
-  company: { label: ['Your Company', '公司'], max: 160, type: 'text', autocomplete: 'organization', required: false },
-  email: { label: ['Email', '邮箱'], max: 254, type: 'email', autocomplete: 'email', required: false },
-  whatsapp: { label: ['WhatsApp / Phone', 'WhatsApp / 电话'], max: 32, type: 'tel', autocomplete: 'tel', required: false },
-  country: { label: ['Country / Region', '国家 / 地区'], max: 100, type: 'text', autocomplete: 'country-name', required: true },
-} satisfies Record<string, { label: Labels; max: number; type: 'text' | 'email' | 'tel'; autocomplete: string; required: boolean }>;
-
-export const inquirySelectLabels = {
-  businessType: ['Business Type', '客户类型'],
-  interest: ['Product of Interest', '意向产品'],
-  estimatedQuantity: ['Estimated Order Quantity', '预计采购数量'],
-  orderType: ['Order Type', '订单类型'],
-} satisfies Record<keyof typeof inquiryOptions, Labels>;
+  name: { max: 100, type: 'text', autocomplete: 'name', required: true },
+  company: { max: 160, type: 'text', autocomplete: 'organization', required: false },
+  email: { max: 254, type: 'email', autocomplete: 'email', required: false },
+  whatsapp: { max: 32, type: 'tel', autocomplete: 'tel', required: false },
+  country: { max: 100, type: 'text', autocomplete: 'country-name', required: true },
+} satisfies Record<string, { max: number; type: 'text' | 'email' | 'tel'; autocomplete: string; required: boolean }>;
 
 export const MAX_INQUIRY_MESSAGE = 2000;
 

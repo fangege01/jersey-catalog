@@ -8,6 +8,8 @@ import { savePageBody, saveWarning } from '../../../../features/pages/save';
 import { parsePublicId } from '../../../../features/ids/publicId';
 import { CACHE_TAG } from '../../../../features/cache/tags';
 import { purgeCacheTags } from '../../../../features/cache/purge';
+import { saveCopyInEnglish } from '../../../../features/i18n/adminCopy';
+import { EnglishTranslationError } from '../../../../features/i18n/english';
 
 export const prerender = false;
 
@@ -16,7 +18,7 @@ export const prerender = false;
 export const POST: APIRoute = async ({ request, params, redirect }) => {
   const publicId = parsePublicId(params.id, 'page');
   const existing = publicId ? await getPageByPublicId(env.DB, publicId) : null;
-  if (!existing) return new Response('未找到记录。', { status: 404 });
+  if (!existing || !publicId) return new Response('未找到记录。', { status: 404 });
   const id = existing.id;
 
   const form = await request.formData();
@@ -32,16 +34,24 @@ export const POST: APIRoute = async ({ request, params, redirect }) => {
 
   const parsed = parsePageForm(form);
   if ('error' in parsed) return back(`?error=${encodeURIComponent(parsed.error)}`);
+  let copy;
+  try {
+    copy = await saveCopyInEnglish(env.DB, env.AI, 'page', { title: parsed.data.title, body: parsed.data.body_markdown },
+      { publicId, title: existing.title, body: existing.body_markdown });
+  } catch (cause) {
+    if (cause instanceof EnglishTranslationError) return back('?error=' + encodeURIComponent(cause.message));
+    throw cause;
+  }
 
   // Keep the slug stable on rename: the form pre-fills the current slug.
-  const slugBase = parsed.data.slug || existing.slug || parsed.data.title;
+  const slugBase = parsed.data.slug || existing.slug || copy.title;
   const slug = await uniquePageSlug(env.DB, slugBase, id);
 
   const result = await savePageBody(
     env.DB,
     existing,
-    { ...parsed.data, slug },
-    { baseUrl: getConfig().images.baseUrl },
+    { ...parsed.data, title: copy.title, body_markdown: copy.body ?? '', slug },
+    { baseUrl: getConfig().images.baseUrl, original: copy.source },
   );
 
   await purgeCacheTags([CACHE_TAG.shell]);

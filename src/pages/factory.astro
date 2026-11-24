@@ -1,4 +1,139 @@
 ---
-import InformationPage from '../features/site-content/InformationPage.astro';
+import Layout from '../layouts/Layout.astro';
+import { getConfig } from '../config';
+import { localizedHref } from '../features/i18n/locale';
+import { readSiteCopy, siteImageKey } from '../features/site-content/copy';
+import { whatsappInquiryUrl } from '../features/storefront/catalogMode';
+import StoreImage from '../features/storefront/controls/StoreImage.astro';
+import { buildStorefrontImage } from '../features/storefront/productCard';
+import type { StorefrontImage } from '../features/storefront/models';
+
+const locale = Astro.locals.storeLocale ?? 'en';
+const settings = Astro.locals.settings;
+const copy = readSiteCopy(settings?.siteContent, 'factory', locale);
+const whatsapp = whatsappInquiryUrl(settings?.whatsappNumber);
+const quote = localizedHref('/contact#contact-inquiry', locale);
+const browse = localizedHref('/products', locale);
+const home = localizedHref('/', locale);
+const photo = (slot: 'factory' | 'factoryWarehouse', src: string, alt: string, priority = false): StorefrontImage => {
+  const key = settings?.siteImages?.[siteImageKey(slot)];
+  return key ? buildStorefrontImage(key, alt, {
+    baseUrl: getConfig().images.baseUrl, delivery: settings?.imageDelivery,
+    sizes: '(min-width: 768px) 48vw, 92vw', priority,
+  }) : { src, alt, priority };
+};
+const hero = photo('factory', '/teal/jersey-customization.webp', copy.imageAlt, true);
+const warehouse = photo('factoryWarehouse', '/teal/supply-packing.webp', copy.warehouseAlt);
+const steps = [
+  { id: 'production', title: copy.productionTitle, text: copy.productionText },
+  { id: 'printing', title: copy.customizationTitle, text: copy.customizationText },
+  { id: 'quality', title: copy.point2Title, text: copy.point2Text },
+];
 ---
-<InformationPage section="factory" />
+<Layout title={copy.seoTitle} exactTitle description={copy.seoDescription} image={hero.src} imageAlt={hero.alt}>
+  <article class="supply">
+    <section class="hero-panel" aria-labelledby="supply-title">
+      <div>
+        <nav class="breadcrumb" aria-label={locale === 'zh-CN' ? '当前位置' : 'Breadcrumb'}>
+          <a href={home}>{locale === 'zh-CN' ? '首页' : 'Home'}</a>
+          <span aria-hidden="true">/</span><span aria-current="page">{copy.title}</span>
+        </nav>
+        <h1 id="supply-title">{copy.title}</h1>
+        <p class="lead">{copy.intro}</p>
+        <div class="actions">
+          <a class="primary" href={quote}>{copy.quoteLabel}</a>
+          {whatsapp && <a class="secondary" href={whatsapp} data-whatsapp-inquiry>{copy.cta}</a>}
+        </div>
+      </div>
+      <StoreImage image={hero} class="supply-photo" />
+    </section>
+
+    <section id="overview" class="intro-panel">
+      <h2>{copy.panelTitle}</h2>
+      <p>{copy.body}</p>
+    </section>
+
+    <div class="process-grid">
+      {steps.map(step => <section id={step.id} class="process-panel">
+        <h2>{step.title}</h2>
+        <p>{step.text}</p>
+      </section>)}
+    </div>
+
+    <section id="warehouse" class="stock-panel">
+      <div>
+        <h2>{copy.point1Title}</h2>
+        <p>{copy.point1Text}</p>
+        <div class="actions"><a class="secondary" href={browse}>{copy.browseLabel}</a></div>
+      </div>
+      <StoreImage image={warehouse} class="supply-photo" />
+    </section>
+
+    <section id="packing" class="intro-panel">
+      <h2>{copy.point3Title}</h2>
+      <p>{copy.point3Text}</p>
+    </section>
+
+    <section id="factory-media" class="gallery">
+      <h2>{copy.galleryTitle}</h2>
+      <p>{copy.galleryText}</p>
+      <div class="photo-grid">
+        {[hero, warehouse].map(image => <figure>
+          <StoreImage image={{ ...image, priority: false }} class="supply-photo" />
+          <figcaption>{image.alt}</figcaption>
+        </figure>)}
+      </div>
+    </section>
+
+    <section id="audience" class="intro-panel">
+      <h2>{copy.audienceTitle}</h2>
+      <p>{copy.audienceText}</p>
+    </section>
+
+    <section id="supply-quote" class="quote-panel">
+      <h2>{copy.closingTitle}</h2>
+      <p>{copy.closingText}</p>
+      <div class="actions">
+        <a class="secondary" href={quote}>{copy.quoteLabel}</a>
+        {whatsapp && <a class="secondary" href={whatsapp} data-whatsapp-inquiry>{copy.cta}</a>}
+      </div>
+    </section>
+  </article>
+</Layout>
+
+<style>
+  .supply { display: grid; gap: clamp(1.4rem, 4vw, 3rem); }
+  .supply section { min-width: 0; scroll-margin-top: 6rem; }
+  .supply h1, .supply h2 { font-weight: 780; letter-spacing: -.025em; line-height: 1.16; overflow-wrap: anywhere; }
+  .supply h1 { font-size: clamp(2rem, 4.4vw, 4rem); margin-block: 1rem; }
+  .supply h2 { font-size: clamp(1.2rem, 2.3vw, 1.85rem); }
+  .supply p { margin-top: .7rem; color: var(--color-muted); line-height: 1.7; white-space: pre-line; overflow-wrap: anywhere; }
+  .hero-panel, .stock-panel { display: grid; gap: clamp(1.3rem, 4vw, 3rem); align-items: center; padding: clamp(1.1rem, 4vw, 3rem); border-radius: 1.5rem; background: var(--color-surface); }
+  .hero-panel { background: linear-gradient(140deg, var(--color-surface), var(--color-paper)); border: 1px solid var(--color-line); }
+  .breadcrumb { display: flex; flex-wrap: wrap; gap: .55rem; font-size: .85rem; color: var(--color-muted); }
+  .breadcrumb a { color: var(--color-brand); }
+  .breadcrumb a:hover { text-decoration: underline; }
+  .lead { font-size: clamp(1rem, 1.6vw, 1.15rem); }
+  .actions { display: flex; flex-wrap: wrap; gap: .65rem; margin-top: 1.2rem; }
+  .actions a { display: inline-flex; align-items: center; justify-content: center; min-height: 2.75rem; padding: .6rem 1rem; border-radius: .75rem; font-size: .9rem; font-weight: 700; }
+  .primary { background: var(--color-brand); color: var(--color-on-brand); }
+  .primary:hover { background: var(--color-brand-hover); }
+  .secondary { color: var(--color-ink); background: var(--color-paper); border: 1px solid var(--color-line); }
+  .secondary:hover { border-color: var(--color-brand); }
+  .intro-panel { border-block: 1px solid var(--color-line); padding-block: 1.25rem; }
+  .intro-panel p, .quote-panel p { max-width: 46rem; }
+  .process-grid, .photo-grid { display: grid; gap: 1rem; }
+  .process-panel { border: 1px solid var(--color-line); border-block-start: 3px solid var(--color-brand); border-radius: 1rem; padding: 1.25rem; }
+  .process-panel h2 { font-size: 1.2rem; }
+  .photo-grid { margin-top: 1rem; }
+  .photo-grid figure { margin: 0; border: 1px solid var(--color-line); border-radius: 1rem; overflow: hidden; }
+  .photo-grid figcaption { padding: .75rem 1rem; font-size: .875rem; color: var(--color-muted); }
+  .supply :global(.supply-photo) { display: block; width: 100%; height: auto; aspect-ratio: 3 / 2; object-fit: contain; border-radius: 1rem; background: var(--color-surface); }
+  .photo-grid :global(.supply-photo) { border-radius: 0; }
+  .quote-panel { border-radius: 1.25rem; padding: clamp(1.25rem, 4vw, 2.75rem); background: linear-gradient(115deg, #0b2b2a, #0f766e); color: white; }
+  .quote-panel p { color: #e0f5f2; }
+  @media (min-width: 48rem) {
+    .hero-panel, .stock-panel, .photo-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .process-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  }
+</style>

@@ -10,6 +10,9 @@ import { display, languages, originalStorefrontPath, translatedPath } from '../f
 import { isTrafficPath } from '../features/analytics/events';
 import ContactPopup from '../features/popup/ContactPopup.astro';
 import { seoControls, verificationKeys, verificationTags } from '../features/seo/controls';
+import Showcase from '../features/site-content/Showcase.astro';
+import InquiryBand from '../features/site-content/InquiryBand.astro';
+import FloatingContact from '../features/site-content/FloatingContact.astro';
 import Testimonials from '../features/testimonials/Testimonials.astro';
 import Tracking from '../features/analytics/Tracking.astro';
 import { readSiteCopy, siteSections } from '../features/site-content/copy';
@@ -24,13 +27,16 @@ interface Props {
   /** Root-relative or absolute image for social cards (made absolute below). */
   image?: string;
   imageAlt?: string;
+  ogTitle?: string;
+  ogDescription?: string;
   exactTitle?: boolean;
+  hasInlineCases?: boolean;
   /** Override the canonical URL. Used where two routes render the same content
    *  — the catalog is at both / and /products — so only one is indexable. */
   canonical?: string;
 }
 
-const { title, description, image, imageAlt, exactTitle, canonical: canonicalOverride } = Astro.props;
+const { title, description, image, imageAlt, ogTitle, ogDescription, exactTitle, hasInlineCases, canonical: canonicalOverride } = Astro.props;
 const config = getConfig();
 const locale = Astro.locals.storeLocale ?? (Astro.url.pathname.startsWith('/admin/') ? 'zh-CN' : 'en');
 const t = (english: string, chinese: string) => display(locale, english, chinese);
@@ -133,6 +139,7 @@ const themedMenu = teal ? {
   footerCopy: copy.footer,
   footerLinks: uniqueLinks([...mainLinks.slice(1), ...shellModel.footerLinks]),
 } : {};
+const contactCopy = teal ? readSiteCopy(Astro.locals.settings?.siteContent, 'contact', locale) : undefined;
 const shell = { ...shellModel, ...themedMenu, locale, languageSwitch, whatsappHref };
 ---
 
@@ -160,8 +167,8 @@ const shell = { ...shellModel, ...themedMenu, locale, languageSwitch, whatsappHr
 
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content={storeName} />
-    <meta property="og:title" content={pageTitle} />
-    <meta property="og:description" content={desc} />
+    <meta property="og:title" content={ogTitle || pageTitle} />
+    <meta property="og:description" content={ogDescription || desc} />
     <meta property="og:url" content={canonical} />
     {ogImage && <meta property="og:image" content={ogImage} />}
     {ogImage && imageAlt && <meta property="og:image:alt" content={imageAlt} />}
@@ -200,7 +207,11 @@ const shell = { ...shellModel, ...themedMenu, locale, languageSwitch, whatsappHr
       <slot />
     </main>
 
+    {!hasInlineCases && basePath === '/' && <Showcase section="cases" />}
     {basePath === '/' && <Testimonials locale={locale} settings={Astro.locals.settings?.testimonials} />}
+    {teal && features.catalogOnly && basePath === '/' && (
+      <InquiryBand copy={readSiteCopy(Astro.locals.settings?.siteContent, 'home', locale)} {locale} {whatsappHref} />
+    )}
     {!teal && whatsappHref && (
       <div class="mx-auto max-w-6xl px-6 pb-6">
         <a class="inline-flex rounded-md bg-brand px-5 py-3 text-sm font-medium text-on-brand hover:bg-brand-hover"
@@ -208,6 +219,9 @@ const shell = { ...shellModel, ...themedMenu, locale, languageSwitch, whatsappHr
       </div>
     )}
     <StoreFooter model={shell} />
+    {contactCopy && features.catalogOnly && showLanguages && Astro.response.status === 200 && (
+      <FloatingContact copy={contactCopy} {locale} {whatsappHref} />
+    )}
     <ContactPopup locale={locale} path={Astro.response.status === 200 ? Astro.url.pathname : ''} settings={Astro.locals.settings?.contactPopup} href={whatsappHref} />
     <Tracking locale={locale} path={Astro.response.status === 200 ? Astro.url.pathname : ''} pixelSettings={Astro.locals.settings?.adPixels} />
 

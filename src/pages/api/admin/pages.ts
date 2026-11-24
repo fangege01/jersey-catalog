@@ -2,6 +2,8 @@ import type { APIRoute } from 'astro';
 import { env } from 'cloudflare:workers';
 import { createDraft, getPage } from '../../../features/pages/db';
 import { uniquePageSlug } from '../../../features/pages/slug';
+import { saveCopyInEnglish } from '../../../features/i18n/adminCopy';
+import { EnglishTranslationError } from '../../../features/i18n/english';
 
 export const prerender = false;
 
@@ -15,10 +17,17 @@ export const POST: APIRoute = async ({ request, redirect }) => {
     return redirect(`/admin/pages/new?error=${encodeURIComponent('请填写标题。')}`, 303);
   }
 
-  const slugBase = String(form.get('slug') ?? '').trim() || title;
+  let copy;
+  try {
+    copy = await saveCopyInEnglish(env.DB, env.AI, 'page', { title, body: null });
+  } catch (cause) {
+    if (cause instanceof EnglishTranslationError) return redirect('/admin/pages/new?error=' + encodeURIComponent(cause.message), 303);
+    throw cause;
+  }
+  const slugBase = String(form.get('slug') ?? '').trim() || copy.title;
   const slug = await uniquePageSlug(env.DB, slugBase);
   // The editor URL uses the page_ public ID — one read-back after the insert.
-  const id = await createDraft(env.DB, title, slug);
+  const id = await createDraft(env.DB, copy.title, slug, copy.source);
   const created = await getPage(env.DB, id);
   return redirect(`/admin/pages/${created?.public_id}/edit`, 303);
 };

@@ -34,7 +34,10 @@ export async function uniqueSlug(
       )
       .bind(...(excludeId ? [candidate, excludeId] : [candidate]))
       .first<{ id: number }>();
-    if (!row) return candidate;
+    const redirect = row ? null : await db.prepare(
+      'SELECT product_id FROM product_slug_redirects WHERE old_slug = ? AND (? IS NULL OR product_id <> ?)',
+    ).bind(candidate, excludeId ?? null, excludeId ?? null).first<{ product_id: number }>().catch(() => null);
+    if (!row && !redirect) return candidate;
     n += 1;
     candidate = `${slug}-${n}`;
   }

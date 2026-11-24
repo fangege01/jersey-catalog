@@ -1,7 +1,9 @@
 import type { D1Database } from '@cloudflare/workers-types';
 import { withPublicId } from '../ids/publicId.ts';
+import { sourceCopyStatement, type SourceCopy } from '../i18n/db.ts';
 
 export interface Product {
+  import_seo_json?: string | null;
   id: number;
   public_id: string | null;
   name: string;
@@ -390,30 +392,32 @@ export async function getProductBySlug(db: D1Database, slug: string): Promise<Pr
 }
 
 /** Insert a product and return its new id (needed for category links). */
-export async function createProduct(db: D1Database, p: ProductInput): Promise<number> {
+export async function createProduct(db: D1Database, p: ProductInput, source?: SourceCopy): Promise<number> {
   return withPublicId('product', async (publicId) => {
-    const row = await db
+    const insert = db
       .prepare(
         `INSERT INTO products (name, slug, description, price_cents, currency, image_key, stock, active, weight_grams, requires_shipping, public_id)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          RETURNING id`,
       )
-      .bind(p.name, p.slug, p.description, p.price_cents, p.currency, p.image_key, p.stock, p.active, p.weight_grams, p.requires_shipping, publicId)
-      .first<{ id: number }>();
+      .bind(p.name, p.slug, p.description, p.price_cents, p.currency, p.image_key, p.stock, p.active, p.weight_grams, p.requires_shipping, publicId);
+    const row = source ? (await db.batch<{ id: number }>([insert, sourceCopyStatement(db, 'product', publicId, source)]))[0].results[0]
+      : await insert.first<{ id: number }>();
     return row!.id;
   });
 }
 
-export async function updateProduct(db: D1Database, id: number, p: ProductInput): Promise<void> {
-  await db
+export async function updateProduct(db: D1Database, id: number, p: ProductInput, copy?: { publicId: string; source: SourceCopy }): Promise<void> {
+  const update = db
     .prepare(
       `UPDATE products
          SET name = ?, slug = ?, description = ?, price_cents = ?, currency = ?, image_key = ?, stock = ?, active = ?,
              weight_grams = ?, requires_shipping = ?
        WHERE id = ?`,
     )
-    .bind(p.name, p.slug, p.description, p.price_cents, p.currency, p.image_key, p.stock, p.active, p.weight_grams, p.requires_shipping, id)
-    .run();
+    .bind(p.name, p.slug, p.description, p.price_cents, p.currency, p.image_key, p.stock, p.active, p.weight_grams, p.requires_shipping, id);
+  if (copy) await db.batch([update, sourceCopyStatement(db, 'product', copy.publicId, copy.source)]);
+  else await update.run();
 }
 
 /** Attach/replace a private deliverable. Old object keys are intentionally retained. */

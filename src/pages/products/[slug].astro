@@ -4,6 +4,7 @@ import Layout from '../../layouts/Layout.astro';
 import ProductDetail from '#theme/ProductDetail.astro';
 import { loadProductDetail } from '../../features/storefront/productDetail';
 import { getConfig } from '../../config';
+import { translatedPath } from '../../features/i18n/locale';
 import { publicOrigin } from '../../features/http/origin';
 import { addCacheTags, productCacheTags } from '../../features/cache/tags';
 
@@ -24,6 +25,12 @@ const loaded = await loadProductDetail(env.DB, {
 // Status, metadata, JSON-LD, and cache tagging stay with the route: none of
 // them is a presentation decision, and all of them are easy to break silently.
 if (loaded.status === 'not_found') {
+  const redirect = await env.DB.prepare('SELECT p.slug FROM product_slug_redirects r JOIN products p ON p.id = r.product_id WHERE r.old_slug = ? AND p.active = 1 AND p.slug <> r.old_slug')
+    .bind(Astro.params.slug ?? '').first<{ slug: string }>().catch(() => null);
+  if (redirect) return new Response(null, { status: 301, headers: {
+    location: translatedPath('/products/' + encodeURIComponent(redirect.slug), Astro.locals.storeLocale ?? 'en'),
+    'cache-control': 'no-store',
+  } });
   return new Response('Not found', { status: 404 });
 }
 
@@ -35,7 +42,7 @@ if (loaded.backfillRelated) {
 }
 ---
 
-<Layout title={seo.title} description={seo.description ?? undefined} image={seo.imagePath} imageAlt={seo.imageAlt}>
+<Layout title={seo.title} description={seo.description ?? undefined} image={seo.imagePath} imageAlt={seo.imageAlt} ogTitle={seo.ogTitle} ogDescription={seo.ogDescription}>
   <ProductDetail model={model} purchase={purchase} />
 
   <script is:inline type="application/ld+json" set:html={seo.jsonLd} />

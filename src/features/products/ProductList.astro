@@ -41,4 +41,6 @@ const model = await loadCatalogPage(env.DB, {
 });
 ---
 
-<Catalog model={model} />
+<Catalog model={model}>
+  <slot name="homepage-cases" slot="homepage-cases" />
+</Catalog>

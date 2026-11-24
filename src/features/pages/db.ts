@@ -1,4 +1,5 @@
 import type { D1Database } from '@cloudflare/workers-types';
+import { sourceCopyStatement, type SourceCopy } from '../i18n/db.ts';
 import { withPublicId } from '../ids/publicId.ts';
 
 export interface Page {
@@ -92,12 +93,14 @@ export async function createDraft(
   db: D1Database,
   title: string,
   slug: string,
+  source?: SourceCopy,
 ): Promise<number> {
   return withPublicId('page', async (publicId) => {
-    const row = await db
+    const insert = db
       .prepare('INSERT INTO pages (title, slug, published, public_id) VALUES (?, ?, 0, ?) RETURNING id')
-      .bind(title, slug, publicId)
-      .first<{ id: number }>();
+      .bind(title, slug, publicId);
+    const row = source ? (await db.batch<{ id: number }>([insert, sourceCopyStatement(db, 'page', publicId, source)]))[0].results[0]
+      : await insert.first<{ id: number }>();
     if (!row) throw new Error('page insert returned no row');
     return row.id;
   });

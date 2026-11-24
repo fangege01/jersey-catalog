@@ -14,15 +14,22 @@ const popup = readPopup(settings);
 ---
 {popup.enabled && href && isTrafficPath(originalStorefrontPath(path)) && (
   <dialog data-contact-popup data-delays={popup.delays.join(',')} aria-labelledby="popup-title"
-    class="m-auto w-[min(28rem,calc(100%-2rem))] rounded-xl border border-line bg-surface p-6 text-ink shadow-xl backdrop:bg-black/40">
-    <h2 id="popup-title" class="font-serif text-2xl">{display(locale, popup.title, popup.titleZh)}</h2>
-    {display(locale, popup.body, popup.bodyZh) && <p class="mt-2 whitespace-pre-line text-sm text-muted">{display(locale, popup.body, popup.bodyZh)}</p>}
-    <div class="mt-5 flex flex-wrap gap-2">
-      <a href={href} data-whatsapp-inquiry data-popup-contact class="rounded bg-brand px-4 py-2 text-sm text-on-brand">
+    class="m-auto max-h-[85dvh] w-[min(28rem,calc(100%-2rem))] overflow-y-auto rounded-2xl border border-line bg-surface p-0 text-ink shadow-xl backdrop:bg-black/50">
+    <header class="relative bg-teal-deep px-6 pt-8 pb-6 text-white sm:px-8">
+      <form method="dialog" class="absolute top-1 right-1">
+        <button type="submit" aria-label={display(locale, 'Close', '关闭弹窗')}
+          class="grid size-11 place-items-center rounded-lg text-xl hover:bg-white/15">×</button>
+      </form>
+      <h2 id="popup-title" class="pr-6 text-2xl font-bold">{display(locale, popup.title, popup.titleZh)}</h2>
+      {display(locale, popup.body, popup.bodyZh) && <p class="mt-2 whitespace-pre-line text-sm leading-relaxed text-teal-50">{display(locale, popup.body, popup.bodyZh)}</p>}
+    </header>
+    <div class="grid gap-2 p-5 text-center">
+      <a href={href} target="_blank" rel="noopener" data-whatsapp-inquiry data-popup-contact
+        class="flex min-h-11 items-center justify-center rounded-lg bg-brand px-4 py-2 text-sm font-semibold text-on-brand hover:bg-brand-hover">
         {display(locale, popup.button, popup.buttonZh)}
       </a>
       <form method="dialog">
-        <button autofocus type="submit" class="rounded border border-line px-4 py-2 text-sm">{display(locale, popup.dismiss, popup.dismissZh)}</button>
+        <button autofocus type="submit" class="min-h-11 rounded-lg px-4 py-2 text-sm text-muted hover:underline">{display(locale, popup.dismiss, popup.dismissZh)}</button>
       </form>
     </div>
   </dialog>
@@ -34,17 +41,14 @@ import { popupDelays } from './settings';
 const dialog = document.querySelector<HTMLDialogElement>('[data-contact-popup]');
 const delays = popupDelays(dialog?.dataset.delays?.split(',').map(Number));
 if (dialog && delays && typeof dialog.showModal === 'function') {
-  let elapsed = 0;
-  let visibleSince = document.hidden ? null : performance.now();
   let index = 0;
   let timer: number | undefined;
   let stopped = false;
-  const activeTime = () => elapsed + (visibleSince === null ? 0 : performance.now() - visibleSince);
 
   function schedule() {
     window.clearTimeout(timer);
-    if (!dialog || !delays || stopped || index >= delays.length || dialog.open || visibleSince === null) return;
-    const wait = Math.max(0, delays[index] * 1000 - activeTime());
+    if (!dialog || !delays || stopped || index >= delays.length || dialog.open || document.hidden) return;
+    const wait = Math.max(0, delays[index] * 1000 - performance.now());
     timer = window.setTimeout(() => {
       if (document.hidden || !dialog.isConnected || stopped) return;
       // Wait for the privacy choice or any other modal before showing an inquiry.
@@ -57,15 +61,14 @@ if (dialog && delays && typeof dialog.showModal === 'function') {
     }, wait);
   }
 
-  document.addEventListener('visibilitychange', () => {
-    if (visibleSince !== null) elapsed = activeTime();
-    visibleSince = document.hidden ? null : performance.now();
-    schedule();
-  });
+  document.addEventListener('visibilitychange', schedule);
   dialog.addEventListener('close', () => {
     // Skip thresholds reached while the modal was already open.
-    while (index < delays.length && activeTime() >= delays[index] * 1000) index++;
+    while (index < delays.length && performance.now() >= delays[index] * 1000) index++;
     schedule();
+  });
+  dialog.addEventListener('click', (event) => {
+    if (event.target === dialog) dialog.close();
   });
   dialog.querySelector('[data-popup-contact]')?.addEventListener('click', () => {
     stopped = true;

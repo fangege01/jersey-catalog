@@ -145,12 +145,13 @@ export async function deleteMediaRecord(
           AND NOT EXISTS (
             SELECT 1 FROM products p WHERE instr(p.description, media.image_key) > 0
           )
+          AND NOT EXISTS (SELECT 1 FROM storefront_showcase_items WHERE image_id = media.id)
           AND NOT EXISTS (
             SELECT 1 FROM customer_testimonials WHERE customer_testimonials.avatar_media_id = media.id
           )
           AND NOT EXISTS (
             SELECT 1 FROM settings
-             WHERE (settings.key = 'logo_image_key' OR settings.key IN ('site_image:home', 'site_image:factory', 'site_image:about', 'site_image:contact'))
+             WHERE (settings.key = 'logo_image_key' OR settings.key GLOB 'site_image:*')
                AND settings.value = media.image_key
           )
         RETURNING image_key`,

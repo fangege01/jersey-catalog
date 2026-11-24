@@ -8,6 +8,7 @@ import { publicTestimonials, testimonialSettings } from './db';
 interface Props { settings?: string; locale?: StoreLocale }
 const { settings, locale } = Astro.props;
 const options = testimonialSettings(settings);
+const intro = display(locale, options.intro, options.sourceIntro);
 const data = options.enabled ? await publicTestimonials(env.DB).catch((error) => {
   console.error('Customer reviews could not be loaded', error);
   return null;
@@ -17,8 +18,8 @@ const baseUrl = getConfig().images.baseUrl;
 {data && data.entries.length > 0 && (
   <section class="mx-auto max-w-6xl px-6 pb-12 pt-4" aria-labelledby="customer-reviews">
     <header class="mb-6 border-t border-line pt-7">
-      <h2 id="customer-reviews" class="font-serif text-3xl">{display(locale, options.title, options.title === 'Customer reviews' ? '客户评价' : options.title)}</h2>
-      {options.intro && <p class="mt-2 max-w-prose text-muted">{options.intro}</p>}
+      <h2 id="customer-reviews" class="font-serif text-3xl">{display(locale, options.title, options.sourceTitle)}</h2>
+      {intro && <p class="mt-2 max-w-prose text-muted">{intro}</p>}
       {data.summary.average !== null && (
         <p class="mt-2 text-sm font-medium">{data.summary.average.toFixed(1)} / 5 · {data.summary.count} {display(locale, data.summary.count === 1 ? 'review' : 'reviews', '条评价')}</p>
       )}
@@ -29,12 +30,12 @@ const baseUrl = getConfig().images.baseUrl;
           <p class="text-sm text-brand" aria-label={display(locale, review.rating + ' out of 5 stars', review.rating + ' 星')}>
             <span aria-hidden="true">{'★'.repeat(review.rating)}{'☆'.repeat(5 - review.rating)}</span>
           </p>
-          <blockquote class="my-4 flex-1 whitespace-pre-line break-words text-sm leading-relaxed text-ink">{review.quote}</blockquote>
+          <blockquote class="my-4 flex-1 whitespace-pre-line break-words text-sm leading-relaxed text-ink">{display(locale, review.quote, review.sourceQuote ?? review.quote)}</blockquote>
           <div class="flex items-center gap-3 border-t border-line pt-3">
             {review.avatarKey && <img src={mediaUrl(review.avatarKey, baseUrl)} alt="" loading="lazy" width="40" height="40" class="h-10 w-10 rounded-full object-cover" />}
             <div>
               <p class="text-sm font-semibold">{review.name}</p>
-              {review.attribution && <p class="text-xs text-muted">{review.attribution}</p>}
+              {review.attribution && <p class="text-xs text-muted">{display(locale, review.attribution, review.sourceAttribution ?? review.attribution)}</p>}
             </div>
           </div>
         </li>

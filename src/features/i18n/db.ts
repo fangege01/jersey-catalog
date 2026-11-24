@@ -8,6 +8,17 @@ export interface Translation {
   body: string | null;
 }
 
+export type SourceCopy = { title: string; body: string | null };
+
+export function sourceCopyStatement(db: D1Database, entity: LocaleEntity, publicId: string, source: SourceCopy) {
+  const table = { product: 'products', category: 'categories', page: 'pages' }[entity];
+  return db.prepare(`
+    INSERT INTO storefront_translations (locale, entity, public_id, title, body)
+    SELECT 'zh-CN', ?, public_id, ?, ? FROM ${table} WHERE public_id = ?
+    ON CONFLICT(locale, entity, public_id) DO UPDATE SET title = excluded.title, body = excluded.body
+  `).bind(entity, source.title, source.body, publicId);
+}
+
 export async function translations(
   db: D1Database, locale: StoreLocale | undefined, entity: LocaleEntity, ids: Array<string | null>,
 ): Promise<Map<string, Translation>> {
