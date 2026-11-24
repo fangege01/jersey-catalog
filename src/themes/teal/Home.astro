@@ -23,7 +23,7 @@ const steps = [
   <div class="frame hero-layout">
     <div class="hero-copy">
       <p class="eyebrow">{copy.eyebrow}</p>
-      <h1>{copy.heroTitle}<br /><em>{copy.heroAccent}</em></h1>
+      <h1>{copy.heroTitle}{zh ? '' : ' '}<br /><em>{copy.heroAccent}</em></h1>
       <p>{copy.heroIntro}</p>
       <div class="buttons">
         <a class="button bright" href="/products">{copy.browseCta}</a>
