@@ -266,6 +266,10 @@ assert_cache_control() {
 
 public_cache='public, max-age=0, s-maxage=600'
 private_cache='private, no-store'
+catalog_only="$(node --experimental-strip-types --input-type=module -e '
+  import { storeOverrides } from "./src/store.config.ts";
+  process.stdout.write(String(storeOverrides.features?.catalogOnly === true));
+')"
 
 for path in \
   / /products /products/sample-tee /categories/apparel '/search?q=sample' \
@@ -277,12 +281,19 @@ done
 assert_cache_control / "$public_cache" HEAD
 
 for path in \
-  /cart /checkout /express /payment-setup /partials/cart-count \
   /account /account/login /order/not-a-token /order/not-a-token/status \
-  /order/not-a-token/download/itm_k7m2qx8vn6 /pay/not-an-id \
-  /admin /api/admin/products /api/internal/cache-purge /api/cart /api/checkout
+  /order/not-a-token/download/itm_k7m2qx8vn6 \
+  /admin /api/admin/products /api/internal/cache-purge
 do
   assert_cache_control "$path" "$private_cache"
+done
+
+purchase_cache="$private_cache"
+if [[ "$catalog_only" == "true" ]]; then
+  purchase_cache='no-store'
+fi
+for path in /cart /checkout /express /payment-setup /partials/cart-count /pay/not-an-id /api/cart /api/checkout; do
+  assert_cache_control "$path" "$purchase_cache"
 done
 
 deploy_purge_headers="$state_dir/deploy-purge-headers.txt"
@@ -411,10 +422,6 @@ if [[ "$robots" != *"Sitemap: https://canonical.example/sitemap.xml"* ]]; then
   exit 1
 fi
 
-catalog_only="$(node --experimental-strip-types --input-type=module -e '
-  import { storeOverrides } from "./src/store.config.ts";
-  process.stdout.write(String(storeOverrides.features?.catalogOnly === true));
-')"
 if [[ "$catalog_only" == "true" ]]; then
   for path in /cart /checkout /partials/cart /partials/cart-count; do
     status="$(curl --max-time 30 --silent --output /dev/null --write-out '%{http_code}' "http://127.0.0.1:$test_port$path")"

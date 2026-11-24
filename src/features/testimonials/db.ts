@@ -29,13 +29,13 @@ export interface Testimonial {
   quote: string;
   sourceQuote: string | null;
   sourceAttribution: string | null;
-  rating: number;
+  rating: number | null;
   published: number;
   avatarKey: string | null;
   avatarPublicId: string | null;
 }
 
-const COLUMNS = 't.id, t.name, t.attribution, t.quote, t.source_quote AS sourceQuote, t.source_attribution AS sourceAttribution, t.rating, t.published, media.image_key AS avatarKey, media.public_id AS avatarPublicId';
+const COLUMNS = 't.id, t.name, t.attribution, t.quote, t.source_quote AS sourceQuote, t.source_attribution AS sourceAttribution, CASE WHEN t.rating_recorded = 1 THEN t.rating END AS rating, t.published, media.image_key AS avatarKey, media.public_id AS avatarPublicId';
 const FROM = 'FROM customer_testimonials t LEFT JOIN media ON media.id = t.avatar_media_id';
 const idPattern = /^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/;
 
@@ -67,7 +67,7 @@ export function getTestimonial(db: D1Database, id: string) {
 export async function publicTestimonials(db: D1Database) {
   const [entries, summary] = await db.batch([
     db.prepare(`SELECT ${COLUMNS} ${FROM} WHERE t.published = 1 ORDER BY t.position, t.id LIMIT 12`),
-    db.prepare('SELECT COUNT(*) AS count, AVG(rating) AS average FROM customer_testimonials WHERE published = 1'),
+    db.prepare('SELECT COUNT(*) AS count, AVG(CASE WHEN rating_recorded = 1 THEN rating END) AS average FROM customer_testimonials WHERE published = 1'),
   ]);
   return {
     entries: entries.results as unknown as Testimonial[],
@@ -79,8 +79,8 @@ export async function saveTestimonial(db: D1Database, form: FormData, id: string
   const name = reviewText(form, 'name', 100, true);
   const attribution = reviewText(form, 'attribution', 120);
   const quote = reviewText(form, 'quote', 1200, true);
-  const rating = reviewText(form, 'rating', 1, true);
-  if (!/^[1-5]$/.test(rating)) throw new TestimonialInputError('评分必须为 1 到 5 星。');
+  const rating = reviewText(form, 'rating', 1);
+  if (rating && !/^[1-5]$/.test(rating)) throw new TestimonialInputError('评分必须为 1 到 5 星。');
   const published = form.get('published') === '1' ? 1 : 0;
   const avatar = reviewText(form, 'avatar', 26);
   const mediaId = parsePublicId(avatar, 'media');
@@ -92,15 +92,16 @@ export async function saveTestimonial(db: D1Database, form: FormData, id: string
     source: { attribution: existing.sourceAttribution ?? existing.attribution, quote: existing.sourceQuote ?? existing.quote },
     english: { attribution: existing.attribution, quote: existing.quote },
   } : undefined);
-  const values = [name, translated.attribution, translated.quote, attribution, quote, Number(rating), published, media?.id ?? null] as const;
+  // Keep the existing required rating column compatible with older rows.
+  const values = [name, translated.attribution, translated.quote, attribution, quote, Number(rating || '1'), Number(Boolean(rating)), published, media?.id ?? null] as const;
   if (id) {
     const result = await db.prepare(`UPDATE customer_testimonials
-      SET name = ?, attribution = ?, quote = ?, source_attribution = ?, source_quote = ?, rating = ?, published = ?, avatar_media_id = ? WHERE id = ?`)
+      SET name = ?, attribution = ?, quote = ?, source_attribution = ?, source_quote = ?, rating = ?, rating_recorded = ?, published = ?, avatar_media_id = ? WHERE id = ?`)
       .bind(...values, id).run();
     if (result.meta.changes !== 1) throw new TestimonialInputError('这条评价已不存在。');
   } else {
-    await db.prepare(`INSERT INTO customer_testimonials (name, attribution, quote, source_attribution, source_quote, rating, published, avatar_media_id, id, position)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, (SELECT COALESCE(MAX(position), 0) + 1 FROM customer_testimonials))`)
+    await db.prepare(`INSERT INTO customer_testimonials (name, attribution, quote, source_attribution, source_quote, rating, rating_recorded, published, avatar_media_id, id, position)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, (SELECT COALESCE(MAX(position), 0) + 1 FROM customer_testimonials))`)
       .bind(...values, crypto.randomUUID()).run();
   }
 }
