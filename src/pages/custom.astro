@@ -1,0 +1,9 @@
+---
+import { env } from 'cloudflare:workers';
+import { getPublishedPageBySlug } from '../features/pages/db';
+
+const page = await getPublishedPageBySlug(env.DB, 'custom');
+if (!page) return new Response('Not found', { status: 404 });
+
+return Astro.redirect('/pages/custom' + Astro.url.search, 301);
+---
