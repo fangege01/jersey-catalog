@@ -188,7 +188,7 @@ export interface ProductPurchaseModel {
   soldOut: boolean;
   showAddToCart: boolean;
   showBuyNow: boolean;
-  inquiry?: { href: string | null; options: Array<{ label: string; href: string; soldOut: boolean }> };
+  inquiry?: { href: string | null; emailHref?: string | null; options: Array<{ label: string; href: string; soldOut: boolean }> };
   /** Merchant's name for the variant group, e.g. "Size". */
   variantLabel: string | null;
   variants: StorefrontVariant[];
@@ -226,6 +226,7 @@ export interface ProductDetailModel {
   currency: string;
   /** True when variants disagree on price, so the header reads "from …". */
   priceVaries: boolean;
+  wholesale?: { currency: string; tiers: Array<{ range: string; price: string | null }> };
   soldOut: boolean;
   /** Low-stock nudge, already gated: never set for a product with variants. */
   lowStock: boolean;

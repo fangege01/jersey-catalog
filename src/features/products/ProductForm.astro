@@ -4,6 +4,7 @@ import type { CategoryOption } from '../categories/db';
 import { getConfig, toMajorUnits, currencyDecimals } from '../../config';
 import { formatWeightValue, type WeightUnit } from '../shipping/weight';
 import { attachmentActive } from '../digitalDelivery/rollout.ts';
+import { readWholesalePrices, wholesaleFields, wholesaleRanges } from './wholesale';
 
 interface Props {
   action: string;
@@ -43,9 +44,10 @@ const catalogOnly = getConfig().features.catalogOnly;
 // New products default to the store currency; edits keep their own.
 const defaultCurrency = product?.currency ?? getConfig().currency;
 const priceDecimals = currencyDecimals(defaultCurrency);
-const price = product
+const price = product && (!catalogOnly || product.price_cents > 0)
   ? toMajorUnits(product.price_cents, product.currency).toFixed(currencyDecimals(product.currency))
   : '';
+const wholesale = readWholesalePrices(product?.wholesale_prices);
 // Input increment matches the currency's precision: 0.01 (USD), 1 (JPY), 0.001 (BHD).
 const priceStep = priceDecimals > 0 ? (10 ** -priceDecimals).toFixed(priceDecimals) : '1';
 const inputClass =
@@ -89,24 +91,40 @@ const inputClass =
   <div>
     <label class="block text-sm font-medium" for="description">描述</label>
     <textarea id="description" name="description" rows={catalogOnly ? 8 : 3} class={inputClass}
-      placeholder={catalogOnly ? '## Specifications\n\n## Wholesale pricing\n\n## Custom printing\n\n## Shipping' : undefined}
+      placeholder={catalogOnly ? '## Specifications\n\n## Custom printing\n\n## Shipping' : undefined}
       >{product?.description ?? ''}</textarea>
     <p class="mt-1 text-xs text-gray-500">
       {catalogOnly
-        ? '可填写中文或英文商品资料。中文自动翻译，英文保留原文。可用 Markdown 标题分段或用表格填写阶梯价。'
+        ? '可填写中文或英文商品资料。中文自动翻译，英文保留原文。'
         : <>支持纯文本和 Markdown，包括段落、列表、链接及 <code>/images/…</code> 图片。</>}
     </p>
   </div>
 
-  <div class="grid grid-cols-2 gap-4">
+  {catalogOnly ? (
+    <fieldset class="rounded-md border border-line p-4">
+      <legend class="px-1 text-sm font-semibold">阶梯报价（{defaultCurrency.toUpperCase()} / 件）</legend>
+      <p class="mb-3 text-xs text-muted">未定价的档位留空，前台显示「询价」。</p>
+      <div class="grid grid-cols-2 gap-3">
+        <label class="block text-sm" for="price">{wholesaleRanges[0]} 件
+          <input id="price" name="price" type="number" inputmode="decimal" step={priceStep} min="0" value={price} class={inputClass} />
+        </label>
+        {wholesaleFields.map((field, index) => (
+          <label class="block text-sm" for={field}>{wholesaleRanges[index + 1]} 件
+            <input id={field} name={field} type="number" inputmode="decimal" step={priceStep} min={priceStep}
+              value={wholesale[index] === null ? '' : toMajorUnits(wholesale[index]!, defaultCurrency).toFixed(priceDecimals)} class={inputClass} />
+          </label>
+        ))}
+      </div>
+    </fieldset>
+  ) : (
     <div>
-      <label class="block text-sm font-medium" for="price">价格（USD）</label>
+      <label class="block text-sm font-medium" for="price">价格（{defaultCurrency.toUpperCase()}）</label>
       <input id="price" name="price" type="number" step={priceStep} min="0" required value={price} class={inputClass} />
     </div>
-    <div>
-      <label class="block text-sm font-medium" for="stock">库存</label>
-      <input id="stock" name="stock" type="number" step="1" min="0" value={product?.stock ?? 0} class={inputClass} />
-    </div>
+  )}
+  <div>
+    <label class="block text-sm font-medium" for="stock">库存</label>
+    <input id="stock" name="stock" type="number" step="1" min="0" value={product?.stock ?? 0} class={inputClass} />
   </div>
 
   {attachmentActive() && <fieldset class="rounded-md border border-line p-4">

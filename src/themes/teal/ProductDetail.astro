@@ -63,7 +63,31 @@ const zh = model.locale === 'zh-CN';
 
     <h1 class="font-serif text-4xl tracking-tight">{model.name}</h1>
     {model.digitalDelivery && <p class="mt-2 text-xs uppercase tracking-widest text-brand">{zh ? '数字下载' : 'Digital download'}</p>}
-    <p
+    {model.wholesale ? (
+      <div class="mt-5 overflow-hidden rounded-xl border border-line">
+        <table class="w-full border-collapse text-sm">
+          <caption class="sr-only">{zh ? '阶梯报价' : 'Volume pricing'}</caption>
+          <thead class="bg-brand text-on-brand">
+            <tr>
+              <th scope="col" class="px-4 py-3 text-left font-semibold">{zh ? '订购数量' : 'Order quantity'}</th>
+              <th scope="col" class="px-4 py-3 text-right font-semibold">
+                {zh ? '每件参考价' : 'Unit price'} ({model.wholesale.currency})
+              </th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-line bg-surface">
+            {model.wholesale.tiers.map((tier) => (
+              <tr class="even:bg-paper">
+                <th scope="row" class="px-4 py-3.5 text-left font-medium">{tier.range} {zh ? '件' : 'pcs'}</th>
+                <td class:list={['px-4 py-3.5 text-right tabular-nums', tier.price ? 'font-bold text-brand' : 'text-muted']}>
+                  {tier.price ?? (zh ? '询价' : 'On request')}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    ) : <p
       class="mt-4 text-2xl tabular-nums text-muted"
       data-price-display
       data-base={model.priceCents}
@@ -71,7 +95,7 @@ const zh = model.locale === 'zh-CN';
     >
       {model.priceVaries && <span class="text-base text-faint">{zh ? '起价 ' : 'From '}</span>}
       {model.formattedPrice}
-    </p>
+    </p>}
     {
       /* data-low-stock is the contract, not the wording. Reword or restyle it
          freely; keep the marker so scarcity stays distinguishable from normal

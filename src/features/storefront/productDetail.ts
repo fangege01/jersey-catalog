@@ -15,6 +15,9 @@ import { managedWhatsAppHref, whatsappInquiryUrl } from './catalogMode';
 import { localizedProduct, translations } from '../i18n/db';
 import { translatedPath, type StoreLocale } from '../i18n/locale';
 import { buildProductCard } from './productCard';
+import { readSiteCopy } from '../site-content/copy';
+import { validContactEmail } from '../site-content/inquiry';
+import { readWholesalePrices, wholesaleRanges } from '../products/wholesale';
 import type {
   ProductDetailModel,
   ProductPurchaseModel,
@@ -172,6 +175,14 @@ export async function loadProductDetail(
   const inquiryProduct = { name: product.name, url: new URL(translatedPath(options.pathname, options.locale ?? 'en'), options.origin).href };
   const inquiryNumber = options.settings?.whatsappNumber;
   const inquiryHref = options.catalogOnly ? whatsappInquiryUrl(inquiryNumber, inquiryProduct, undefined, options.locale) : null;
+  const email = options.catalogOnly ? readSiteCopy(options.settings?.siteContent, 'contact', 'en').contactEmail.trim() : '';
+  const zh = options.locale === 'zh-CN';
+  const emailHref = validContactEmail(email)
+    ? 'mailto:' + encodeURIComponent(email).replace('%40', '@') +
+      '?subject=' + encodeURIComponent((zh ? '商品询价：' : 'Quote request: ') + inquiryProduct.name.replace(/\s+/g, ' ').trim()) +
+      '&body=' + encodeURIComponent(inquiryProduct.name + '\r\n' + inquiryProduct.url)
+    : null;
+  const wholesalePrices = [product.price_cents, ...readWholesalePrices(product.wholesale_prices)];
   const galleryByKey = new Map(gallery.map((image) => [image.image_key, image]));
   const imageKeys = [...new Set([...(product.image_key ? [product.image_key] : []), ...galleryByKey.keys()])];
   const imageUrls = imageKeys.map((key) => new URL(productImageUrl(key, options.imageBaseUrl), options.origin).href);
@@ -238,6 +249,15 @@ export async function loadProductDetail(
       priceCents: product.price_cents,
       currency: options.currency,
       priceVaries,
+      ...(options.catalogOnly && {
+        wholesale: {
+          currency: product.currency.toUpperCase(),
+          tiers: wholesaleRanges.map((range, index) => {
+            const price = wholesalePrices[index];
+            return { range, price: price && price > 0 ? formatMoney(price, product.currency) : null };
+          }),
+        },
+      }),
       soldOut,
       // Deliberately never shown for a product with variants: the product-level
       // count means nothing when the variant is the inventory unit.
@@ -274,6 +294,7 @@ export async function loadProductDetail(
       ...(options.catalogOnly && {
         inquiry: {
           href: inquiryHref,
+          ...(emailHref && { emailHref }),
           options: inquiryHref ? variants.flatMap((variant) => {
             const href = whatsappInquiryUrl(inquiryNumber, inquiryProduct, variant, options.locale);
             return href ? [{ label: variant.label, href, soldOut: variant.stock <= 0 }] : [];

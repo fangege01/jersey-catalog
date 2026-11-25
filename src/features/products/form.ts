@@ -1,6 +1,7 @@
 import type { ProductFields } from './db';
 import { toMinorUnits } from '../../money';
 import { toGrams, type WeightUnit } from '../shipping/weight';
+import { parseWholesalePrices } from './wholesale';
 
 export interface ProductFormOptions {
   /** Admin's display unit. Storage is always grams. */
@@ -40,8 +41,12 @@ export function parseProductForm(
   }
 
   const currency = String(form.get('currency') ?? 'usd').trim().toLowerCase() || 'usd';
+  if (!/^[a-z]{3}$/.test(currency)) return { error: '请选择有效的货币。' };
   // Scale by the chosen currency's minor units (so 1000 JPY stores as 1000, not 100000).
   const price_cents = toMinorUnits(price, currency);
+  if (!Number.isSafeInteger(price_cents)) return { error: '商品价格超出可保存范围。' };
+  const tiers = parseWholesalePrices(form, currency);
+  if (tiers.error) return { error: tiers.error };
   const description = String(form.get('description') ?? '').trim() || null;
   // Unchecked checkboxes submit nothing, so absence means inactive.
   const active = form.get('active') != null ? 1 : 0;
@@ -62,7 +67,8 @@ export function parseProductForm(
   }
 
   return {
-    data: { name, description, price_cents, currency, stock, active, weight_grams, requires_shipping },
+    data: { name, description, price_cents, currency, stock, active, weight_grams, requires_shipping,
+      ...(tiers.prices !== undefined && { wholesale_prices: tiers.prices }) },
   };
 }
 

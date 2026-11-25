@@ -4,6 +4,7 @@ import { sourceCopyStatement, type SourceCopy } from '../i18n/db.ts';
 
 export interface Product {
   import_seo_json?: string | null;
+  wholesale_prices?: string | null;
   id: number;
   public_id: string | null;
   name: string;
@@ -32,6 +33,7 @@ export interface Product {
 
 /** Scalar fields parsed from the product form (image handled separately). */
 export interface ProductFields {
+  wholesale_prices?: string;
   name: string;
   description: string | null;
   price_cents: number;
@@ -396,11 +398,11 @@ export async function createProduct(db: D1Database, p: ProductInput, source?: So
   return withPublicId('product', async (publicId) => {
     const insert = db
       .prepare(
-        `INSERT INTO products (name, slug, description, price_cents, currency, image_key, stock, active, weight_grams, requires_shipping, public_id)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `INSERT INTO products (name, slug, description, price_cents, currency, image_key, stock, active, weight_grams, requires_shipping, public_id, wholesale_prices)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          RETURNING id`,
       )
-      .bind(p.name, p.slug, p.description, p.price_cents, p.currency, p.image_key, p.stock, p.active, p.weight_grams, p.requires_shipping, publicId);
+      .bind(p.name, p.slug, p.description, p.price_cents, p.currency, p.image_key, p.stock, p.active, p.weight_grams, p.requires_shipping, publicId, p.wholesale_prices ?? null);
     const row = source ? (await db.batch<{ id: number }>([insert, sourceCopyStatement(db, 'product', publicId, source)]))[0].results[0]
       : await insert.first<{ id: number }>();
     return row!.id;
@@ -412,10 +414,10 @@ export async function updateProduct(db: D1Database, id: number, p: ProductInput,
     .prepare(
       `UPDATE products
          SET name = ?, slug = ?, description = ?, price_cents = ?, currency = ?, image_key = ?, stock = ?, active = ?,
-             weight_grams = ?, requires_shipping = ?
+             weight_grams = ?, requires_shipping = ?, wholesale_prices = COALESCE(?, wholesale_prices)
        WHERE id = ?`,
     )
-    .bind(p.name, p.slug, p.description, p.price_cents, p.currency, p.image_key, p.stock, p.active, p.weight_grams, p.requires_shipping, id);
+    .bind(p.name, p.slug, p.description, p.price_cents, p.currency, p.image_key, p.stock, p.active, p.weight_grams, p.requires_shipping, p.wholesale_prices ?? null, id);
   if (copy) await db.batch([update, sourceCopyStatement(db, 'product', copy.publicId, copy.source)]);
   else await update.run();
 }

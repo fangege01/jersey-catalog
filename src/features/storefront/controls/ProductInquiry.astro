@@ -1,5 +1,6 @@
 ---
 import type { ProductPurchaseModel } from '../models';
+import { localizedHref } from '../../i18n/locale';
 
 interface Props {
   inquiry: NonNullable<ProductPurchaseModel['inquiry']>;
@@ -8,22 +9,32 @@ interface Props {
 }
 
 const { inquiry, variantLabel, locale } = Astro.props;
-const contactClass = 'inline-flex rounded-md bg-brand px-5 py-3 text-sm font-medium text-on-brand hover:bg-brand-hover';
+const zh = locale === 'zh-CN';
+const button = 'inline-flex min-h-11 items-center justify-center rounded-lg px-4 py-3 text-center text-sm font-semibold';
 ---
 
 <div class="mt-4 space-y-3">
-  {inquiry.href ? (
-    inquiry.options.length ? (
-      <div>
-        <p class="mb-2 text-sm font-medium">{variantLabel || (locale === 'zh-CN' ? '规格' : 'Option')}</p>
-        <ul class="flex flex-wrap gap-2">
-          {inquiry.options.map((option) => (
-            <li><a class={contactClass} href={option.href} data-whatsapp-inquiry>
-              {locale === 'zh-CN' ? 'WhatsApp 询价' : 'WhatsApp quote'} · {option.label}{option.soldOut ? (locale === 'zh-CN' ? '（缺货）' : ' (sold out)') : ''}
-            </a></li>
-          ))}
-        </ul>
-      </div>
-    ) : <a class={contactClass} href={inquiry.href} data-whatsapp-inquiry>{locale === 'zh-CN' ? '通过 WhatsApp 询价' : 'Get a quote on WhatsApp'}</a>
-  ) : <p class="text-sm text-muted">{locale === 'zh-CN' ? '暂时无法通过 WhatsApp 询价。' : 'WhatsApp inquiries are currently unavailable.'}</p>}
+  <div class="grid gap-2 sm:grid-cols-2">
+    {inquiry.href && <a class={button + ' bg-brand text-on-brand hover:bg-brand-hover'} href={inquiry.href} data-whatsapp-inquiry>
+      {zh ? '通过 WhatsApp 询价' : 'Get a quote on WhatsApp'}
+    </a>}
+    {inquiry.emailHref && <a class={button + ' border border-line bg-paper text-ink hover:border-brand'} href={inquiry.emailHref}>
+      {zh ? '通过邮件询价' : 'Email for a quote'}
+    </a>}
+    {!inquiry.href && !inquiry.emailHref && <a class={button + ' bg-brand text-on-brand hover:bg-brand-hover'}
+      href={localizedHref('/contact#contact-inquiry', locale ?? 'en')}>
+      {zh ? '发送询盘' : 'Send an inquiry'}
+    </a>}
+  </div>
+  {inquiry.options.length > 0 && <div>
+    <p class="mb-2 text-sm font-medium">{variantLabel || (zh ? '规格' : 'Option')}</p>
+    <ul class="flex flex-wrap gap-2">
+      {inquiry.options.map((option) => (
+        <li><a class="inline-flex rounded-md border border-line px-3 py-2 text-sm hover:border-brand"
+          href={option.href} data-whatsapp-inquiry aria-label={(zh ? 'WhatsApp 询价：' : 'WhatsApp quote: ') + option.label}>
+          {option.label}{option.soldOut ? (zh ? '（缺货）' : ' (sold out)') : ''}
+        </a></li>
+      ))}
+    </ul>
+  </div>}
 </div>

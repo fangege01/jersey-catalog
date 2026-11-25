@@ -34,6 +34,21 @@ describe('parseProductForm', () => {
     if ('data' in r) expect(r.data.price_cents).toBe(1000);
   });
 
+  it('saves optional tiers in minor units and retains the base price', () => {
+    const r = parseProductForm(form({ name: 'Jersey', price: '14', wholesale_10: '12.50', wholesale_50: '', wholesale_200: '9' }));
+    expect(r).toMatchObject({ data: { price_cents: 1400, wholesale_prices: '[1250,null,900]' } });
+    const legacy = parseProductForm(form({ name: 'Jersey', price: '14' }));
+    expect('data' in legacy && legacy.data).not.toHaveProperty('wholesale_prices');
+  });
+
+  it('rejects invalid tier amounts and incomplete submissions', () => {
+    for (const price of ['-1', '0', '1.999', '1e3']) {
+      const r = parseProductForm(form({ name: 'Jersey', wholesale_10: price, wholesale_50: '10', wholesale_200: '9' }));
+      expect(r).toHaveProperty('error');
+    }
+    expect(parseProductForm(form({ name: 'Jersey', wholesale_10: '12' }))).toHaveProperty('error');
+  });
+
   it('normalizes a blank description to null', () => {
     const r = parseProductForm(form({ name: 'X', price: '5', stock: '1', description: '   ' }));
     if ('data' in r) expect(r.data.description).toBeNull();
