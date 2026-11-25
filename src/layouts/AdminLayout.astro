@@ -53,8 +53,9 @@ const showSetupNudge =
 // Show "Log out" only when a password-login session cookie is present. Under
 // Cloudflare Access or local dev there's no minshop session to clear.
 const showLogout = !!Astro.cookies.get('admin_session')?.value;
-const pageTitle = title ? `${title} — ${storeName} 管理后台` : `${storeName} 管理后台`;
 const catalogOnly = config.features.catalogOnly;
+const adminName = catalogOnly ? 'FXF球衣独立站' : storeName;
+const pageTitle = title ? `${title} — ${adminName} 管理后台` : `${adminName} 管理后台`;
 const shippingIssue = catalogOnly ? undefined : shippingFor(Astro.locals.settings).issue;
 const inventoryExceptionCount = catalogOnly ? 0 : await countUnresolvedInventoryExceptions(env.DB);
 
@@ -120,7 +121,7 @@ const currentLabel = title ?? group?.links.find(link => link.key === navKey)?.la
         <a href="/admin" class="admin-brand">
           <span class="admin-mark" aria-hidden="true">{catalogOnly ? 'FXF' : storeName.slice(0, 3)}</span>
           <span class="admin-brand-copy">
-            <strong class="admin-brand-name">{storeName}</strong>
+            <strong class="admin-brand-name">{adminName}</strong>
             <span class="admin-brand-label">管理后台</span>
           </span>
         </a>
