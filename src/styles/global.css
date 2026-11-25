@@ -22,6 +22,7 @@
 @import "./overrides.css";
 
 @import "./base.css";
+@import "./whatsapp.css";
 
 /* Entry marker read by scripts/check-built-css.mjs. It identifies which built
    stylesheet came from which entry INDEPENDENTLY of the content under test —

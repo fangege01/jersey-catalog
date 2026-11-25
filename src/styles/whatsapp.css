@@ -1,0 +1,49 @@
+:root {
+  --whatsapp-rgb: 37 211 102;
+  --whatsapp-green: rgb(var(--whatsapp-rgb));
+  --whatsapp-hover: #1fbc58;
+  --whatsapp-ink: #112d1e;
+}
+
+/* The tracking hook also identifies the built-in storefront inquiry buttons. */
+a[data-whatsapp-inquiry][href]:not(:where([data-whatsapp-inline], [data-floating-contact] a)) {
+  background: var(--whatsapp-green);
+  color: var(--whatsapp-ink);
+  border-color: #107736;
+}
+
+a[data-whatsapp-inquiry][href]:not(:where([data-whatsapp-inline], [data-floating-contact] a)):hover {
+  background: var(--whatsapp-hover);
+  color: var(--whatsapp-ink);
+}
+
+a[data-whatsapp-inquiry][href]:not(:where([data-whatsapp-inline], [data-floating-contact] a))::before,
+.pulse-whatsapp::after {
+  display: inline-block;
+  flex: none;
+  width: 1.25em;
+  height: 1.25em;
+  vertical-align: -.25em;
+  background: currentColor;
+  mask: url('/whatsapp-mark.svg') center / contain no-repeat;
+  content: '';
+}
+
+a[data-whatsapp-inquiry][href]:not(:where([data-whatsapp-inline], [data-floating-contact] a))::before {
+  margin-inline-end: .4em;
+}
+
+a[data-whatsapp-inline][href] {
+  color: var(--whatsapp-green);
+}
+
+a[href^="https://wa.me/"]:not([data-whatsapp-inquiry]) {
+  text-decoration: underline;
+  text-decoration-color: var(--whatsapp-green);
+  text-underline-offset: .2em;
+}
+
+.pulse-whatsapp::after {
+  width: 1.625rem;
+  height: 1.625rem;
+}
