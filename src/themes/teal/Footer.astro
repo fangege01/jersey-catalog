@@ -3,17 +3,57 @@ import type { StorefrontShellModel } from '../../features/storefront/models';
 interface Props { model: StorefrontShellModel; }
 const { model } = Astro.props;
 const zh = model.locale === 'zh-CN';
+const isProductLink = (href: string) => /^\/(products|categories)(\/|$|[?#])/.test(href);
+const productLinks = model.footerLinks.filter(link => isProductLink(link.href));
+const quickLinks = model.footerLinks.filter(link => !isProductLink(link.href));
+const address = model.footerContact?.address.trim();
+const email = model.footerContact?.email;
+const emailHref = model.footerContact?.emailHref;
+const number = model.whatsappHref ? '+' + new URL(model.whatsappHref).pathname.slice(1) : null;
+const linkClass = 'text-teal-100 underline-offset-4 hover:text-white hover:underline';
 ---
 <footer class="bg-linear-to-b from-teal-deep to-teal-footer text-white">
-  <div class="mx-auto grid w-full max-w-6xl gap-8 px-6 py-12 sm:grid-cols-2 lg:grid-cols-3">
-    <div class="space-y-3">
-      <a href="/" class="text-xl font-bold">{model.storeName}</a>
-      <p class="max-w-sm text-sm leading-relaxed text-teal-100">{model.footerCopy}</p>
+  <div class="mx-auto w-full max-w-6xl px-6 pt-12 pb-6 sm:pt-14">
+    <div class="grid grid-cols-2 gap-x-6 gap-y-8 lg:grid-cols-[minmax(0,1.35fr)_minmax(0,.8fr)_minmax(0,1fr)_minmax(0,1.25fr)]" data-footer-columns>
+      <div class="col-span-2 min-w-0 space-y-4 lg:col-span-1">
+        <a href="/" class="inline-flex min-h-10 items-center gap-3 text-xl font-bold">
+          {model.logo
+            ? <img src={model.logo.src} alt={model.logo.alt} loading="lazy" class="max-h-10 max-w-44 object-contain" />
+            : model.storeName}
+        </a>
+        {model.footerCopy && <p class="max-w-xs text-sm leading-relaxed text-teal-100">{model.footerCopy}</p>}
+      </div>
+      {productLinks.length > 0 && <nav aria-label={zh ? '页脚产品' : 'Footer products'}>
+        <h2 id="footer-products" class="text-base font-bold">{zh ? '产品' : 'Products'}</h2>
+        <ul class="mt-4 space-y-3 text-sm">
+          {productLinks.map(link => <li><a class={linkClass} href={link.href}>{link.text}</a></li>)}
+        </ul>
+      </nav>}
+      {(quickLinks.length > 0 || model.footerPrivacyPreferences) && <nav aria-label={zh ? '页脚快速链接' : 'Footer quick links'}>
+        <h2 id="footer-quick-links" class="text-base font-bold">{zh ? '快速链接' : 'Quick Links'}</h2>
+        <ul class="mt-4 space-y-3 text-sm">
+          {quickLinks.map(link => <li><a class={linkClass} href={link.href}>{link.text}</a></li>)}
+          {model.footerPrivacyPreferences && <li><button type="button" data-consent-open hidden class={linkClass}>
+            {zh ? '隐私偏好' : 'Privacy preferences'}
+          </button></li>}
+        </ul>
+      </nav>}
+      <div class="col-span-2 min-w-0 lg:col-span-1">
+        <h2 class="text-base font-bold">{zh ? '联系方式' : 'Contact Information'}</h2>
+        <ul class="mt-4 space-y-3 text-sm text-teal-100">
+          {address && <li class="flex items-start gap-2.5">
+            <span aria-hidden="true">📍</span><span>{address}</span>
+          </li>}
+          {emailHref && <li class="flex items-start gap-2.5">
+            <span aria-hidden="true">✉</span><a class:list={[linkClass, 'min-w-0 break-all']} href={emailHref}>{email}</a>
+          </li>}
+          {number && <li class="flex items-start gap-2.5">
+            <span aria-hidden="true">💬</span><a class={linkClass} href={model.whatsappHref} data-whatsapp-inquiry data-whatsapp-inline
+              aria-label={'WhatsApp ' + number}>{number}</a>
+          </li>}
+        </ul>
+      </div>
     </div>
-    {model.footerLinks.length > 0 && <nav aria-label={zh ? '页脚' : 'Footer'} class="flex flex-wrap content-start gap-x-4 gap-y-3 text-sm">
-      {model.footerLinks.map(link => <a class="hover:underline" href={link.href}>{link.text}</a>)}
-    </nav>}
-    {model.whatsappHref && <div><a class="inline-flex min-h-11 items-center rounded-md bg-white px-4 text-sm font-semibold text-ink" href={model.whatsappHref} data-whatsapp-inquiry>{zh ? '通过 WhatsApp 联系' : 'Contact us on WhatsApp'}</a></div>}
-    <p class="border-t border-white/20 pt-5 text-xs text-teal-100 sm:col-span-2 lg:col-span-3">&copy; {model.storeName}</p>
+    <p class="mt-9 border-t border-white/20 pt-5 text-xs text-teal-100">&copy; {model.storeName}</p>
   </div>
 </footer>

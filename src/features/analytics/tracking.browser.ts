@@ -67,7 +67,7 @@ function tracker(path: string) {
 
 const controls = document.querySelector<HTMLElement>('[data-traffic-controls]');
 const panel = controls?.querySelector<HTMLElement>('[data-consent-panel]');
-const preferences = controls?.querySelector<HTMLButtonElement>('[data-consent-open]');
+const preferences = document.querySelector<HTMLButtonElement>('[data-consent-open]');
 const path = controls?.dataset.path;
 const privateSignal = navigator.doNotTrack === '1' ||
   (navigator as Navigator & { globalPrivacyControl?: boolean }).globalPrivacyControl === true;

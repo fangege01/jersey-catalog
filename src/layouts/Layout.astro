@@ -16,6 +16,7 @@ import FloatingContact from '../features/site-content/FloatingContact.astro';
 import Testimonials from '../features/testimonials/Testimonials.astro';
 import Tracking from '../features/analytics/Tracking.astro';
 import { readSiteCopy, siteSections } from '../features/site-content/copy';
+import { validContactEmail } from '../features/site-content/inquiry';
 import { buildShellModel } from '../features/storefront/shell';
 import StoreHeader from '#theme/Header.astro';
 import StoreFooter from '#theme/Footer.astro';
@@ -140,7 +141,16 @@ const themedMenu = teal ? {
   footerLinks: uniqueLinks([...mainLinks.slice(1), ...shellModel.footerLinks]),
 } : {};
 const contactCopy = teal ? readSiteCopy(Astro.locals.settings?.siteContent, 'contact', locale) : undefined;
-const shell = { ...shellModel, ...themedMenu, locale, languageSwitch, whatsappHref };
+const contactEmail = contactCopy?.contactEmail.trim() ?? '';
+const footerPrivacyPreferences = teal && showLanguages && Astro.response.status === 200;
+const shell = {
+  ...shellModel, ...themedMenu, locale, languageSwitch, whatsappHref, footerPrivacyPreferences,
+  footerContact: contactCopy && {
+    address: contactCopy.contactAddress,
+    email: contactEmail,
+    emailHref: validContactEmail(contactEmail) ? 'mailto:' + encodeURIComponent(contactEmail).replace('%40', '@') : null,
+  },
+};
 ---
 
 <!doctype html>
@@ -223,7 +233,7 @@ const shell = { ...shellModel, ...themedMenu, locale, languageSwitch, whatsappHr
       <FloatingContact copy={contactCopy} {locale} {whatsappHref} />
     )}
     <ContactPopup locale={locale} path={Astro.response.status === 200 ? Astro.url.pathname : ''} settings={Astro.locals.settings?.contactPopup} href={whatsappHref} />
-    <Tracking locale={locale} path={Astro.response.status === 200 ? Astro.url.pathname : ''} pixelSettings={Astro.locals.settings?.adPixels} />
+    <Tracking locale={locale} path={Astro.response.status === 200 ? Astro.url.pathname : ''} pixelSettings={Astro.locals.settings?.adPixels} {footerPrivacyPreferences} />
 
     {/* Slide-out cart drawer. Progressive enhancement: hidden + inert until JS
         opens it; the /cart page and plain form posts are the no-JS baseline. */}

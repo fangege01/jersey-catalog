@@ -7,16 +7,17 @@ interface Props {
   path: string;
   locale?: StoreLocale;
   pixelSettings?: string;
+  footerPrivacyPreferences?: boolean;
 }
-const { path: rawPath, pixelSettings, locale } = Astro.props;
+const { path: rawPath, pixelSettings, locale, footerPrivacyPreferences } = Astro.props;
 const path = originalStorefrontPath(rawPath);
 const t = (english: string, chinese: string) => display(locale, english, chinese);
 ---
 {isTrafficPath(path) && (
   <div data-traffic-controls data-path={path} data-pixels={JSON.stringify(storedAdPixels(pixelSettings))}>
-    <div class="mx-auto max-w-6xl px-6 pb-6 text-sm text-muted">
+    {!footerPrivacyPreferences && <div class="mx-auto max-w-6xl px-6 pb-6 text-sm text-muted">
       <button type="button" data-consent-open hidden class="underline hover:text-brand">{t('Privacy preferences', '隐私偏好')}</button>
-    </div>
+    </div>}
     <section data-consent-panel hidden aria-labelledby="site-privacy-title"
       class="fixed inset-x-3 bottom-3 z-50 max-w-lg rounded-xl border border-line bg-surface p-4 text-sm shadow-lg sm:left-5 sm:right-auto">
       <h2 id="site-privacy-title" class="font-semibold">{t('Privacy preferences', '隐私偏好')}</h2>
