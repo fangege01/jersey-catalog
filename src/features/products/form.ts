@@ -7,6 +7,7 @@ import { MIN_RELEASE_YEAR, MAX_RELEASE_YEAR } from './releaseYear';
 export interface ProductFormOptions {
   catalogOnly?: boolean;
   existingStock?: number;
+  existingDelivery?: Pick<ProductFields, 'requires_shipping' | 'weight_grams'>;
   /** Admin's display unit. Storage is always grams. */
   unit?: WeightUnit;
   /**
@@ -65,20 +66,16 @@ export function parseProductForm(
   const description = String(form.get('description') ?? '').trim() || null;
   // Unchecked checkboxes submit nothing, so absence means inactive.
   const active = form.get('active') != null ? 1 : 0;
-  const requires_shipping = form.get('requires_shipping') != null ? 1 : 0;
-
-  const parsedWeight = toGrams(String(form.get('weight') ?? ''), unit);
-  let weight_grams: number | null = null;
-  if (parsedWeight.status === 'ok') {
-    weight_grams = parsedWeight.grams;
-  } else if (parsedWeight.status === 'error') {
-    return { error: weightFieldError(parsedWeight.reason, unit) };
-  } else if (requireWeight && requires_shipping === 1 && active === 1) {
-    return {
-      error:
-        '请填写配送重量。所有配置的配送区域均按重量计费，' +
-        '缺少重量时顾客无法购买。',
-    };
+  let requires_shipping = options.existingDelivery?.requires_shipping ?? 1;
+  let weight_grams = options.existingDelivery?.weight_grams ?? null;
+  if (!options.catalogOnly) {
+    requires_shipping = form.get('requires_shipping') != null ? 1 : 0;
+    const parsedWeight = toGrams(String(form.get('weight') ?? ''), unit);
+    if (parsedWeight.status === 'error') return { error: weightFieldError(parsedWeight.reason, unit) };
+    weight_grams = parsedWeight.status === 'ok' ? parsedWeight.grams : null;
+    if (weight_grams === null && requireWeight && requires_shipping === 1 && active === 1) {
+      return { error: '请填写配送重量。所有配置的配送区域均按重量计费，缺少重量时顾客无法购买。' };
+    }
   }
 
   return {

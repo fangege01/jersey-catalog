@@ -87,6 +87,20 @@ describe('parseProductForm', () => {
     }
   });
 
+  it('saves a new catalog product without delivery fields even in a weight-priced zone', () => {
+    expect(parseProductForm(form({ name: 'Jersey', active: 'on' }), {
+      catalogOnly: true,
+      requireWeight: true,
+    })).toMatchObject({ data: { requires_shipping: 1, weight_grams: null } });
+  });
+
+  it('preserves existing delivery data when editing a catalog product', () => {
+    expect(parseProductForm(form({ name: 'Jersey', weight: 'invalid', requires_shipping: 'on' }), {
+      catalogOnly: true,
+      existingDelivery: { requires_shipping: 0, weight_grams: 425 },
+    })).toMatchObject({ data: { requires_shipping: 0, weight_grams: 425 } });
+  });
+
   it('keeps an explicit zero weight distinct from blank', () => {
     const zero = parseProductForm(form({ name: 'X', price: '5', stock: '1', weight: '0' }));
     if ('data' in zero) expect(zero.data.weight_grams).toBe(0);

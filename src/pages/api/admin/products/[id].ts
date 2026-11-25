@@ -138,6 +138,7 @@ export const POST: APIRoute = async ({ request, params, redirect, locals }) => {
   const parsed = parseProductForm(form, {
     catalogOnly,
     existingStock: existing.stock,
+    existingDelivery: existing,
     unit: weightUnit,
     requireWeight: zonesRequireWeight(shippingFor(locals.settings).config),
   });
@@ -185,10 +186,11 @@ export const POST: APIRoute = async ({ request, params, redirect, locals }) => {
     if (fileError) return fail(fileError);
   }
 
-  // Keep the slug stable on rename: use the form's slug field (pre-filled with
-  // the current slug), falling back to the existing slug, then the name.
-  const slugBase = String(form.get('slug') ?? '').trim() || existing.slug || parsed.data.name;
-  const slug = await uniqueSlug(env.DB, slugBase, id);
+  // Keep the existing URL exactly as stored unless an explicit change is requested.
+  const requestedSlug = String(form.get('slug') ?? '').trim();
+  const slug = existing.slug && (!requestedSlug || requestedSlug === existing.slug)
+    ? existing.slug
+    : await uniqueSlug(env.DB, requestedSlug || copy.title, id);
 
   // Claim the image BEFORE committing anything else. A failed claim then aborts
   // with nothing written; doing it afterwards reported an image error while the
