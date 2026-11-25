@@ -56,10 +56,33 @@ const totals = `
 
 const empty: TrafficCounts = { visitors: 0, visits: 0, views: 0, products: 0, clicks: 0, clickers: 0 };
 
+const bucketRows = `WITH buckets AS (
+  SELECT json_extract(value, '$[0]') AS start, json_extract(value, '$[1]') AS end
+  FROM json_each(?)
+)`;
+
 export async function trafficTotals(db: D1Database, params: URLSearchParams, timeZone = 'UTC'): Promise<TrafficCounts> {
   const period = trafficPeriod(params, timeZone);
+  return totalsForPeriod(db, period.start, period.end);
+}
+
+async function totalsForPeriod(db: D1Database, start: number, end: number): Promise<TrafficCounts> {
   return (await db.prepare(`SELECT ${totals} FROM traffic_events WHERE occurred_at >= ? AND occurred_at < ?`)
-    .bind(period.start, period.end).first<TrafficCounts>()) ?? empty;
+    .bind(start, end).first<TrafficCounts>()) ?? empty;
+}
+
+export async function trafficOverview(db: D1Database, params: URLSearchParams, timeZone: string) {
+  const period = trafficPeriod(params, timeZone);
+  const [current, daily] = await Promise.all([
+    totalsForPeriod(db, period.start, period.end),
+    db.prepare(`${bucketRows}
+      SELECT buckets.start AS bucket, COUNT(traffic_events.occurred_at) AS views
+      FROM buckets LEFT JOIN traffic_events ON occurred_at >= buckets.start AND occurred_at < buckets.end
+        AND kind IN ('page_view', 'product_view')
+      GROUP BY buckets.start ORDER BY buckets.start`).bind(JSON.stringify(period.buckets))
+      .all<{ bucket: number; views: number }>(),
+  ]);
+  return { current, daily: daily.results };
 }
 
 export async function trafficReport(db: D1Database, params: URLSearchParams, timeZone = 'UTC') {
@@ -74,10 +97,6 @@ export async function trafficReport(db: D1Database, params: URLSearchParams, tim
     db.prepare(`SELECT ${label} AS label, ${detail} AS detail, ${totals} FROM traffic_events
       WHERE ${where} ${extra} GROUP BY 1, 2 ORDER BY visitors DESC, views DESC, label LIMIT 20`).bind(...bind);
 
-  const bucketRows = `WITH buckets AS (
-      SELECT json_extract(value, '$[0]') AS start, json_extract(value, '$[1]') AS end
-      FROM json_each(?)
-    )`;
   const bucketEvents = `FROM buckets CROSS JOIN traffic_events
     ON occurred_at >= buckets.start AND occurred_at < buckets.end
     WHERE ${where} GROUP BY 1 ORDER BY 1`;

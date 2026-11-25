@@ -116,8 +116,11 @@ const currentLabel = title ?? group?.links.find(link => link.key === navKey)?.la
     <div class="admin-frame">
       <aside class="admin-sidebar">
         <a href="/admin" class="admin-brand">
-          <strong class="admin-mark">{storeName}</strong>
-          <span class="admin-brand-label">管理后台</span>
+          <span class="admin-mark" aria-hidden="true">{catalogOnly ? 'FXF' : storeName.slice(0, 3)}</span>
+          <span class="admin-brand-copy">
+            <strong class="admin-brand-name">{storeName}</strong>
+            <span class="admin-brand-label">管理后台</span>
+          </span>
         </a>
         <input type="checkbox" id="admin-nav" data-admin-nav-toggle class="peer sr-only" aria-label="切换后台菜单" />
         <label for="admin-nav" data-admin-nav-summary class="admin-nav-trigger">

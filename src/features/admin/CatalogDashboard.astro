@@ -1,6 +1,6 @@
 ---
 import { env } from 'cloudflare:workers';
-import { trafficTotals } from '../analytics/report';
+import { trafficOverview } from '../analytics/report';
 import { publicOrigin } from '../http/origin';
 
 import { getConfig } from '../../config';
@@ -13,7 +13,7 @@ const [products, pending, traffic] = await Promise.all([
     .first<{ total: number; published: number }>(),
   env.DB.prepare('SELECT public_id, name FROM products WHERE active = 0 ORDER BY created_at DESC, id DESC LIMIT 6')
     .all<{ public_id: string; name: string }>(),
-  trafficTotals(env.DB, reportParams, timeZone).catch(error => {
+  trafficOverview(env.DB, reportParams, timeZone).catch(error => {
     console.error('Admin dashboard traffic unavailable', error);
     return null;
   }),
@@ -21,12 +21,15 @@ const [products, pending, traffic] = await Promise.all([
 const total = products?.total ?? 0;
 const published = products?.published ?? 0;
 const fmt = new Intl.NumberFormat('zh-CN');
+const date = new Intl.DateTimeFormat('zh-CN', { timeZone, month: 'numeric', day: 'numeric' });
+const bars = traffic?.daily ?? [];
+const maxViews = Math.max(1, ...bars.map(point => point.views));
 const metrics = [
   { label: '已上架', value: published, href: '/admin/products?status=active' },
   { label: '待上架', value: total - published, href: '/admin/products?status=inactive' },
-  { label: '独立访客', value: traffic?.visitors, href: '/admin/traffic?days=7&metric=visitors' },
-  { label: '页面浏览', value: traffic?.views, href: '/admin/traffic?days=7&metric=views' },
-  { label: 'WhatsApp 点击', value: traffic?.clicks, href: '/admin/traffic?days=7&metric=clicks' },
+  { label: '独立访客', value: traffic?.current.visitors, href: '/admin/traffic?days=7&metric=visitors' },
+  { label: '页面浏览', value: traffic?.current.views, href: '/admin/traffic?days=7&metric=views' },
+  { label: 'WhatsApp 点击', value: traffic?.current.clicks, href: '/admin/traffic?days=7&metric=clicks' },
 ];
 const tasks = [
   { title: '批量导入', href: '/admin/imports', text: '检查采集助手连接与导入状态。' },
@@ -37,40 +40,60 @@ const tasks = [
 const hasNumber = Boolean(Astro.locals.settings?.whatsappNumber);
 const origin = publicOrigin(Astro.url.origin, env.CANONICAL_ORIGIN);
 ---
-<section class="space-y-7">
-  <header class="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-[#1c5253] bg-linear-to-br from-[#122f3a] via-[#17464b] to-[#185549] p-5 text-white shadow-sm sm:px-8 sm:py-7">
+<section class="admin-dashboard space-y-6">
+  <header class="flex flex-wrap items-center justify-between gap-4">
     <div>
-      <h1 class="text-3xl font-bold tracking-tight sm:text-4xl">工作台</h1>
-      <p class="mt-2 text-sm leading-relaxed text-[#cde7e5]">管理商品、网站内容和 WhatsApp 询价入口。</p>
+      <h1 class="text-3xl font-bold tracking-tight sm:text-[2.15rem]">工作台</h1>
     </div>
     <a href="/admin/products/new"
-      class="inline-flex min-h-11 items-center gap-2 rounded-xl bg-white px-4 py-2.5 text-sm font-semibold text-ink hover:bg-[#e6f6f0] focus-visible:outline-2 focus-visible:outline-offset-4">
-      <span aria-hidden="true" class="text-lg leading-none text-brand">+</span> 新增商品
+      class="inline-flex min-h-11 items-center gap-2 rounded-xl bg-brand px-4 py-2.5 text-sm font-semibold text-white shadow-xs hover:bg-brand-hover focus-visible:outline-2 focus-visible:outline-offset-4">
+      <span aria-hidden="true" class="text-lg leading-none">+</span> 新增商品
     </a>
   </header>
 
   <section aria-labelledby="summary-title">
-    <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
-      <h2 id="summary-title" class="text-lg font-bold">商品与访问概览</h2>
-      <a class="text-sm font-semibold text-brand underline-offset-4 hover:underline" href="/admin/traffic?days=7">查看近 7 天流量</a>
-    </div>
+    <h2 id="summary-title" class="sr-only">商品与访问概览</h2>
     <dl class="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-5">
       {metrics.map((item, index) => (
-        <div class:list={['min-w-0 rounded-xl border border-line bg-surface p-4 shadow-xs sm:p-5', index < 2 && 'border-t-2 border-t-brand/65']}>
-          <dt class="text-sm font-semibold text-muted">{item.label}</dt>
-          <dd class="mt-2 break-words text-[1.8rem] leading-none font-bold text-ink tabular-nums">
-            <a href={item.href} aria-label={'查看' + item.label} class="hover:underline">{item.value === undefined ? '—' : fmt.format(item.value)}</a>
+        <div class:list={['admin-metric relative min-w-0 rounded-2xl border border-line bg-surface p-4 sm:p-5', index === 0 && 'admin-metric-featured']}>
+          <dt class="pr-4 text-sm font-semibold">{item.label}</dt>
+          <dd class="mt-3 break-words text-[1.85rem] leading-none font-bold tabular-nums">
+            <a href={item.href} aria-label={'查看' + item.label} class="hover:underline">
+              {item.value === undefined ? '—' : fmt.format(item.value)}
+              <span aria-hidden="true" class="absolute top-3 right-3 text-base font-normal">↗</span>
+            </a>
           </dd>
-          <dd class="mt-2 text-xs text-muted">{index > 1 ? '近 7 天' : '当前目录'}</dd>
+          <dd class="mt-3 text-xs opacity-85">{index > 1 ? '近 7 天' : '当前目录'}</dd>
         </div>
       ))}
     </dl>
-    <p class="mt-3 text-xs leading-relaxed text-muted">流量来自同意统计的访客。点击数据只记录打开 WhatsApp 的操作。</p>
-    {!traffic && <p role="alert" class="mt-2 text-sm text-red-700">暂时无法读取流量统计。</p>}
   </section>
 
-  <div class="grid gap-4 xl:grid-cols-[1fr_1fr]">
-    <section class="rounded-2xl border border-line bg-surface p-5 shadow-xs" aria-labelledby="recent-drafts">
+  <div class="grid gap-4 xl:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
+    <section class="admin-panel rounded-2xl border border-line bg-surface p-5 sm:p-6" aria-labelledby="dashboard-traffic-title">
+      <div class="flex flex-wrap items-start justify-between gap-2">
+        <div>
+          <h2 id="dashboard-traffic-title" class="text-lg font-bold">近 7 天页面浏览</h2>
+          <p class="mt-1 text-xs text-muted">统计同意分析的访客</p>
+        </div>
+        <a class="text-sm font-semibold text-brand hover:underline" href="/admin/traffic?days=7&amp;metric=views">查看流量分析 <span aria-hidden="true">↗</span></a>
+      </div>
+      {traffic ? (
+        <ol class="admin-trend mt-5 grid grid-cols-7 gap-2 sm:gap-3" aria-label="按日浏览次数">
+          {bars.map(point => (
+            <li class="grid min-w-0 grid-rows-[auto_1fr_auto] justify-items-center gap-2 text-xs tabular-nums">
+              <span class="max-w-full truncate text-ink" title={fmt.format(point.views)}>{fmt.format(point.views)}</span>
+              <div class="admin-bar-track" aria-hidden="true">
+                <div class="admin-bar" style={`--bar-height:${100 * point.views / maxViews}%`}></div>
+              </div>
+              <span class="whitespace-nowrap text-muted">{date.format(point.bucket * 1000)}</span>
+            </li>
+          ))}
+        </ol>
+      ) : <p role="alert" class="mt-5 rounded-xl bg-paper p-4 text-sm text-muted">暂时无法读取流量统计。</p>}
+    </section>
+
+    <section class="admin-panel rounded-2xl border border-line bg-surface p-5 sm:p-6" aria-labelledby="recent-drafts">
       <div class="flex flex-wrap items-center justify-between gap-2">
         <h2 id="recent-drafts" class="text-lg font-bold">最近待上架</h2>
         <a href="/admin/products?status=inactive" class="text-sm font-semibold text-brand hover:underline">查看全部</a>
@@ -87,18 +110,19 @@ const origin = publicOrigin(Astro.url.origin, env.CANONICAL_ORIGIN);
       ) : <p class="mt-4 rounded-xl border border-dashed border-line bg-paper/70 px-4 py-5 text-sm text-muted">暂无待上架商品。</p>}
     </section>
 
-    <section class="rounded-2xl border border-line bg-surface p-5 shadow-xs" aria-labelledby="quick-actions">
-      <h2 id="quick-actions" class="text-lg font-bold">常用操作</h2>
-      <div class="mt-3 grid gap-2 sm:grid-cols-2">
-        {tasks.map(task => <a href={task.href} class="group rounded-xl border border-line bg-paper/50 p-3 hover:border-brand hover:bg-[#edf8f5]">
-          <h3 class="flex items-center justify-between gap-2 text-sm font-semibold">{task.title}<span aria-hidden="true" class="text-brand opacity-70 group-hover:opacity-100">→</span></h3>
-          <p class="mt-1 text-xs leading-relaxed text-muted">{task.text}</p>
-        </a>)}
-      </div>
-    </section>
   </div>
 
-  <section class="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-line bg-surface p-5 shadow-xs" aria-label="站点与联系入口">
+  <section class="admin-panel rounded-2xl border border-line bg-surface p-5 sm:p-6" aria-labelledby="quick-actions">
+    <h2 id="quick-actions" class="text-lg font-bold">常用操作</h2>
+    <div class="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      {tasks.map(task => <a href={task.href} class="group rounded-xl border border-line bg-paper/55 p-4 hover:border-brand hover:bg-[#edf8f5]">
+        <h3 class="flex items-center justify-between gap-2 text-sm font-semibold">{task.title}<span aria-hidden="true" class="text-brand opacity-70 group-hover:opacity-100">→</span></h3>
+        <p class="mt-1 text-xs leading-relaxed text-muted">{task.text}</p>
+      </a>)}
+    </div>
+  </section>
+
+  <section class="admin-panel flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-line bg-surface p-5 sm:p-6" aria-label="站点与联系入口">
     <div>
       <h2 class="text-base font-bold">网站与询价入口</h2>
       <a class="mt-1 block break-all text-sm text-brand underline" href={origin} target="_blank" rel="noopener">{origin}</a>

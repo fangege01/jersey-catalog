@@ -100,10 +100,10 @@ const arrow = (col: string) => (sort === col ? (dir === 'asc' ? ' ↑' : ' ↓')
     ]}
   />
 
-  <div class="sm:overflow-x-auto">
+  <div class="admin-product-table sm:overflow-x-auto">
     <table class="admin-table w-full text-left text-sm sm:min-w-[42rem]">
     <thead>
-      <tr class="border-b border-line text-xs uppercase tracking-widest text-gray-400">
+      <tr class="border-b border-line text-xs text-muted">
         <th class="py-3 pr-4 font-normal">
           <a href={sortHref('name')} class="hover:text-brand">商品{arrow('name')}</a>
         </th>
