@@ -50,7 +50,7 @@ const zh = model.locale === 'zh-CN';
 
   <div class="reveal flex flex-col" style="animation-delay:90ms">
     {
-      model.categories.length > 0 && (
+      !model.catalogBadges && model.categories.length > 0 && (
         <div class="mb-4 flex flex-wrap gap-x-4 gap-y-1 text-xs uppercase tracking-widest text-faint">
           {model.categories.map((category) => (
             <a href={category.href} class="hover:text-brand">
@@ -62,6 +62,21 @@ const zh = model.locale === 'zh-CN';
     }
 
     <h1 class="font-serif text-4xl tracking-tight">{model.name}</h1>
+    {model.catalogBadges && (
+      <ul class="mt-3 flex flex-wrap gap-2 text-xs font-semibold" aria-label={zh ? '商品标签' : 'Product labels'} data-product-badges>
+        {model.catalogBadges.category && (
+          <li>
+            <a href={model.catalogBadges.category.href} class="inline-block rounded-md bg-brand/10 px-2.5 py-1 text-brand hover:underline">
+              {model.catalogBadges.category.text}
+            </a>
+          </li>
+        )}
+        {model.catalogBadges.year !== null && (
+          <li class="rounded-md bg-sky-100 px-2.5 py-1 tabular-nums text-sky-900">{model.catalogBadges.year}</li>
+        )}
+        <li class="rounded-md bg-emerald-100 px-2.5 py-1 text-emerald-900">{zh ? '有货' : 'In stock'}</li>
+      </ul>
+    )}
     {model.digitalDelivery && <p class="mt-2 text-xs uppercase tracking-widest text-brand">{zh ? '数字下载' : 'Digital download'}</p>}
     {model.wholesale ? (
       <div class="mt-5 overflow-hidden rounded-xl border border-line">
@@ -96,6 +111,11 @@ const zh = model.locale === 'zh-CN';
       {model.priceVaries && <span class="text-base text-faint">{zh ? '起价 ' : 'From '}</span>}
       {model.formattedPrice}
     </p>}
+    {model.quoteNote && (
+      <p class="mt-4 whitespace-pre-line break-words rounded-lg border border-red-200 border-s-4 border-s-red-600 bg-red-100 px-4 py-3 text-sm leading-relaxed text-black">
+        {model.quoteNote}
+      </p>
+    )}
     {
       /* data-low-stock is the contract, not the wording. Reword or restyle it
          freely; keep the marker so scarcity stays distinguishable from normal
@@ -119,6 +139,20 @@ const zh = model.locale === 'zh-CN';
         <ProductPurchaseForm model={purchase} />
       </div>
     ) : <ProductPurchaseForm model={purchase} />}
+
+    {model.detailSections?.map((section) => (
+      <section class="mt-5 border-t border-line pt-4">
+        <h2 class="text-sm font-semibold text-ink">{section.title}</h2>
+        <ul class="mt-2 space-y-2 text-sm text-muted">
+          {section.items.map((item) => (
+            <li class="flex items-start gap-2">
+              <span class="text-brand" aria-hidden="true">✓</span>
+              <span class="min-w-0 break-words">{item}</span>
+            </li>
+          ))}
+        </ul>
+      </section>
+    ))}
 
     {/* Share — hidden until JS confirms the browser can share or copy. Uses the
         Web Share API (mobile/native sheet) with a clipboard-copy fallback. */}

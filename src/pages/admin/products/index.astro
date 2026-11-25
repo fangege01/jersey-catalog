@@ -1,7 +1,7 @@
 ---
 import { env } from 'cloudflare:workers';
 import AdminLayout from '../../../layouts/AdminLayout.astro';
-import { formatPrice } from '../../../config';
+import { formatPrice, getConfig } from '../../../config';
 import { listAllProducts, countAllProducts } from '../../../features/products/db';
 import ProductImage from '../../../features/products/ProductImage.astro';
 import { orderByClause } from '../../../features/products/sort';
@@ -22,11 +22,17 @@ import {
 // set in the first-run setup wizard (hashed in D1); Cloudflare Access at the edge
 // is the recommended production layer — see README → Admin auth.
 
-const sort = Astro.url.searchParams.get('sort');
+const catalogOnly = getConfig().features.catalogOnly;
+const searchParams = new URLSearchParams(Astro.url.searchParams);
+if (catalogOnly) {
+  searchParams.delete('stock');
+  if (searchParams.get('sort') === 'stock') searchParams.delete('sort');
+}
+const sort = searchParams.get('sort');
 const dir = Astro.url.searchParams.get('dir');
 const order = orderByClause(sort, dir);
 
-const filters = parseProductFilters(Astro.url.searchParams);
+const filters = parseProductFilters(searchParams);
 // One clause, both queries — otherwise the pager counts rows the table filtered out.
 const filterClause = productFilterClause(filters);
 const filtered = hasProductFilters(filters);
@@ -84,13 +90,13 @@ const arrow = (col: string) => (sort === col ? (dir === 'asc' ? ' ↑' : ' ↓')
         value: filters.status,
         options: PRODUCT_STATUS_OPTIONS,
       },
-      {
+      ...(!catalogOnly ? [{
         name: 'stock',
         label: '库存',
         anyLabel: '全部库存状态',
         value: filters.stock,
         options: PRODUCT_STOCK_OPTIONS,
-      },
+      }] : []),
     ]}
   />
 
@@ -104,9 +110,9 @@ const arrow = (col: string) => (sort === col ? (dir === 'asc' ? ' ↑' : ' ↓')
         <th class="py-3 pr-4 font-normal">
           <a href={sortHref('price')} class="hover:text-brand">价格{arrow('price')}</a>
         </th>
-        <th class="py-3 pr-4 font-normal">
+        {!catalogOnly && <th class="py-3 pr-4 font-normal">
           <a href={sortHref('stock')} class="hover:text-brand">库存{arrow('stock')}</a>
-        </th>
+        </th>}
         <th class="py-3 pr-4 font-normal">
           <a href={sortHref('sold')} class="hover:text-brand">售出{arrow('sold')}</a>
         </th>
@@ -135,7 +141,7 @@ const arrow = (col: string) => (sort === col ? (dir === 'asc' ? ' ↑' : ' ↓')
               </a>
             </td>
             <td data-label="价格" class="py-3 pr-4 tabular-nums">{formatPrice(p.price_cents)}</td>
-            <td data-label="库存" class="py-3 pr-4 tabular-nums">{p.stock}</td>
+            {!catalogOnly && <td data-label="库存" class="py-3 pr-4 tabular-nums">{p.stock}</td>}
             <td data-label="售出" class="py-3 pr-4 tabular-nums">
               {p.sold > 0 ? p.sold : <span class="text-gray-300">0</span>}
             </td>
@@ -175,7 +181,7 @@ const arrow = (col: string) => (sort === col ? (dir === 'asc' ? ' ↑' : ' ↓')
       {
         products.length === 0 && (
           <tr>
-            <td colspan="6" class="py-8 text-center text-gray-400">
+            <td colspan={catalogOnly ? 5 : 6} class="py-8 text-center text-gray-400">
               {/* "No products yet" would be wrong — and confusing — when the
                   store has plenty and the filter simply excluded them all. */}
               {filtered ? '没有符合筛选条件的商品。' : '暂无商品。'}

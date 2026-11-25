@@ -1,5 +1,6 @@
 import type { APIRoute } from 'astro';
 import { env } from 'cloudflare:workers';
+import { getConfig } from '../../../../config';
 import {
   getProduct,
   getProductByPublicId,
@@ -10,6 +11,7 @@ import {
   setProductFile,
 } from '../../../../features/products/db';
 import { parseProductForm } from '../../../../features/products/form';
+import { parseProductDetailSections, translateProductDetailSections } from '../../../../features/products/detailSections';
 import { zonesRequireWeight } from '../../../../features/shipping/calculator';
 import { shippingFor } from '../../../../features/shipping/effective';
 import { uniqueSlug } from '../../../../features/products/slug';
@@ -32,7 +34,7 @@ import {
 } from '../../../../features/media/db';
 import { getStorage, getFileStorage } from '../../../../features/storage';
 import { uploadDigitalFile, validateDigitalFile } from '../../../../features/products/digitalFile.ts';
-import { attachmentActive } from '../../../../features/digitalDelivery/rollout.ts';
+import { productAttachmentsEnabled } from '../../../../features/digitalDelivery/rollout.ts';
 import { indexProduct, unindexProduct } from '../../../../features/search';
 import { parsePublicId } from '../../../../features/ids/publicId';
 import { CACHE_TAG } from '../../../../features/cache/tags';
@@ -132,11 +134,16 @@ export const POST: APIRoute = async ({ request, params, redirect, locals }) => {
   // unsellable (every enabled zone prices by weight). Both come from settings the
   // request already loaded.
   const weightUnit = locals.settings?.weightUnit ?? 'g';
+  const catalogOnly = getConfig().features.catalogOnly;
   const parsed = parseProductForm(form, {
+    catalogOnly,
+    existingStock: existing.stock,
     unit: weightUnit,
     requireWeight: zonesRequireWeight(shippingFor(locals.settings).config),
   });
   if ('error' in parsed) return fail(parsed.error);
+  const sections = parseProductDetailSections(form);
+  if ('error' in sections) return fail(sections.error);
 
   // Weights are checked before ANY write. applyVariantForm runs last, after the
   // image, product, and category mutations — reporting the error from there left
@@ -148,9 +155,11 @@ export const POST: APIRoute = async ({ request, params, redirect, locals }) => {
   const badReference = await resolveVariantFormIds(form, env.DB, id);
   if (badReference) return fail(badReference);
   let copy;
+  let detail_sections;
   try {
     copy = await saveCopyInEnglish(env.DB, env.AI, 'product', { title: parsed.data.name, body: parsed.data.description },
       { title: existing.name, body: existing.description, publicId });
+    detail_sections = await translateProductDetailSections(env.AI, sections.source, existing.detail_sections);
   } catch (cause) {
     if (cause instanceof EnglishTranslationError) return fail(cause.message);
     throw cause;
@@ -169,8 +178,9 @@ export const POST: APIRoute = async ({ request, params, redirect, locals }) => {
     const media = await uploadMedia(env.DB, storage, await optimizeUpload(file), file.name);
     uploadedMediaId = media.id;
   }
-  const deliverable = form.get('deliverable');
-  if (attachmentActive() && deliverable instanceof File && deliverable.size > 0) {
+  const attachmentsEnabled = productAttachmentsEnabled(catalogOnly);
+  const deliverable = attachmentsEnabled ? form.get('deliverable') : null;
+  if (deliverable instanceof File && deliverable.size > 0) {
     const fileError = validateDigitalFile(deliverable);
     if (fileError) return fail(fileError);
   }
@@ -198,11 +208,11 @@ export const POST: APIRoute = async ({ request, params, redirect, locals }) => {
     }
   }
 
-  await updateProduct(env.DB, id, { ...parsed.data, name: copy.title, description: copy.body, image_key, slug },
+  await updateProduct(env.DB, id, { ...parsed.data, name: copy.title, description: copy.body, image_key, slug, detail_sections },
     copy.source && { publicId, source: copy.source });
-  if (attachmentActive() && deliverable instanceof File && deliverable.size > 0) {
+  if (deliverable instanceof File && deliverable.size > 0) {
     await setProductFile(env.DB, id, await uploadDigitalFile(getFileStorage(), deliverable));
-  } else if (attachmentActive() && form.get('remove_deliverable') != null) {
+  } else if (attachmentsEnabled && form.get('remove_deliverable') != null) {
     await setProductFile(env.DB, id, null);
   }
   // products.image_key follows the gallery, so this runs after both.
@@ -220,7 +230,7 @@ export const POST: APIRoute = async ({ request, params, redirect, locals }) => {
   // Variants + extras edited inline on the same form (no-op if none submitted).
   // A bad variant weight is reported rather than dropped: applyVariantForm
   // validates every weight before it writes anything.
-  const variantResult = await applyVariantForm(env.DB, id, form, parsed.data.currency, weightUnit);
+  const variantResult = await applyVariantForm(env.DB, id, form, parsed.data.currency, weightUnit, catalogOnly);
   if (variantResult.error) return fail(variantResult.error);
 
   // Re-embed for semantic search (no-op unless vector search is on).

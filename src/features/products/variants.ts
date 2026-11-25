@@ -329,6 +329,7 @@ export async function applyVariantForm(
   form: FormData,
   currency: string,
   weightUnit: WeightUnit = 'g',
+  preserveStock = false,
 ): Promise<{ error?: string }> {
   const str = (name: string) => form.getAll(name).map((v) => String(v));
   const ids = (name: string) =>
@@ -384,7 +385,7 @@ export async function applyVariantForm(
     const fields = {
       label,
       price_cents: price(vPrices[i] ?? ''),
-      stock: count(vStocks[i] ?? ''),
+      stock: preserveStock ? 0 : count(vStocks[i] ?? ''),
       sku: (vSkus[i] ?? '').trim() || null,
       image_id: pickImage(vImages[i] ?? ''),
       weight_grams: parsedWeight ?? null,
@@ -392,7 +393,9 @@ export async function applyVariantForm(
     if (Number.isInteger(id) && id > 0) {
       if (!label) continue; // a cleared label on an existing row → ignore (use Remove to delete)
       const v = await getVariant(db, id);
-      if (v && v.product_id === productId) await updateVariant(db, id, fields);
+      if (v && v.product_id === productId) {
+        await updateVariant(db, id, { ...fields, stock: preserveStock ? v.stock : fields.stock });
+      }
     } else if (label) {
       await createVariant(db, productId, fields);
     }

@@ -116,12 +116,22 @@ describe('digital-delivery rollout gates', () => {
     [
       'src/features/products/ProductForm.astro',
       'the upload field itself',
-      /\{attachmentActive\(\) && <fieldset/,
+      /\{productAttachmentsEnabled\(catalogOnly\) && <fieldset/,
+    ],
+    [
+      'src/pages/api/admin/products.ts',
+      'deliverable intake',
+      /productAttachmentsEnabled\(catalogOnly\) \? form\.get\('deliverable'\) : null/,
+    ],
+    [
+      'src/pages/api/admin/products/[id].ts',
+      'deliverable intake',
+      /const attachmentsEnabled = productAttachmentsEnabled\(catalogOnly\);\s*const deliverable = attachmentsEnabled \? form\.get\('deliverable'\) : null/,
     ],
     [
       'src/pages/api/admin/products/[id].ts',
       'deliverable removal',
-      /\} else if \(attachmentActive\(\) && form\.get\('remove_deliverable'\)/,
+      /\} else if \(attachmentsEnabled && form\.get\('remove_deliverable'\)/,
     ],
   ])('%s gates %s', (path, _site, pattern) => {
     expect(source(path)).toMatch(pattern);
@@ -137,12 +147,12 @@ describe('digital-delivery rollout gates', () => {
     ],
     [
       'src/pages/api/admin/products.ts',
-      'attachmentActive() && deliverable instanceof File',
+      'if (deliverable instanceof File && deliverable.size > 0)',
       2, // validate before the write, then upload after it
     ],
     [
       'src/pages/api/admin/products/[id].ts',
-      'attachmentActive() && deliverable instanceof File',
+      'if (deliverable instanceof File && deliverable.size > 0)',
       2, // same pair on the edit route
     ],
   ])('%s keeps all %s gates', (path, needle, expected) => {

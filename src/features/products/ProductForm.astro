@@ -3,8 +3,10 @@ import type { Product } from './db';
 import type { CategoryOption } from '../categories/db';
 import { getConfig, toMajorUnits, currencyDecimals } from '../../config';
 import { formatWeightValue, type WeightUnit } from '../shipping/weight';
-import { attachmentActive } from '../digitalDelivery/rollout.ts';
+import { attachmentActive, productAttachmentsEnabled } from '../digitalDelivery/rollout.ts';
 import { readWholesalePrices, wholesaleFields, wholesaleRanges } from './wholesale';
+import { DETAIL_SECTION_LIMIT, detailSectionFields, detailSectionKeys, readProductDetailSections } from './detailSections';
+import { MIN_RELEASE_YEAR, MAX_RELEASE_YEAR, releaseYearFromTitle } from './releaseYear';
 
 interface Props {
   action: string;
@@ -48,6 +50,7 @@ const price = product && (!catalogOnly || product.price_cents > 0)
   ? toMajorUnits(product.price_cents, product.currency).toFixed(currencyDecimals(product.currency))
   : '';
 const wholesale = readWholesalePrices(product?.wholesale_prices);
+const detailSections = readProductDetailSections(product?.detail_sections).source;
 // Input increment matches the currency's precision: 0.01 (USD), 1 (JPY), 0.001 (BHD).
 const priceStep = priceDecimals > 0 ? (10 ** -priceDecimals).toFixed(priceDecimals) : '1';
 const inputClass =
@@ -122,10 +125,33 @@ const inputClass =
       <input id="price" name="price" type="number" step={priceStep} min="0" required value={price} class={inputClass} />
     </div>
   )}
-  <div>
-    <label class="block text-sm font-medium" for="stock">库存</label>
-    <input id="stock" name="stock" type="number" step="1" min="0" value={product?.stock ?? 0} class={inputClass} />
-  </div>
+  {catalogOnly && (
+    <fieldset class="space-y-3 rounded-md border border-line p-4">
+      <legend class="px-1 text-sm font-semibold">商品详情模块</legend>
+      <p class="text-xs text-muted">可填中文或英文。规格和运输付款每行一项，留空的模块会在前台隐藏。</p>
+      {detailSectionKeys.map((key) => (
+        <label class="block text-sm" for={key}>{detailSectionFields[key]}
+          <textarea id={key} name={key} rows={key === 'quoteNote' ? 3 : 4} maxlength={DETAIL_SECTION_LIMIT}
+            class={inputClass}>{detailSections[key]}</textarea>
+        </label>
+      ))}
+    </fieldset>
+  )}
+  {catalogOnly ? (
+    <div>
+      <label class="block text-sm font-medium" for="release_year">商品年份</label>
+      <input id="release_year" name="release_year" type="number" min={MIN_RELEASE_YEAR} max={MAX_RELEASE_YEAR}
+        step="1" value={product?.release_year ?? undefined}
+        placeholder={String(releaseYearFromTitle(product?.name ?? '') ?? '例如 2026')} class={inputClass}
+        aria-describedby="release-year-help" />
+      <p id="release-year-help" class="mt-1 text-xs text-muted">留空时从商品标题识别年份。已上架商品自动显示有货。</p>
+    </div>
+  ) : (
+    <div>
+      <label class="block text-sm font-medium" for="stock">库存</label>
+      <input id="stock" name="stock" type="number" step="1" min="0" value={product?.stock ?? 0} class={inputClass} />
+    </div>
+  )}
 
   {attachmentActive() && <fieldset class="rounded-md border border-line p-4">
     <legend class="px-1 text-sm font-medium">配送</legend>
@@ -138,9 +164,9 @@ const inputClass =
       />
       需要配送
     </label>
-    <p class="mt-1 text-xs text-muted">
+    {!catalogOnly && <p class="mt-1 text-xs text-muted">
       电子书、礼品卡等数字商品请取消勾选。数字商品无需填写重量。
-    </p>
+    </p>}
     <div class="mt-3">
       <label class="block text-sm font-medium" for="weight">重量（{weightUnit})</label>
       <input
@@ -160,7 +186,7 @@ const inputClass =
     </div>
   </fieldset>}
 
-  <fieldset class="rounded-md border border-line p-4">
+  {productAttachmentsEnabled(catalogOnly) && <fieldset class="rounded-md border border-line p-4">
     <legend class="px-1 text-sm font-medium">数字交付</legend>
     {product?.file_key && (
       <p class="mb-3 text-sm text-muted">
@@ -183,7 +209,7 @@ const inputClass =
         此后的订单不再提供该附件
       </label>
     )}
-  </fieldset>
+  </fieldset>}
 
   {
     showImage && (

@@ -2,8 +2,11 @@ import type { ProductFields } from './db';
 import { toMinorUnits } from '../../money';
 import { toGrams, type WeightUnit } from '../shipping/weight';
 import { parseWholesalePrices } from './wholesale';
+import { MIN_RELEASE_YEAR, MAX_RELEASE_YEAR } from './releaseYear';
 
 export interface ProductFormOptions {
+  catalogOnly?: boolean;
+  existingStock?: number;
   /** Admin's display unit. Storage is always grams. */
   unit?: WeightUnit;
   /**
@@ -35,7 +38,9 @@ export function parseProductForm(
     return { error: '请输入大于或等于零的价格。' };
   }
 
-  const stock = Number(String(form.get('stock') ?? '0').trim());
+  const stock = options.catalogOnly
+    ? options.existingStock ?? 0
+    : Number(String(form.get('stock') ?? '0').trim());
   if (!Number.isInteger(stock) || stock < 0) {
     return { error: '请输入大于或等于零的整数库存。' };
   }
@@ -47,6 +52,16 @@ export function parseProductForm(
   if (!Number.isSafeInteger(price_cents)) return { error: '商品价格超出可保存范围。' };
   const tiers = parseWholesalePrices(form, currency);
   if (tiers.error) return { error: tiers.error };
+  let releaseYear: number | null | undefined;
+  if (options.catalogOnly && form.has('release_year')) {
+    const value = form.get('release_year');
+    if (typeof value !== 'string') return { error: '请填写有效的商品年份。' };
+    const year = value.trim();
+    releaseYear = year ? Number(year) : null;
+    if (year && (!/^\d{4}$/.test(year) || Number(year) < MIN_RELEASE_YEAR || Number(year) > MAX_RELEASE_YEAR)) {
+      return { error: '商品年份须在 1900 至 2099 年之间。' };
+    }
+  }
   const description = String(form.get('description') ?? '').trim() || null;
   // Unchecked checkboxes submit nothing, so absence means inactive.
   const active = form.get('active') != null ? 1 : 0;
@@ -68,6 +83,7 @@ export function parseProductForm(
 
   return {
     data: { name, description, price_cents, currency, stock, active, weight_grams, requires_shipping,
+      ...(releaseYear !== undefined && { release_year: releaseYear }),
       ...(tiers.prices !== undefined && { wholesale_prices: tiers.prices }) },
   };
 }

@@ -227,6 +227,9 @@ export interface ProductDetailModel {
   /** True when variants disagree on price, so the header reads "from …". */
   priceVaries: boolean;
   wholesale?: { currency: string; tiers: Array<{ range: string; price: string | null }> };
+  catalogBadges?: { category: StorefrontLink | null; year: number | null };
+  quoteNote?: string;
+  detailSections?: Array<{ title: string; items: string[] }>;
   soldOut: boolean;
   /** Low-stock nudge, already gated: never set for a product with variants. */
   lowStock: boolean;

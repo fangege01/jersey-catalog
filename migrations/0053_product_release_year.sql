@@ -1,0 +1,1 @@
+ALTER TABLE products ADD COLUMN release_year INTEGER CHECK (release_year BETWEEN 1900 AND 2099);

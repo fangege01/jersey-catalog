@@ -1,5 +1,6 @@
 import type { APIRoute } from 'astro';
 import { env } from 'cloudflare:workers';
+import { getConfig } from '../../../config';
 import {
   createProduct,
   deleteProduct,
@@ -11,6 +12,7 @@ import { setProductCategories, getCategoriesByPublicIds } from '../../../feature
 import { parsePublicId } from '../../../features/ids/publicId';
 import { indexProduct } from '../../../features/search';
 import { parseProductForm } from '../../../features/products/form';
+import { parseProductDetailSections, translateProductDetailSections } from '../../../features/products/detailSections';
 import { zonesRequireWeight } from '../../../features/shipping/calculator';
 import { shippingFor } from '../../../features/shipping/effective';
 import { uniqueSlug } from '../../../features/products/slug';
@@ -20,7 +22,7 @@ import { uploadMedia } from '../../../features/media/upload';
 import { attachMediaToProduct } from '../../../features/media/db';
 import { getStorage, getFileStorage } from '../../../features/storage';
 import { uploadDigitalFile, validateDigitalFile } from '../../../features/products/digitalFile.ts';
-import { attachmentActive } from '../../../features/digitalDelivery/rollout.ts';
+import { productAttachmentsEnabled } from '../../../features/digitalDelivery/rollout.ts';
 import { CACHE_TAG } from '../../../features/cache/tags';
 import { purgeCacheTags } from '../../../features/cache/purge';
 import { saveCopyInEnglish } from '../../../features/i18n/adminCopy';
@@ -37,14 +39,20 @@ export const POST: APIRoute = async ({ request, redirect, locals }) => {
   // unsellable (every enabled zone prices by weight). Both come from settings the
   // request already loaded.
   const weightUnit = locals.settings?.weightUnit ?? 'g';
+  const catalogOnly = getConfig().features.catalogOnly;
   const parsed = parseProductForm(form, {
+    catalogOnly,
     unit: weightUnit,
     requireWeight: zonesRequireWeight(shippingFor(locals.settings).config),
   });
   if ('error' in parsed) return redirect(fail(parsed.error), 303);
+  const sections = parseProductDetailSections(form);
+  if ('error' in sections) return redirect(fail(sections.error), 303);
   let copy;
+  let detail_sections;
   try {
     copy = await saveCopyInEnglish(env.DB, env.AI, 'product', { title: parsed.data.name, body: parsed.data.description });
+    detail_sections = await translateProductDetailSections(env.AI, sections.source);
   } catch (cause) {
     if (cause instanceof EnglishTranslationError) return redirect(fail(cause.message), 303);
     throw cause;
@@ -60,8 +68,8 @@ export const POST: APIRoute = async ({ request, redirect, locals }) => {
     mediaId = media.id;
   }
 
-  const deliverable = form.get('deliverable');
-  if (attachmentActive() && deliverable instanceof File && deliverable.size > 0) {
+  const deliverable = productAttachmentsEnabled(catalogOnly) ? form.get('deliverable') : null;
+  if (deliverable instanceof File && deliverable.size > 0) {
     const fileError = validateDigitalFile(deliverable);
     if (fileError) return redirect(fail(fileError), 303);
   }
@@ -74,8 +82,8 @@ export const POST: APIRoute = async ({ request, redirect, locals }) => {
   // Writing the uploaded key here directly would be an UNGUARDED reference: the
   // media row is unreferenced until the attach lands, so a concurrent library
   // delete could leave the product pointing at an object that no longer exists.
-  const productId = await createProduct(env.DB, { ...parsed.data, name: copy.title, description: copy.body, image_key: null, slug }, copy.source);
-  if (attachmentActive() && deliverable instanceof File && deliverable.size > 0) {
+  const productId = await createProduct(env.DB, { ...parsed.data, name: copy.title, description: copy.body, image_key: null, slug, detail_sections }, copy.source);
+  if (deliverable instanceof File && deliverable.size > 0) {
     await setProductFile(env.DB, productId, await uploadDigitalFile(getFileStorage(), deliverable));
   }
   if (mediaId !== null) {

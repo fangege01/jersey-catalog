@@ -32,6 +32,7 @@ const model = await loadCatalogPage(env.DB, {
   responseHeaders: Astro.response.headers,
   imageBaseUrl: getConfig().images.baseUrl,
   currency: getConfig().currency,
+  catalogOnly: getConfig().features.catalogOnly,
   delivery: Astro.locals.settings?.imageDelivery,
   locale,
   eyebrow,

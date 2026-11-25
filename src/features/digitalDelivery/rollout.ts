@@ -12,3 +12,6 @@ export const entitlementWriterActive = (release: DigitalDeliveryRelease = DIGITA
   release >= 3;
 export const attachmentActive = (release: DigitalDeliveryRelease = DIGITAL_DELIVERY_RELEASE) =>
   release >= 4;
+
+export const productAttachmentsEnabled = (catalogOnly: boolean) =>
+  !catalogOnly && attachmentActive();

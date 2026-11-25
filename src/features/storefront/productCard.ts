@@ -56,6 +56,7 @@ export function buildStorefrontImage(
 }
 
 export interface ProductCardOptions extends StorefrontImageOptions {
+  catalogOnly?: boolean;
   /**
    * Currency to format the price in. Required, not defaulted: a default would
    * either read the store config — making this builder binding-aware, which is
@@ -84,6 +85,6 @@ export function buildProductCard(
     formattedPrice: formatMoney(product.price_cents, options.currency),
     // Availability only — never the count. `stockState` is the authoritative
     // classification; re-deriving `stock > 0` here would fork that rule.
-    inStock: stockState(product.stock) !== 'out',
+    inStock: Boolean(options.catalogOnly) || stockState(product.stock) !== 'out',
   };
 }

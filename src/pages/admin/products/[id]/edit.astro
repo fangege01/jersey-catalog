@@ -374,7 +374,7 @@ const weightRequired = zonesRequireWeight(shippingFor(Astro.locals.settings).con
                 class="w-28 rounded-md border border-line bg-transparent px-3 py-1.5 text-sm tracking-normal text-gray-900 focus:border-brand focus:outline-none"
               />
             </label>
-            <label class="flex flex-col gap-1 text-[10px] uppercase tracking-widest text-gray-400">
+            {!getConfig().features.catalogOnly && <label class="flex flex-col gap-1 text-[10px] uppercase tracking-widest text-gray-400">
               库存
               <input
                 form="product-form"
@@ -385,7 +385,7 @@ const weightRequired = zonesRequireWeight(shippingFor(Astro.locals.settings).con
                 value={v ? v.stock : 0}
                 class="w-20 rounded-md border border-line bg-transparent px-3 py-1.5 text-sm tracking-normal text-gray-900 focus:border-brand focus:outline-none"
               />
-            </label>
+            </label>}
             <label class="flex flex-col gap-1 text-[10px] uppercase tracking-widest text-gray-400">
               SKU
               <input

@@ -18,6 +18,8 @@ import { buildProductCard } from './productCard';
 import { readSiteCopy } from '../site-content/copy';
 import { validContactEmail } from '../site-content/inquiry';
 import { readWholesalePrices, wholesaleRanges } from '../products/wholesale';
+import { detailSectionLines, readProductDetailSections } from '../products/detailSections';
+import { releaseYearFromTitle } from '../products/releaseYear';
 import type {
   ProductDetailModel,
   ProductPurchaseModel,
@@ -122,12 +124,19 @@ export async function loadProductDetail(
     translations(db, options.locale, 'product', [product.public_id, ...related.map((p) => p.public_id)]),
     translations(db, options.locale, 'category', categories.map((c) => c.public_id)),
   ]);
+  const year = product.release_year ?? releaseYearFromTitle(product.name);
+  const categoryLink = (category: typeof categories[number]) => ({
+    text: categoryText.get(category.public_id ?? '')?.title ?? category.name,
+    href: `/categories/${category.slug}`,
+  });
+  const parentIds = new Set(categories.map(category => category.parent_id));
+  const badgeCategory = categories.find(category => !parentIds.has(category.id));
   product = localizedProduct(product, productText.get(product.public_id ?? ''));
   const hasVariants = variants.length > 0;
   const state = stockState(product.stock);
   // With variants the inventory unit is the variant, so availability comes from
   // them; otherwise from the product's own stock.
-  const soldOut = hasVariants ? variants.every((v) => v.stock <= 0) : state === 'out';
+  const soldOut = !options.catalogOnly && (hasVariants ? variants.every((v) => v.stock <= 0) : state === 'out');
 
   const variantPrices = variants.map((v) => v.price_cents);
   const displayPriceCents = hasVariants ? Math.min(...variantPrices) : product.price_cents;
@@ -183,6 +192,12 @@ export async function loadProductDetail(
       '&body=' + encodeURIComponent(inquiryProduct.name + '\r\n' + inquiryProduct.url)
     : null;
   const wholesalePrices = [product.price_cents, ...readWholesalePrices(product.wholesale_prices)];
+  const details = readProductDetailSections(product.detail_sections);
+  const detailCopy = zh ? details.source : details.english;
+  const detailSections = [
+    { title: zh ? '产品规格' : 'Product specifications', items: detailSectionLines(detailCopy.specifications) },
+    { title: zh ? '运输及付款' : 'Shipping and payment', items: detailSectionLines(detailCopy.shippingPayment) },
+  ].filter(section => section.items.length > 0);
   const galleryByKey = new Map(gallery.map((image) => [image.image_key, image]));
   const imageKeys = [...new Set([...(product.image_key ? [product.image_key] : []), ...galleryByKey.keys()])];
   const imageUrls = imageKeys.map((key) => new URL(productImageUrl(key, options.imageBaseUrl), options.origin).href);
@@ -250,6 +265,9 @@ export async function loadProductDetail(
       currency: options.currency,
       priceVaries,
       ...(options.catalogOnly && {
+        catalogBadges: { category: badgeCategory ? categoryLink(badgeCategory) : null, year },
+        quoteNote: detailCopy.quoteNote,
+        detailSections,
         wholesale: {
           currency: product.currency.toUpperCase(),
           tiers: wholesaleRanges.map((range, index) => {
@@ -261,12 +279,9 @@ export async function loadProductDetail(
       soldOut,
       // Deliberately never shown for a product with variants: the product-level
       // count means nothing when the variant is the inventory unit.
-      lowStock: !hasVariants && state === 'low',
-      digitalDelivery: Boolean(product.file_key),
-      categories: categories.map((category) => ({
-        text: categoryText.get(category.public_id ?? '')?.title ?? category.name,
-        href: `/categories/${category.slug}`,
-      })),
+      lowStock: !options.catalogOnly && !hasVariants && state === 'low',
+      digitalDelivery: !options.catalogOnly && Boolean(product.file_key),
+      categories: categories.map(categoryLink),
       images,
       heroImage: images[gallery.findIndex(image => image.image_key === product.image_key)]?.hero ?? heroImage(product, options),
       related: related.map((candidate) =>
@@ -274,6 +289,7 @@ export async function loadProductDetail(
           baseUrl: options.imageBaseUrl,
           delivery: options.delivery,
           currency: options.currency,
+          catalogOnly: options.catalogOnly,
           sizes: RELATED_CARD_SIZES,
         }),
       ),
@@ -297,7 +313,7 @@ export async function loadProductDetail(
           ...(emailHref && { emailHref }),
           options: inquiryHref ? variants.flatMap((variant) => {
             const href = whatsappInquiryUrl(inquiryNumber, inquiryProduct, variant, options.locale);
-            return href ? [{ label: variant.label, href, soldOut: variant.stock <= 0 }] : [];
+            return href ? [{ label: variant.label, href, soldOut: false }] : [];
           }) : [],
         },
       }),

@@ -70,6 +70,7 @@ const cards = products.map((product, i) =>
   buildProductCard(localizedProduct(product, productText.get(product.public_id ?? '')), {
     baseUrl: getConfig().images.baseUrl,
     currency: getConfig().currency,
+    catalogOnly: getConfig().features.catalogOnly,
     delivery: Astro.locals.settings?.imageDelivery,
     sizes: '(min-width: 1024px) 352px, calc(50vw - 36px)',
     priority: i === 0,

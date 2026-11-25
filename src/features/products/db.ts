@@ -5,6 +5,8 @@ import { sourceCopyStatement, type SourceCopy } from '../i18n/db.ts';
 export interface Product {
   import_seo_json?: string | null;
   wholesale_prices?: string | null;
+  detail_sections?: string | null;
+  release_year?: number | null;
   id: number;
   public_id: string | null;
   name: string;
@@ -34,6 +36,8 @@ export interface Product {
 /** Scalar fields parsed from the product form (image handled separately). */
 export interface ProductFields {
   wholesale_prices?: string;
+  detail_sections?: string;
+  release_year?: number | null;
   name: string;
   description: string | null;
   price_cents: number;
@@ -398,11 +402,12 @@ export async function createProduct(db: D1Database, p: ProductInput, source?: So
   return withPublicId('product', async (publicId) => {
     const insert = db
       .prepare(
-        `INSERT INTO products (name, slug, description, price_cents, currency, image_key, stock, active, weight_grams, requires_shipping, public_id, wholesale_prices)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `INSERT INTO products (name, slug, description, price_cents, currency, image_key, stock, active, weight_grams, requires_shipping, public_id, wholesale_prices, detail_sections, release_year)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          RETURNING id`,
       )
-      .bind(p.name, p.slug, p.description, p.price_cents, p.currency, p.image_key, p.stock, p.active, p.weight_grams, p.requires_shipping, publicId, p.wholesale_prices ?? null);
+      .bind(p.name, p.slug, p.description, p.price_cents, p.currency, p.image_key, p.stock, p.active,
+        p.weight_grams, p.requires_shipping, publicId, p.wholesale_prices ?? null, p.detail_sections ?? null, p.release_year ?? null);
     const row = source ? (await db.batch<{ id: number }>([insert, sourceCopyStatement(db, 'product', publicId, source)]))[0].results[0]
       : await insert.first<{ id: number }>();
     return row!.id;
@@ -414,10 +419,14 @@ export async function updateProduct(db: D1Database, id: number, p: ProductInput,
     .prepare(
       `UPDATE products
          SET name = ?, slug = ?, description = ?, price_cents = ?, currency = ?, image_key = ?, stock = ?, active = ?,
-             weight_grams = ?, requires_shipping = ?, wholesale_prices = COALESCE(?, wholesale_prices)
+             weight_grams = ?, requires_shipping = ?, wholesale_prices = COALESCE(?, wholesale_prices),
+             detail_sections = COALESCE(?, detail_sections),
+             release_year = CASE WHEN ? THEN ? ELSE release_year END
        WHERE id = ?`,
     )
-    .bind(p.name, p.slug, p.description, p.price_cents, p.currency, p.image_key, p.stock, p.active, p.weight_grams, p.requires_shipping, p.wholesale_prices ?? null, id);
+    .bind(p.name, p.slug, p.description, p.price_cents, p.currency, p.image_key, p.stock, p.active,
+      p.weight_grams, p.requires_shipping, p.wholesale_prices ?? null, p.detail_sections ?? null,
+      p.release_year === undefined ? 0 : 1, p.release_year ?? null, id);
   if (copy) await db.batch([update, sourceCopyStatement(db, 'product', copy.publicId, copy.source)]);
   else await update.run();
 }

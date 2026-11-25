@@ -105,6 +105,7 @@ export function buildPaginationModel(
 }
 
 export interface CatalogPageOptions {
+  catalogOnly?: boolean;
   /** The path currently rendering — sort and page links stay on it, so the
    *  catalog works at both `/` and `/products` without hardcoding either. */
   base: string;
@@ -166,6 +167,7 @@ export async function loadCatalogPage(
         baseUrl: options.imageBaseUrl,
         delivery: options.delivery,
         currency: options.currency,
+        catalogOnly: options.catalogOnly,
         sizes: CARD_SIZES,
         // Only the first card is the page's likely LCP image.
         priority: !options.landing && index === 0,
