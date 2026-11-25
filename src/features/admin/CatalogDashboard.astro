@@ -7,7 +7,7 @@ import { getConfig } from '../../config';
 import { normalizeTimeZone } from '../settings/timeZone';
 
 const timeZone = normalizeTimeZone(Astro.locals.settings?.timeZone ?? getConfig().timeZone) ?? 'UTC';
-const reportParams = new URLSearchParams({ days: '7' });
+const reportParams = new URLSearchParams({ days: '1' });
 const [products, pending, traffic] = await Promise.all([
   env.DB.prepare('SELECT COUNT(*) AS total, COUNT(CASE WHEN active = 1 THEN 1 END) AS published FROM products')
     .first<{ total: number; published: number }>(),
@@ -21,15 +21,18 @@ const [products, pending, traffic] = await Promise.all([
 const total = products?.total ?? 0;
 const published = products?.published ?? 0;
 const fmt = new Intl.NumberFormat('zh-CN');
-const date = new Intl.DateTimeFormat('zh-CN', { timeZone, month: 'numeric', day: 'numeric' });
-const bars = traffic?.daily ?? [];
+const hour = new Intl.DateTimeFormat('zh-CN', { timeZone, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
+const updatedAt = new Intl.DateTimeFormat('zh-CN', {
+  timeZone, month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23',
+}).format(Date.now());
+const bars = traffic?.series ?? [];
 const maxViews = Math.max(1, ...bars.map(point => point.views));
 const metrics = [
   { label: '已上架', value: published, href: '/admin/products?status=active' },
   { label: '待上架', value: total - published, href: '/admin/products?status=inactive' },
-  { label: '独立访客', value: traffic?.current.visitors, href: '/admin/traffic?days=7&metric=visitors' },
-  { label: '页面浏览', value: traffic?.current.views, href: '/admin/traffic?days=7&metric=views' },
-  { label: 'WhatsApp 点击', value: traffic?.current.clicks, href: '/admin/traffic?days=7&metric=clicks' },
+  { label: '独立访客', value: traffic?.current.visitors, href: '/admin/traffic?days=1&metric=visitors' },
+  { label: '页面浏览', value: traffic?.current.views, href: '/admin/traffic?days=1&metric=views' },
+  { label: 'WhatsApp 点击', value: traffic?.current.clicks, href: '/admin/traffic?days=1&metric=clicks' },
 ];
 const tasks = [
   { title: '批量导入', href: '/admin/imports', text: '检查采集助手连接与导入状态。' },
@@ -59,11 +62,11 @@ const origin = publicOrigin(Astro.url.origin, env.CANONICAL_ORIGIN);
           <dt class="pr-4 text-sm font-semibold">{item.label}</dt>
           <dd class="mt-3 break-words text-[1.85rem] leading-none font-bold tabular-nums">
             <a href={item.href} aria-label={'查看' + item.label} class="hover:underline">
-              {item.value === undefined ? '—' : fmt.format(item.value)}
+              <span data-dashboard-value={index}>{item.value === undefined ? '—' : fmt.format(item.value)}</span>
               <span aria-hidden="true" class="absolute top-3 right-3 text-base font-normal">↗</span>
             </a>
           </dd>
-          <dd class="mt-3 text-xs opacity-85">{index > 1 ? '近 7 天' : '当前目录'}</dd>
+          <dd class="mt-3 text-xs opacity-85">{index > 1 ? '今日' : '当前目录'}</dd>
         </div>
       ))}
     </dl>
@@ -73,24 +76,33 @@ const origin = publicOrigin(Astro.url.origin, env.CANONICAL_ORIGIN);
     <section class="admin-panel rounded-2xl border border-line bg-surface p-5 sm:p-6" aria-labelledby="dashboard-traffic-title">
       <div class="flex flex-wrap items-start justify-between gap-2">
         <div>
-          <h2 id="dashboard-traffic-title" class="text-lg font-bold">近 7 天页面浏览</h2>
-          <p class="mt-1 text-xs text-muted">统计同意分析的访客</p>
+          <h2 id="dashboard-traffic-title" class="text-lg font-bold">今日页面浏览</h2>
+          <p class="mt-1 text-xs text-muted">站点时区 {timeZone} · 统计同意分析的访客</p>
         </div>
-        <a class="text-sm font-semibold text-brand hover:underline" href="/admin/traffic?days=7&amp;metric=views">查看流量分析 <span aria-hidden="true">↗</span></a>
+        <div class="flex flex-wrap items-center gap-3 text-sm font-semibold text-brand">
+          <button type="button" hidden data-dashboard-refresh class="rounded-lg border border-line px-3 py-1 hover:bg-paper disabled:opacity-60">刷新数据</button>
+          <a class="hover:underline" href="/admin/traffic?days=1&amp;metric=views">查看流量分析 <span aria-hidden="true">↗</span></a>
+        </div>
       </div>
+      <div data-dashboard-chart class="mt-4 min-w-0">
       {traffic ? (
-        <ol class="admin-trend mt-5 grid grid-cols-7 gap-2 sm:gap-3" aria-label="按日浏览次数">
+        <ol class="admin-trend flex gap-2 overflow-x-auto pb-2 sm:gap-3" aria-label="按小时浏览次数" tabindex="0">
           {bars.map(point => (
-            <li class="grid min-w-0 grid-rows-[auto_1fr_auto] justify-items-center gap-2 text-xs tabular-nums">
+            <li class="grid min-w-10 flex-1 grid-rows-[auto_1fr_auto] justify-items-center gap-2 text-xs tabular-nums">
               <span class="max-w-full truncate text-ink" title={fmt.format(point.views)}>{fmt.format(point.views)}</span>
               <div class="admin-bar-track" aria-hidden="true">
                 <div class="admin-bar" style={`--bar-height:${100 * point.views / maxViews}%`}></div>
               </div>
-              <span class="whitespace-nowrap text-muted">{date.format(point.bucket * 1000)}</span>
+              <span class="whitespace-nowrap text-muted">{hour.format(point.bucket * 1000)}</span>
             </li>
           ))}
         </ol>
-      ) : <p role="alert" class="mt-5 rounded-xl bg-paper p-4 text-sm text-muted">暂时无法读取流量统计。</p>}
+      ) : <p class="rounded-xl bg-paper p-4 text-sm text-muted">暂时无法读取流量统计。</p>}
+      </div>
+      <p class="mt-2 text-xs text-muted" data-dashboard-updated={traffic ? 'ok' : 'error'}>
+        {traffic ? '更新于 ' + updatedAt : '等待更新'}
+      </p>
+      <span class="sr-only" role="status" data-dashboard-announcement></span>
     </section>
 
     <section class="admin-panel rounded-2xl border border-line bg-surface p-5 sm:p-6" aria-labelledby="recent-drafts">
@@ -131,3 +143,58 @@ const origin = publicOrigin(Astro.url.origin, env.CANONICAL_ORIGIN);
       href="/admin/whatsapp">WhatsApp {hasNumber ? '已设置' : '待设置'}</a>
   </section>
 </section>
+
+<script>
+  const button = document.querySelector<HTMLButtonElement>('[data-dashboard-refresh]');
+  const chart = document.querySelector<HTMLElement>('[data-dashboard-chart]');
+  const updated = document.querySelector<HTMLElement>('[data-dashboard-updated]');
+  const announcement = document.querySelector<HTMLElement>('[data-dashboard-announcement]');
+  if (button && chart && updated && announcement) {
+    const refreshButton = button;
+    const chartPanel = chart;
+    const status = updated;
+    const liveMessage = announcement;
+    const values = Array.from(document.querySelectorAll<HTMLElement>('[data-dashboard-value]'));
+    const chartList = () => chartPanel.querySelector<HTMLElement>('.admin-trend');
+    const initialList = chartList();
+    if (initialList) initialList.scrollLeft = initialList.scrollWidth;
+    refreshButton.hidden = false;
+
+    async function refresh(manual = false) {
+      if (refreshButton.disabled || document.hidden) return;
+      refreshButton.disabled = true;
+      try {
+        const response = await fetch(location.pathname, { cache: 'no-store', signal: AbortSignal.timeout(12000) });
+        if (!response.ok || response.redirected) throw new Error('Dashboard unavailable');
+        const page = new DOMParser().parseFromString(await response.text(), 'text/html');
+        const freshChart = page.querySelector('[data-dashboard-chart]');
+        const freshStatus = page.querySelector('[data-dashboard-updated="ok"]');
+        const freshValues = page.querySelectorAll('[data-dashboard-value]');
+        if (!freshChart || !freshStatus || freshValues.length !== values.length) throw new Error('Dashboard unavailable');
+        values.forEach((value, index) => { value.textContent = freshValues[index].textContent; });
+        const oldList = chartList();
+        const scrollLeft = oldList?.scrollLeft ?? 0;
+        const atLatest = !oldList || oldList.scrollWidth - oldList.clientWidth - scrollLeft < 8;
+        const chartFocused = document.activeElement === oldList;
+        chartPanel.replaceChildren(...Array.from(freshChart.childNodes));
+        const list = chartList();
+        if (list) {
+          list.scrollLeft = atLatest ? list.scrollWidth : scrollLeft;
+          if (chartFocused) list.focus({ preventScroll: true });
+        }
+        status.textContent = freshStatus.textContent;
+        if (manual) liveMessage.textContent = '今日数据已刷新。';
+      } catch {
+        const previous = status.textContent?.trim().split(' · ')[0] ?? '';
+        status.textContent = previous + ' · 暂未更新，可重试';
+        if (manual) liveMessage.textContent = '暂时无法刷新今日数据。';
+      } finally {
+        refreshButton.disabled = false;
+      }
+    }
+
+    refreshButton.addEventListener('click', () => { void refresh(true); });
+    window.setInterval(() => { void refresh(); }, 30000);
+    document.addEventListener('visibilitychange', () => { void refresh(); });
+  }
+</script>

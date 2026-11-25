@@ -73,7 +73,7 @@ async function totalsForPeriod(db: D1Database, start: number, end: number): Prom
 
 export async function trafficOverview(db: D1Database, params: URLSearchParams, timeZone: string) {
   const period = trafficPeriod(params, timeZone);
-  const [current, daily] = await Promise.all([
+  const [current, trend] = await Promise.all([
     totalsForPeriod(db, period.start, period.end),
     db.prepare(`${bucketRows}
       SELECT buckets.start AS bucket, COUNT(traffic_events.occurred_at) AS views
@@ -82,7 +82,7 @@ export async function trafficOverview(db: D1Database, params: URLSearchParams, t
       GROUP BY buckets.start ORDER BY buckets.start`).bind(JSON.stringify(period.buckets))
       .all<{ bucket: number; views: number }>(),
   ]);
-  return { current, daily: daily.results };
+  return { current, series: trend.results };
 }
 
 export async function trafficReport(db: D1Database, params: URLSearchParams, timeZone = 'UTC') {

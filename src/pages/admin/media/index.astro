@@ -76,7 +76,7 @@ function formatSize(bytes: number | null): string | null {
         暂无素材。可在上方上传，也可以给商品添加图片，上传内容都会进入此素材库。
       </p>
     ) : (
-      <ul class="grid grid-cols-2 gap-6 sm:grid-cols-3 lg:grid-cols-4">
+      <ul class="grid grid-cols-2 gap-3 sm:grid-cols-[repeat(auto-fill,minmax(9rem,1fr))]">
         {items.map((m) => {
           const entry = usage.get(m.id);
           const unused = !!entry && isUnused(entry);
@@ -86,16 +86,22 @@ function formatSize(bytes: number | null): string | null {
           const dimensions = m.width && m.height ? `${m.width} × ${m.height}` : null;
           const url = mediaUrl(m.image_key, baseUrl);
           return (
-            <li class="flex flex-col gap-2">
-              <div class="aspect-square overflow-hidden rounded-md border border-line bg-gray-50">
+            <li class="flex min-w-0 flex-col gap-1.5 rounded-xl border border-line bg-surface p-2.5">
+              <a
+                href={url}
+                target="_blank"
+                rel="noopener"
+                aria-label={`查看原图：${m.original_name}`}
+                class="block h-24 overflow-hidden rounded-md bg-paper p-1 hover:ring-1 hover:ring-brand focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
+              >
                 <img
                   src={url}
-                  alt={m.original_name}
+                  alt=""
                   loading="lazy"
                   decoding="async"
                   class="h-full w-full object-contain"
                 />
-              </div>
+              </a>
               <p class="truncate text-sm" title={m.original_name}>
                 {m.original_name}
               </p>
@@ -105,7 +111,7 @@ function formatSize(bytes: number | null): string | null {
                 {size ? ` · ${size}` : ''}
                 {!m.mime_type && !size ? ' · Legacy image' : ''}
               </p>
-              <p class="text-xs text-gray-600">
+              <p class="break-words text-xs text-gray-600">
                 {unused ? (
                   <span class="text-gray-400">未引用</span>
                 ) : (
@@ -126,7 +132,7 @@ function formatSize(bytes: number | null): string | null {
                   </Fragment>
                 )}
               </p>
-              <div class="mt-auto flex items-center gap-3 pt-1">
+              <div class="mt-auto flex flex-wrap items-center gap-x-3 gap-y-1 pt-1">
                 <button
                   type="button"
                   data-copy-url={url}
