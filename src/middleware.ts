@@ -168,8 +168,8 @@ async function gate(context: APIContext, next: MiddlewareNext): Promise<Response
   //    bypassed by forging it.
   const cred = await adminCredential(env.DB);
   if (cred.enabled) {
-    // The login page itself must be reachable unauthenticated (to log in).
-    if (path === '/admin/login') return next();
+    // Entry points for signing in or proving possession of a recovery code.
+    if (path === '/admin/login' || path === '/admin/reset-password') return next();
     const session = context.cookies.get('admin_session')?.value ?? null;
     // Sign/verify with AUTH_SECRET (high-entropy key); the credential is the bound tag.
     const signingKey = env.AUTH_SECRET || cred.tagSource;

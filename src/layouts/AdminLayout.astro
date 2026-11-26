@@ -36,6 +36,7 @@ type Section =
   | 'factorySupply'
   | 'whatsapp'
   | 'shipping'
+  | 'security'
   | 'settings';
 
 interface Props {
@@ -98,6 +99,7 @@ const groups: { label: string; links: Item[] }[] = [
   ] },
   { label: '系统设置', links: [
     { key: 'settings', label: '站点设置', href: '/admin/settings' },
+    { key: 'security', label: '账号安全', href: '/admin/security' },
   ] },
 ];
 const navKey = active === 'products' && Astro.url.searchParams.get('status') === 'inactive' ? 'pending' : active;

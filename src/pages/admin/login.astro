@@ -88,6 +88,9 @@ if (Astro.request.method === 'POST') {
         </p>
       )
     }
+    {!error && Astro.url.searchParams.get('password') === 'updated' && (
+      <p role="status" class="rounded-md bg-teal-50 px-3 py-2 text-sm text-teal-800">密码已更新，请用新密码登录。</p>
+    )}
 
     <form method="POST" action="/admin/login" class="space-y-4">
       <label class="block text-sm">
@@ -113,7 +116,10 @@ if (Astro.request.method === 'POST') {
         登录
       </button>
     </form>
-    <a href="/" class="inline-flex text-sm font-medium text-brand hover:underline">返回网站</a>
+    <div class="flex flex-wrap justify-between gap-3 text-sm font-medium text-brand">
+      <a href="/" class="hover:underline">返回网站</a>
+      <a href="/admin/reset-password" class="hover:underline">忘记密码？</a>
+    </div>
     </div>
   </main>
   </body>

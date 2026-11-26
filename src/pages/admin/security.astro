@@ -1,0 +1,98 @@
+---
+export const prerender = false;
+import { env } from 'cloudflare:workers';
+import AdminLayout from '../../layouts/AdminLayout.astro';
+import {
+  adminCredential, changeAdminPassword, createAdminRecoveryCode, hasAdminRecoveryCode,
+  validNewAdminPassword, ADMIN_PASSWORD_MIN, ADMIN_PASSWORD_MAX,
+} from '../../features/auth/admin';
+
+Astro.response.headers.set('Cache-Control', 'private, no-store');
+const credential = await adminCredential(env.DB);
+let recoveryCode: string | null = null;
+let error = '';
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData();
+  const action = form.get('action');
+  const current = String(form.get('current_password') ?? '');
+  const password = String(form.get('new_password') ?? '');
+  if (!credential.enabled || (action !== 'change' && action !== 'recovery')) {
+    error = '此操作当前不可用。';
+  } else if (!current || current.length > 1024 || !(await credential.verify(current))) {
+    error = '当前密码不正确。';
+  } else if (action === 'change') {
+    const confirmation = String(form.get('confirm_password') ?? '');
+    if (!validNewAdminPassword(password, confirmation)) {
+      error = '请填写 8 至 128 位的新密码，并确认两次输入一致。';
+    } else if (password === current) {
+      error = '请输入与当前密码不同的新密码。';
+    } else if (await changeAdminPassword(env.DB, credential.tagSource, password)) {
+      Astro.cookies.delete('admin_session', { path: '/' });
+      return Astro.redirect('/admin/login?password=updated', 303);
+    } else {
+      error = '账号凭据已更新，请刷新后重试。';
+    }
+  } else {
+    recoveryCode = await createAdminRecoveryCode(env.DB, credential.tagSource);
+    if (!recoveryCode) error = '账号凭据已更新，请刷新后重试。';
+  }
+  if (error) Astro.response.status = 400;
+}
+const recoveryReady = credential.enabled && await hasAdminRecoveryCode(env.DB);
+const field = 'mt-2 w-full rounded-md border border-line bg-paper px-3 py-2.5';
+const primary = 'rounded-md bg-brand px-4 py-2.5 text-sm font-medium text-white hover:bg-brand-hover';
+---
+
+<AdminLayout title="账号安全" active="security">
+  <div class="max-w-4xl space-y-5" lang="zh-CN">
+    <h1 class="text-3xl font-bold">账号安全</h1>
+    {error && <p role="alert" class="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p>}
+    {!credential.enabled ? (
+      <p class="rounded-xl border border-line bg-surface p-5">
+        当前未启用商城密码登录。可在<a class="text-brand underline" href="/admin/setup">初始化设置</a>中设置密码。
+      </p>
+    ) : (
+      <>
+        <section class="space-y-4 rounded-xl border border-line bg-surface p-5 sm:p-6" aria-labelledby="change-title">
+          <h2 id="change-title" class="text-lg font-semibold">修改管理密码</h2>
+          <p class="text-sm text-muted">密码更新后，所有后台会话和旧恢复码都会失效。请重新登录并生成新的恢复码。</p>
+          <form method="post" action="/admin/security" class="space-y-4">
+            <input type="hidden" name="action" value="change" />
+            <div class="grid gap-4 sm:grid-cols-2">
+              <label class="block text-sm sm:col-span-2">当前密码
+                <input name="current_password" type="password" autocomplete="current-password" required class={field} />
+              </label>
+              <label class="block text-sm">新密码（至少 8 位）
+                <input name="new_password" type="password" autocomplete="new-password" minlength={ADMIN_PASSWORD_MIN} maxlength={ADMIN_PASSWORD_MAX} required class={field} />
+              </label>
+              <label class="block text-sm">确认新密码
+                <input name="confirm_password" type="password" autocomplete="new-password" minlength={ADMIN_PASSWORD_MIN} maxlength={ADMIN_PASSWORD_MAX} required class={field} />
+              </label>
+            </div>
+            <button class={primary} type="submit">修改密码</button>
+          </form>
+        </section>
+        <section class="space-y-4 rounded-xl border border-line bg-surface p-5 sm:p-6" aria-labelledby="recovery-title">
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <h2 id="recovery-title" class="text-lg font-semibold">密码恢复码</h2>
+            <span class="text-sm text-muted">{recoveryReady ? '已设置' : '未设置'}</span>
+          </div>
+          <p class="text-sm text-muted">请提前生成并妥善保存。忘记密码时，用恢复码设置新密码。每个恢复码只能使用一次，重新生成会替换旧码。</p>
+          {recoveryCode && (
+            <div role="status" class="space-y-2 rounded-md border border-line bg-paper px-4 py-3">
+              <p class="text-sm font-medium">恢复码仅显示这一次，请立即保存。</p>
+              <output data-recovery-code class="block break-all font-mono text-sm sm:text-base">{recoveryCode}</output>
+            </div>
+          )}
+          <form method="post" action="/admin/security" class="space-y-4">
+            <input type="hidden" name="action" value="recovery" />
+            <label class="block text-sm">当前密码
+              <input name="current_password" type="password" autocomplete="current-password" required class={field} />
+            </label>
+            <button class={primary} type="submit">{recoveryReady ? '重新生成恢复码' : '生成恢复码'}</button>
+          </form>
+        </section>
+      </>
+    )}
+  </div>
+</AdminLayout>
