@@ -29,18 +29,21 @@ const settings = Astro.locals.settings;
 const copy = readSiteCopy(settings?.siteContent, 'home', locale);
 const imageKey = settings?.siteImages?.[siteImageKey('home')];
 const heroSizes = '(max-width: 752px) min(calc(100vw - 50px), 494px), (max-width: 1250px) 45vw, 530px';
-const image = imageKey ? buildStorefrontImage(imageKey, copy.heroAlt, {
+const slides = landing ? (settings?.homeSlides ?? []).map((key, index) => buildStorefrontImage(key, copy.heroAlt, {
+  baseUrl: getConfig().images.baseUrl, delivery: settings?.imageDelivery, sizes: heroSizes, priority: index === 0,
+})) : [];
+const image = slides[0] ?? (imageKey ? buildStorefrontImage(imageKey, copy.heroAlt, {
   baseUrl: getConfig().images.baseUrl, delivery: settings?.imageDelivery, sizes: heroSizes, priority: true,
 }) : {
   src: '/teal/football-kits-900.webp',
   srcset: '/teal/football-kits-540.webp 540w, /teal/football-kits-900.webp 900w',
   sizes: heroSizes, alt: copy.heroAlt, priority: true,
-};
+});
 ---
 
 <Layout title={landing ? copy.seoTitle : undefined} exactTitle={landing} description={landing ? copy.seoDescription : undefined}
   image={landing ? image.src : undefined} imageAlt={landing ? image.alt : undefined} hasInlineCases={landing}>
-  <ProductList landing={landing ? { copy, image, whatsappHref: whatsappInquiryUrl(settings?.whatsappNumber) } : undefined}>
+  <ProductList landing={landing ? { copy, image, slides, whatsappHref: whatsappInquiryUrl(settings?.whatsappNumber) } : undefined}>
     <Fragment slot="homepage-cases">
       {landing && <>
         <Showcase section="cases" />

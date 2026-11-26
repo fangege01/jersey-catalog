@@ -1,6 +1,7 @@
 import type { D1Database } from '@cloudflare/workers-types';
 
 import { imageSections, siteImageKey, siteImageEditor, siteImageLabel, type ImageSection } from '../site-content/copy.ts';
+import { isHomeSlideKey } from '../site-content/homeSlides.ts';
 
 /** Everywhere one media item is currently used. Empty everywhere = deletable. */
 export interface MediaUsage {
@@ -10,6 +11,7 @@ export interface MediaUsage {
   testimonials?: Array<{ id: string; name: string }>;
   logo: boolean;
   siteImages?: ImageSection[];
+  homeSlide?: boolean;
 }
 
 export function emptyUsage(): MediaUsage {
@@ -17,7 +19,7 @@ export function emptyUsage(): MediaUsage {
 }
 
 export function isUnused(usage: MediaUsage): boolean {
-  return usage.products.length === 0 && usage.pages.length === 0 && !usage.testimonials?.length && !usage.showcases?.length && !usage.logo && !usage.siteImages?.length;
+  return usage.products.length === 0 && usage.pages.length === 0 && !usage.testimonials?.length && !usage.showcases?.length && !usage.logo && !usage.siteImages?.length && !usage.homeSlide;
 }
 
 /**
@@ -121,6 +123,7 @@ export async function mediaUsageForIds(
     const entry = usage.get(row.id);
     if (!entry) continue;
     if (row.key === 'logo_image_key') entry.logo = true;
+    if (isHomeSlideKey(row.key)) entry.homeSlide = true;
     const section = imageSections.find(section => siteImageKey(section) === row.key);
     if (section) (entry.siteImages ??= []).push(section);
   }
@@ -178,6 +181,8 @@ export function usageLinks(usage: MediaUsage): UsageLink[] {
       kind: 'site-image' as const,
       title: '在网站内容中更换图片',
     })),
+    ...(usage.homeSlide ? [{ href: '/admin/home-slides', label: '首页轮播图',
+      kind: 'site-image' as const, title: '管理首页轮播图' }] : []),
     // The logo is a setting, not a row, so it links to where it is chosen.
     ...(usage.logo
       ? [

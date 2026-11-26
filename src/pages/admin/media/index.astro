@@ -5,6 +5,7 @@ import Pagination from '../../../components/Pagination.astro';
 import { MEDIA_PAGE_SIZE, countMedia } from '../../../features/media/db';
 import { isUnused, usageLinks } from '../../../features/media/usage';
 import { mediaUrl } from '../../../features/media/url';
+import { storedSeoFilename } from '../../../features/media/seoName';
 import { loadMediaPage } from '../../api/admin/media';
 import { paginate, queryHref } from '../../../pagination';
 
@@ -67,7 +68,11 @@ function formatSize(bytes: number | null): string | null {
     >
       上传
     </button>
-    <span class="text-xs text-gray-500">支持 JPEG、PNG、WebP 和 GIF，每张最多 5 MB。</span>
+    <label class="w-full text-sm sm:w-auto">图片 SEO 名称（选填）
+      <input type="text" name="seo_name" maxlength="100" placeholder="例如 Factory production line"
+        class="mt-1 block w-full rounded-md border border-line bg-paper px-3 py-2 sm:w-72" />
+    </label>
+    <p class="w-full text-xs text-gray-500">默认从有描述的原文件名生成。原文件名类似 IMG_001 时，可填写图片用途。支持 JPEG、PNG、WebP 和 GIF，每张最多 5 MB。</p>
   </form>
 
   {
@@ -85,6 +90,7 @@ function formatSize(bytes: number | null): string | null {
           // the line simply omits it rather than showing a placeholder.
           const dimensions = m.width && m.height ? `${m.width} × ${m.height}` : null;
           const url = mediaUrl(m.image_key, baseUrl);
+          const seoFilename = storedSeoFilename(m.image_key);
           return (
             <li class="flex min-w-0 flex-col gap-1.5 rounded-xl border border-line bg-surface p-2.5">
               <a
@@ -105,6 +111,7 @@ function formatSize(bytes: number | null): string | null {
               <p class="truncate text-sm" title={m.original_name}>
                 {m.original_name}
               </p>
+              {seoFilename && <p class="truncate text-xs text-muted" title={seoFilename}>SEO 名称 {seoFilename}</p>}
               <p class="text-xs text-gray-500">
                 {formatDate(m.created_at)}
                 {dimensions ? ` · ${dimensions}` : ''}

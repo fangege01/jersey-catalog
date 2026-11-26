@@ -181,6 +181,7 @@ const descriptions: Record<SiteSection, string> = {
     </nav>
     {!orderWorkflow && <p class="text-sm text-muted">{descriptions[section]}</p>}
     {metricsDraft && <a class="block text-sm underline" href="#home-metrics">首页数字指标</a>}
+    {canEditMetrics && import.meta.env.MINSHOP_THEME === 'teal' && <a class="block text-sm underline" href="/admin/home-slides">上传或更换首页轮播图</a>}
     <p class="text-sm text-muted">可填中文或英文。中文保存时自动生成英文文案，英文按原文显示。</p>
     {section === 'products' && <div class="flex flex-wrap gap-4 text-sm">
       <a class="underline" href="/admin/products">商品管理</a><a class="underline" href="/admin/categories">分类管理</a>

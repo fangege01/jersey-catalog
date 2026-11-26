@@ -59,7 +59,7 @@ export const POST: APIRoute = async ({ request, params, redirect }) => {
       if (imgErr) return back(imgErr);
     }
     for (const file of files) {
-      const media = await uploadMedia(env.DB, storage, await optimizeUpload(file), file.name);
+      const media = await uploadMedia(env.DB, storage, await optimizeUpload(file), file.name, product.name);
       const attached = await attachMediaToProduct(env.DB, id, media.id);
       if (!attached.ok) return back(attached.error);
     }

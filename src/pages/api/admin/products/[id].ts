@@ -168,7 +168,7 @@ export const POST: APIRoute = async ({ request, params, redirect, locals }) => {
   if (file instanceof File && file.size > 0) {
     const imgErr = validateImage(file);
     if (imgErr) return fail(imgErr);
-    const media = await uploadMedia(env.DB, storage, await optimizeUpload(file), file.name);
+    const media = await uploadMedia(env.DB, storage, await optimizeUpload(file), file.name, copy.title);
     uploadedMediaId = media.id;
   }
   const attachmentsEnabled = productAttachmentsEnabled(catalogOnly);

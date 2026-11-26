@@ -1,0 +1,106 @@
+---
+import { env } from 'cloudflare:workers';
+import AdminLayout from '../../layouts/AdminLayout.astro';
+import { getConfig } from '../../config';
+import { getStorage } from '../../features/storage';
+import { mediaUrl } from '../../features/media/url';
+import { uploadMedia, validateUpload } from '../../features/media/upload';
+import { libraryImageLabel } from '../../features/media/seoName';
+import { optimizeUpload } from '../../features/products/imageOptimize';
+import { refreshStorefront } from '../../features/i18n/englishSettings';
+import { appendHomeSlides, HOME_SLIDE_LIMIT, listHomeSlides, moveHomeSlide, removeHomeSlide } from '../../features/site-content/homeSlides';
+
+if (import.meta.env.MINSHOP_THEME !== 'teal') return new Response('未找到页面。', { status: 404 });
+const route = '/admin/home-slides';
+let slides = await listHomeSlides(env.DB);
+let error = '';
+if (Astro.request.method === 'POST') {
+  try {
+    const form = await Astro.request.formData();
+    const action = form.get('action');
+    const key = String(form.get('slot') ?? '');
+    const imageKey = String(form.get('image_key') ?? '');
+    if (action === 'upload') {
+      const files = form.getAll('images').filter((value): value is File => value instanceof File && value.size > 0);
+      if (!files.length) error = '请至少选择一张图片。';
+      else if (files.length + slides.length > HOME_SLIDE_LIMIT) error = `首页最多可放 ${HOME_SLIDE_LIMIT} 张轮播图。`;
+      else error = files.map(validateUpload).find(Boolean) ?? '';
+      if (!error) {
+        const storage = getStorage();
+        const uploaded = [];
+        for (const [position, file] of files.entries()) {
+          const label = libraryImageLabel(file.name, '') ?? 'homepage-jersey-gallery';
+          uploaded.push(await uploadMedia(env.DB, storage, await optimizeUpload(file), file.name, label, slides.length + position));
+        }
+        const added = await appendHomeSlides(env.DB, uploaded.map(item => item.id));
+        if (added) refreshStorefront(Astro.locals.cfContext);
+        if (added === files.length) return Astro.redirect(route + '?saved=1', 303);
+        error = '轮播位置刚被更新。没有加入轮播的图片可以在素材库中查看。';
+      }
+    } else if (action === 'remove' || action === 'up' || action === 'down') {
+      const changed = action === 'remove' ? await removeHomeSlide(env.DB, key, imageKey)
+        : await moveHomeSlide(env.DB, key, imageKey, action === 'up' ? -1 : 1);
+      if (changed) {
+        refreshStorefront(Astro.locals.cfContext);
+        return Astro.redirect(route + '?saved=1', 303);
+      }
+      error = '轮播列表已更新，请在最新列表中重试。';
+    } else {
+      error = '无法识别此操作。';
+    }
+    Astro.response.status = 400;
+  } catch (cause) {
+    console.error('Home slides could not be saved', cause);
+    Astro.response.status = 500;
+    error = '保存未完成。请检查轮播列表和素材库后重试。';
+  }
+  slides = await listHomeSlides(env.DB);
+}
+const base = getConfig().images.baseUrl;
+const btn = 'rounded-md border border-line px-3 py-2 text-sm hover:bg-paper disabled:opacity-50';
+---
+<AdminLayout title="首页轮播图" active="homeSlides">
+  <div class="max-w-4xl space-y-5">
+    <header>
+      <h1 class="text-3xl font-bold">首页轮播图</h1>
+      <p class="mt-2 text-sm text-muted">图片按下方顺序显示在首页首屏相框中。上传多张后每 5 秒切换一张。</p>
+    </header>
+    {error ? <p role="alert" class="rounded-md bg-red-50 p-3 text-sm text-red-700">{error}</p>
+      : Astro.url.searchParams.get('saved') === '1' && <p role="status" class="rounded-md bg-teal-50 p-3 text-sm text-teal-800">轮播图已更新。</p>}
+    <section class="space-y-4 rounded-xl border border-line bg-surface p-5">
+      <div class="flex flex-wrap items-center justify-between gap-2">
+        <h2 class="text-lg font-semibold">上传图片</h2>
+        <span class="text-sm text-muted">已添加 {slides.length} / {HOME_SLIDE_LIMIT} 张</span>
+      </div>
+      {slides.length < HOME_SLIDE_LIMIT && <form method="post" action={route} enctype="multipart/form-data" class="flex flex-wrap items-center gap-3">
+        <input type="hidden" name="action" value="upload" />
+        <input type="file" name="images" aria-label="选择轮播图片" multiple required accept="image/jpeg,image/png,image/webp,image/gif"
+          class="min-w-0 max-w-full text-sm file:mr-3 file:rounded-md file:border-0 file:bg-paper file:px-3 file:py-2" />
+        <button class="rounded-md bg-brand px-4 py-2 text-sm font-semibold text-white" type="submit">上传并显示</button>
+      </form>}
+      <p class="text-sm text-muted">支持 JPEG、PNG、WebP 和 GIF，每张最多 5 MB。可以一次选择多张。</p>
+    </section>
+    <section class="space-y-4 rounded-xl border border-line bg-surface p-5">
+      <div class="flex flex-wrap items-center justify-between gap-2">
+        <h2 class="text-lg font-semibold">播放顺序</h2>
+        <a class="text-sm text-brand underline" href="/" target="_blank" rel="noopener">查看首页</a>
+      </div>
+      {slides.length ? <ol class="space-y-3">
+        {slides.map((slide, index) => (
+          <li class="flex flex-wrap items-center gap-3 rounded-lg border border-line p-3">
+            <img src={mediaUrl(slide.imageKey, base)} alt="" width="80" height="56" loading="lazy" class="h-14 w-20 rounded bg-paper object-contain" />
+            <p class="min-w-0 flex-1 break-all text-sm">{index + 1}. {slide.name}</p>
+            <form method="post" action={route} class="flex flex-wrap gap-2">
+              <input type="hidden" name="slot" value={slide.key} />
+              <input type="hidden" name="image_key" value={slide.imageKey} />
+              <button class={btn} name="action" value="up" disabled={index === 0}>上移</button>
+              <button class={btn} name="action" value="down" disabled={index === slides.length - 1}>下移</button>
+              <button class={btn + ' text-red-700'} name="action" value="remove">移出轮播</button>
+            </form>
+          </li>
+        ))}
+      </ol> : <p class="text-sm text-muted">还没有上传轮播图。首页当前使用备用图。</p>}
+      <p class="text-sm text-muted">移出轮播的图片仍可在素材库中使用。</p>
+    </section>
+  </div>
+</AdminLayout>

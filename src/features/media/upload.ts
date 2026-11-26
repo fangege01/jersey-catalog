@@ -4,6 +4,7 @@ import type { StorageProvider } from '../storage';
 // stripping, which does not resolve extensionless relative imports.
 import { createMediaRecord, type Media } from './db.ts';
 import { readImageDimensions } from './dimensions.ts';
+import { productImageFilename } from './seoName.ts';
 
 const MAX_BYTES = 5 * 1024 * 1024; // 5 MB
 
@@ -50,10 +51,11 @@ export function validateUpload(file: File): string | null {
  * redaction rule again, and objects already written keep their old keys, so the
  * fix is never retroactive.
  */
-export function mediaKeyFor(file: File): string {
+export function mediaKeyFor(file: File, productLabel?: string, position?: number): string {
   const ext = ALLOWED.get(file.type) ?? 'bin';
   const id = crypto.getRandomValues(new Uint8Array(10));
-  return `media/${[...id].map((b) => b.toString(16).padStart(2, '0')).join('')}.${ext}`;
+  const base = `media/${[...id].map((b) => b.toString(16).padStart(2, '0')).join('')}`;
+  return productLabel ? `${base}/${productImageFilename(productLabel, ext, position)}` : `${base}.${ext}`;
 }
 
 /**
@@ -70,8 +72,10 @@ export async function uploadMedia(
   storage: StorageProvider,
   file: File,
   originalName: string,
+  seoLabel?: string,
+  position?: number,
 ): Promise<Media> {
-  const key = mediaKeyFor(file);
+  const key = mediaKeyFor(file, seoLabel, position);
   // One read of the bytes, used for both the upload and the header parse. `file`
   // is already the OPTIMIZED file — every caller passes optimizeUpload(file) —
   // so these dimensions describe the object actually stored, not the original.

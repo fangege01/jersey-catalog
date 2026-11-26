@@ -1,6 +1,7 @@
 import type { D1Database } from '@cloudflare/workers-types';
 import type { SiteContentSettings, SiteCopyKey, SiteImageKey, SiteImages } from '../site-content/copy';
 import { normalizeTimeZone } from './timeZone';
+import { homeSlideImageKeys } from '../site-content/homeSlides.ts';
 import {
   parseRuntimeShippingConfig,
   type ParsedRuntimeShippingConfig,
@@ -78,6 +79,7 @@ export interface StoreSettings {
   seoControls?: string;
   testimonials?: string;
   homeMetrics?: string;
+  homeSlides?: string[];
   showcaseCasesEnabled?: boolean;
   showcaseCasesOptions?: string;
   showcaseFactoryEnabled?: boolean;
@@ -213,6 +215,7 @@ export function parseStoreSettings(
     seoControls: map.get('seo_controls'),
     testimonials: map.get('testimonials'),
     homeMetrics: map.get('home_metrics'),
+    homeSlides: homeSlideImageKeys(results),
     showcaseCasesEnabled: map.get('showcase_cases_enabled') !== '0',
     showcaseCasesOptions: map.get('showcase_cases_options'),
     showcaseFactoryEnabled: map.get('showcase_factory_enabled') !== '0',

@@ -9,6 +9,7 @@ import {
 } from '../../../features/media/db';
 import { mediaUsageForIds, isUnused } from '../../../features/media/usage';
 import { mediaUrl } from '../../../features/media/url';
+import { libraryImageLabel } from '../../../features/media/seoName';
 import { uploadMedia, validateUpload } from '../../../features/media/upload';
 import { optimizeUpload } from '../../../features/products/imageOptimize';
 import { prewarmImageTransforms } from '../../../features/products/image';
@@ -116,6 +117,10 @@ export const POST: APIRoute = async ({ request, redirect, locals }) => {
       : redirect(`/admin/media?error=${encodeURIComponent(msg)}`, 303);
 
   if (files.length === 0) return fail('请至少选择一张图片。');
+  const seoName = String(form.get('seo_name') ?? '').trim();
+  if (seoName.length > 100 || (seoName && !libraryImageLabel('', seoName))) {
+    return fail('请填写有描述性的英文图片名称，最多 100 字符。');
+  }
 
   // Validate everything before storing anything, so a bad file in a multi-select
   // doesn't leave half the batch uploaded.
@@ -126,8 +131,10 @@ export const POST: APIRoute = async ({ request, redirect, locals }) => {
 
   const uploaded = [];
   const baseUrl = getConfig().images.baseUrl;
-  for (const file of files) {
-    const media = await uploadMedia(env.DB, getStorage(), await optimizeUpload(file), file.name);
+  for (const [position, file] of files.entries()) {
+    const label = libraryImageLabel(file.name, seoName);
+    const media = await uploadMedia(env.DB, getStorage(), await optimizeUpload(file), file.name, label,
+      seoName && files.length > 1 ? position : undefined);
     uploaded.push({
       // med_ public ID — never the row id.
       id: media.public_id,

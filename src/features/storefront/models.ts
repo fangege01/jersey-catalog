@@ -132,6 +132,7 @@ export interface CatalogPageModel {
     whatsappHref: string | null;
     copy: import('../site-content/copy').SiteCopy<'home'>;
     image: StorefrontImage;
+    slides?: StorefrontImage[];
     metrics?: { value: string; label: string; suffix: string }[];
   };
   copy?: import('../site-content/copy').SiteCopy<'products'>;

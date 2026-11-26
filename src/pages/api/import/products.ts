@@ -3,6 +3,7 @@ import { env } from 'cloudflare:workers';
 import { getConfig } from '../../../config';
 import { generatePublicId } from '../../../features/ids/publicId';
 import { validateUpload, mediaKeyFor } from '../../../features/media/upload';
+import { approvedImageFilename } from '../../../features/media/seoName';
 import { readImageDimensions } from '../../../features/media/dimensions';
 import { getStorage } from '../../../features/storage';
 import { PRODUCT_IMPORT_TOKEN_PATTERN, productImportConfigured } from '../../../features/admin/importConfig';
@@ -16,6 +17,7 @@ export const prerender = false;
 const MAX_IMAGES = 20;
 const MAX_IMAGE_BYTES = 25 * 1024 * 1024;
 const MAX_BODY = MAX_IMAGE_BYTES + 256 * 1024;
+const SEO_IMAGE_EXTENSIONS = new Map([['image/jpeg', 'jpg'], ['image/png', 'png'], ['image/webp', 'webp']]);
 
 function reply(data: object, status: number) {
   return Response.json(data, { status, headers: { 'cache-control': 'no-store' } });
@@ -152,8 +154,10 @@ export const POST: APIRoute = async ({ request }) => {
         return reply({ error: '正式发布需要完整商品 SEO、SKU 和图片审核资料' }, 422);
       }
       const names = files.map(file => file instanceof File ? file.name : '');
+      const explicitNames = files.flatMap(file => file instanceof File &&
+        approvedImageFilename(file.name, SEO_IMAGE_EXTENSIONS.get(file.type) ?? '') ? [file.name] : []);
       const alts = metadata.map(image => image.alt.toLowerCase()).filter(Boolean);
-      if (new Set(names).size !== names.length || new Set(alts).size !== alts.length) return reply({ error: '图片 SEO 文件名或 ALT 重复' }, 422);
+      if (new Set(explicitNames).size !== explicitNames.length || new Set(alts).size !== alts.length) return reply({ error: '图片 SEO 文件名或 ALT 重复' }, 422);
       payloadHash = Array.from(await digest(JSON.stringify([product, productSeo, metadata, names])), byte => byte.toString(16).padStart(2, '0')).join('');
       if (duplicate) {
         const prior = await publication(hash);
@@ -177,17 +181,17 @@ export const POST: APIRoute = async ({ request }) => {
       const dimensions = readImageDimensions(new Uint8Array(bytes));
       if (!dimensions) return reply({ error: '图片内容无法识别' }, 400);
       const seo = metadata?.[position];
+      const extension = SEO_IMAGE_EXTENSIONS.get(file.type);
       if (seo) {
         const contentHash = Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', bytes)),
           byte => byte.toString(16).padStart(2, '0')).join('');
-        const extension = new Map([['image/jpeg', 'jpg'], ['image/png', 'png'], ['image/webp', 'webp']]).get(file.type);
-        if (contentHash !== seo.sha256 || !extension || !file.name.endsWith('.' + extension) ||
-            !/^[a-z0-9]+(?:-[a-z0-9]+)*\.(?:webp|jpg|png)$/.test(file.name) || file.name.length > 120) {
-          return reply({ error: 'SEO 图片文件名、格式或内容哈希无效' }, 400);
+        if (contentHash !== seo.sha256 || !extension) {
+          return reply({ error: 'SEO 图片格式或内容哈希无效' }, 400);
         }
       }
-      const generatedKey = mediaKeyFor(file);
-      const key = seo ? generatedKey.replace(/\.[^.]+$/, '/') + file.name : generatedKey;
+      const named = seo && extension && approvedImageFilename(file.name, extension);
+      const key = named ? mediaKeyFor(file).replace(/\.[^.]+$/, '/') + file.name
+        : mediaKeyFor(file, productSeo?.slug ?? product.name, position);
       images.push({ file, bytes, dimensions, seo, key });
     }
 

@@ -6,6 +6,7 @@ const { model, landing } = Astro.props;
 const { copy, image, metrics = [], whatsappHref: contact } = landing;
 const zh = model.locale === 'zh-CN';
 const t = (en: string, cn: string) => zh ? cn : en;
+const slides = landing.slides?.length ? landing.slides : [image];
 const shownMetrics = metrics.map(metric => {
   const decimals = metric.value.split('.')[1]?.length ?? 0;
   const displayValue = new Intl.NumberFormat(model.locale ?? 'en', {
@@ -47,9 +48,20 @@ const steps = [
         </li>)}
       </ul>}
     </div>
-    <div class="hero-visual">
-      <img src={image.src} srcset={image.srcset} sizes={image.sizes} width="900" height="900"
-        fetchpriority="high" decoding="async" alt={image.alt} />
+    <div class="hero-visual" data-hero-slides={slides.length > 1 ? '' : undefined}>
+      <div class="hero-slide-stack">
+        {slides.map((slide, index) => <img class:list={[index === 0 && 'current']}
+          src={slide.src} srcset={slide.srcset} sizes={slide.sizes} width="900" height="900"
+          loading={index === 0 ? 'eager' : 'lazy'} fetchpriority={index === 0 ? 'high' : 'low'}
+          decoding="async" alt={slide.alt} aria-hidden={index > 0 ? 'true' : undefined} data-hero-slide />)}
+      </div>
+      {slides.length > 1 && <div class="hero-slide-controls" aria-label={t('Homepage image controls', '首页轮播控制')} hidden>
+        <button type="button" data-hero-prev aria-label={t('Previous image', '上一张')}>‹</button>
+        <span data-hero-position aria-live="off">1 / {slides.length}</span>
+        <button type="button" data-hero-next aria-label={t('Next image', '下一张')}>›</button>
+        <button type="button" data-hero-play aria-label={t('Pause slideshow', '暂停轮播')}
+          data-pause={t('Pause slideshow', '暂停轮播')} data-play={t('Resume slideshow', '播放轮播')}>Ⅱ</button>
+      </div>}
     </div>
   </div>
 </section>
@@ -202,6 +214,16 @@ const steps = [
   box-shadow: 0 24px 60px #020d135e;
 }
 .hero-visual img { display: block; width: 100%; height: auto; aspect-ratio: 1.06; object-fit: contain; border-radius: 1.25rem; background: #082e39; }
+.hero-visual { position: relative; }
+.hero-slide-stack { display: grid; }
+.hero-slide-stack img { grid-area: 1 / 1; opacity: 0; transition: opacity 380ms ease; }
+.hero-slide-stack img.current { opacity: 1; z-index: 1; }
+.hero-slide-controls { position: absolute; z-index: 2; inset-inline-start: 50%; bottom: 1.1rem; transform: translateX(-50%); display: flex; gap: .2rem; align-items: center; padding: .15rem .35rem; border: 1px solid #ffffff70; border-radius: 999px; color: white; background: #082e39e6; font-size: .8rem; white-space: nowrap; }
+.hero-slide-controls[hidden] { display: none; }
+.hero-slide-controls button { width: 2.5rem; height: 2.5rem; border-radius: 999px; font-size: 1.15rem; }
+.hero-slide-controls button:hover { background: #ffffff20; }
+.hero-slide-controls button:focus-visible { outline: 2px solid #7dd3fc; outline-offset: -2px; }
+@media (prefers-reduced-motion: reduce) { .hero-slide-stack img { transition: none; } }
 .supply-feature-inner { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 1.35rem; padding: clamp(1.25rem, 4vw, 2.5rem); border: 1px solid #cde4e1; border-radius: 1.4rem; background: #fff; }
 .supply-feature-inner p { max-width: 42rem; margin-top: .6rem; color: var(--color-muted); line-height: 1.65; }
 .supply-feature-inner a { gap: .65rem; border: 1px solid #cde4e1; color: var(--color-brand); }
@@ -244,6 +266,51 @@ const steps = [
 </style>
 
 <script>
+  for (const gallery of document.querySelectorAll<HTMLElement>('[data-hero-slides]')) {
+    const images = [...gallery.querySelectorAll<HTMLImageElement>('[data-hero-slide]')];
+    const controls = gallery.querySelector<HTMLElement>('.hero-slide-controls');
+    const position = gallery.querySelector<HTMLElement>('[data-hero-position]');
+    const play = gallery.querySelector<HTMLButtonElement>('[data-hero-play]');
+    if (!controls || !position || !play || images.length < 2) continue;
+    const motion = matchMedia('(prefers-reduced-motion: reduce)');
+    let index = 0;
+    let running = !motion.matches;
+    let timer: number;
+
+    function show(next: number) {
+      images[index].classList.remove('current');
+      images[index].setAttribute('aria-hidden', 'true');
+      index = (next + images.length) % images.length;
+      images[index].classList.add('current');
+      images[index].removeAttribute('aria-hidden');
+      position!.textContent = `${index + 1} / ${images.length}`;
+    }
+
+    function schedule() {
+      window.clearTimeout(timer);
+      if (!running || document.hidden || gallery.matches(':hover, :focus-within')) return;
+      timer = window.setTimeout(() => { show(index + 1); schedule(); }, 5000);
+    }
+
+    function updatePlay() {
+      play!.textContent = running ? 'Ⅱ' : '▶';
+      play!.setAttribute('aria-label', (running ? play!.dataset.pause : play!.dataset.play) ?? '');
+      schedule();
+    }
+
+    gallery.querySelector('[data-hero-prev]')?.addEventListener('click', () => { show(index - 1); schedule(); });
+    gallery.querySelector('[data-hero-next]')?.addEventListener('click', () => { show(index + 1); schedule(); });
+    play.addEventListener('click', () => { running = !running; updatePlay(); });
+    gallery.addEventListener('pointerenter', schedule);
+    gallery.addEventListener('pointerleave', schedule);
+    gallery.addEventListener('focusin', schedule);
+    gallery.addEventListener('focusout', () => queueMicrotask(schedule));
+    document.addEventListener('visibilitychange', schedule);
+    motion.addEventListener('change', event => { if (event.matches) { running = false; updatePlay(); } });
+    controls.hidden = false;
+    updatePlay();
+  }
+
   // The server renders the final number for no-JS and reduced-motion visitors.
   if ('IntersectionObserver' in window && !matchMedia('(prefers-reduced-motion: reduce)').matches) {
     const observer = new IntersectionObserver(entries => {
