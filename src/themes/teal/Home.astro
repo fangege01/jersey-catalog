@@ -35,7 +35,7 @@ const steps = [
     </div>
     <div class="hero-visual">
       <img src={image.src} srcset={image.srcset} sizes={image.sizes} width="900" height="900"
-        fetchpriority="high" alt={image.alt} />
+        fetchpriority="high" decoding="async" alt={image.alt} />
     </div>
   </div>
 </section>
@@ -93,13 +93,15 @@ const steps = [
   </div>
 </section>
 
-<section class="section pale">
+<section class="section pale supply-feature">
   <div class="frame">
-    <div class="section-head">
-      <h2>{copy.supplyTitle}</h2>
-      <a href="/factory">{copy.supplyLink} <span aria-hidden="true">→</span></a>
+    <div class="supply-feature-inner">
+      <div>
+        <h2>{copy.supplyTitle}</h2>
+        <p>{copy.supplyText}</p>
+      </div>
+      <a class="button" href="/factory">{copy.supplyLink} <span aria-hidden="true">→</span></a>
     </div>
-    <p class="text-muted">{copy.supplyText}</p>
   </div>
 </section>
 
@@ -133,20 +135,56 @@ const steps = [
 
 <style>
 .frame{width:min(100% - 3rem,75rem);margin-inline:auto;}
-.hero{color:white;background:radial-gradient(ellipse at 84% 10%,rgba(14,165,233,.36),transparent 54%),linear-gradient(135deg,#0b2b2a 0%,#0f766e 58%,#0ea5e9 130%);border-radius:0 0 60px 60px;overflow:hidden;}
-.hero-layout{display:grid;grid-template-columns:minmax(0,1.12fr) minmax(0,.88fr);gap:clamp(1.5rem,5.8vw,5.5rem);align-items:center;padding-block:clamp(2.8rem,6.3vw,6.4rem);}
-.eyebrow{font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:#a9e8fc;font-size:.85rem;}
-.hero h1{margin:.9rem 0 1.3rem;font-size:clamp(2.35rem,5vw,4.7rem);line-height:1.08;font-weight:800;letter-spacing:-.035em;}
-.hero h1 em{color:#7dd3fc;font-style:normal;}
-.hero-copy>p:not(.eyebrow){max-width:35rem;line-height:1.68;color:#e0f5f2;font-size:clamp(1rem,1.45vw,1.15rem);}
+.hero {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  color: white;
+  background: radial-gradient(ellipse at 80% 75%, #145758, transparent 58%), #0a2026;
+  border-block-end: 1px solid #276266;
+}
+.hero::before {
+  content: '';
+  position: absolute;
+  z-index: -1;
+  inset: 0;
+  background: repeating-linear-gradient(125deg, transparent 0 5rem, #9ff5e20e 5rem calc(5rem + 1px));
+  mask-image: linear-gradient(90deg, transparent 18%, #000 100%);
+  pointer-events: none;
+}
+.hero-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.04fr) minmax(0, 1fr);
+  gap: clamp(2rem, 5vw, 5rem);
+  align-items: center;
+  padding-block: clamp(3rem, 7vw, 6rem);
+}
+.hero-copy { min-width: 0; }
+.eyebrow{font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:#9fe2d6;font-size:.8rem;}
+.hero h1{margin:1rem 0 1.2rem;font-size:clamp(2.6rem,5.15vw,4.75rem);line-height:1.03;font-weight:850;letter-spacing:-.055em;overflow-wrap:anywhere;}
+.hero h1 em{color:#81e0ce;font-style:normal;}
+.hero-copy>p:not(.eyebrow){max-width:34rem;line-height:1.65;color:#d1e7e8;font-size:clamp(1rem,1.45vw,1.12rem);}
 .buttons{display:flex;flex-wrap:wrap;gap:.7rem;margin-top:1.55rem;}
 .button{display:inline-flex;min-height:46px;align-items:center;justify-content:center;border-radius:12px;padding:.65rem 1.1rem;font-weight:750;font-size:.95rem;}
-.bright{background:#7dd3fc;color:#082e39;}.bright:hover{background:#bae6fd;}
+.bright{background:#f2fcf9;color:#102f2d;}.bright:hover{background:#d2f4eb;}
 .outline{border:1px solid rgba(255,255,255,.65);color:white;}.outline:hover{background:#ffffff15;}
-.hero-options{display:grid;grid-template-columns:repeat(4,1fr);gap:.6rem;margin-top:1.9rem;padding-top:1rem;border-top:1px solid #ffffff45;font-size:.81rem;font-weight:650;}
-.hero-visual{position:relative;isolation:isolate;border-radius:24px;}
-.hero-visual::before{content:"";position:absolute;inset:-.55rem -.6rem auto 2.5rem;height:90%;z-index:-1;border-radius:28px;background:linear-gradient(150deg,#5eead4,#0ea5e9);opacity:.68;}
-.hero-visual img{width:100%;height:auto;aspect-ratio:1;object-fit:cover;border-radius:24px;}
+.hero-options { display: flex; flex-wrap: wrap; gap: .5rem 1.25rem; margin-top: 1.6rem; padding-top: 1rem; border-top: 1px solid #95ded43d; color: #c5e2e0; font-size: .82rem; }
+.hero-options li { display: flex; align-items: baseline; gap: .45rem; }
+.hero-options li::before { content: ''; flex: none; width: .32rem; height: .32rem; align-self: center; border-radius: 50%; background: #81e0ce; }
+.hero-visual {
+  min-width: 0;
+  overflow: hidden;
+  padding: .5rem;
+  border: 1px solid #8be7da55;
+  border-radius: 1.45rem;
+  background: #1b444c;
+  box-shadow: 0 24px 60px #020d135e;
+}
+.hero-visual img { display: block; width: 100%; height: auto; aspect-ratio: 1.06; object-fit: contain; border-radius: 1rem; background: #0d2f36; }
+.supply-feature-inner { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 1.35rem; padding: clamp(1.25rem, 4vw, 2.5rem); border: 1px solid #cde4e1; border-radius: 1.4rem; background: #fff; }
+.supply-feature-inner p { max-width: 42rem; margin-top: .6rem; color: var(--color-muted); line-height: 1.65; }
+.supply-feature-inner a { gap: .65rem; border: 1px solid #cde4e1; color: var(--color-brand); }
+.supply-feature-inner a:hover { background: #edf7f4; }
 .section{scroll-margin-top:84px;padding-block:clamp(2.5rem,5.3vw,5rem);}
 .section h2{font-size:clamp(1.75rem,3.5vw,2.7rem);font-weight:800;line-height:1.18;}
 .center{text-align:center;margin-bottom:1.7rem;}
@@ -180,6 +218,6 @@ const steps = [
 .questions details{border:1px solid #dcebe9;border-radius:12px;padding:.9rem 1rem;}
 .questions summary{font-weight:650;}.questions p{padding-top:.5rem;}
 @media(max-width:62rem){.grid,.steps{grid-template-columns:repeat(2,minmax(0,1fr));}}
-@media(max-width:47rem){.frame{width:calc(100% - 2rem);}.hero{border-radius:0 0 32px 32px;}.hero-layout{grid-template-columns:1fr;gap:1.75rem;}.hero-visual{max-width:32rem;}.hero-options{grid-template-columns:repeat(2,minmax(0,1fr));}.steps,.team-layout{grid-template-columns:1fr;}}
+@media(max-width:47rem){.frame{width:calc(100% - 2rem);}.hero-layout{grid-template-columns:1fr;gap:1.45rem;padding-block:2.35rem;}.hero-visual{width:min(100%,32rem);}.hero-visual img{aspect-ratio:1.24;}.steps,.team-layout{grid-template-columns:1fr;}}
 @media(max-width:27rem){.grid{gap:.65rem;}.box{padding:.8rem;}.box p{font-size:.85rem;}}
 </style>

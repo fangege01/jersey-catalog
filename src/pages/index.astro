@@ -27,7 +27,7 @@ if (landing && ['page', 'sort', 'dir'].some(key => searchParams.has(key))) {
 const settings = Astro.locals.settings;
 const copy = readSiteCopy(settings?.siteContent, 'home', locale);
 const imageKey = settings?.siteImages?.[siteImageKey('home')];
-const heroSizes = '(max-width: 740px) calc(100vw - 32px), (max-width: 1230px) 45vw, 520px)';
+const heroSizes = '(max-width: 752px) min(calc(100vw - 50px), 494px), (max-width: 1250px) 45vw, 530px';
 const image = imageKey ? buildStorefrontImage(imageKey, copy.heroAlt, {
   baseUrl: getConfig().images.baseUrl, delivery: settings?.imageDelivery, sizes: heroSizes, priority: true,
 }) : {
