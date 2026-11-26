@@ -143,11 +143,11 @@ const descriptions: Record<SiteSection, string> = {
   contact: '编辑联系页、表单按钮和运输信息。WhatsApp 号码在「WhatsApp 管理」修改，收到的表单在「询盘管理」查看。',
 };
 ---
-<AdminLayout title={orderWorkflow ? '首页订购流程' : bottomInquiry ? '底部询盘设置' : section === 'contact' ? '联系页面设置' : '网站内容'}
+<AdminLayout title={orderWorkflow ? '首页菜单' : bottomInquiry ? '底部询盘设置' : section === 'contact' ? '联系页面设置' : '网站内容'}
   active={orderWorkflow ? 'orderWorkflow' : bottomInquiry ? 'bottomInquiry' : section === 'contact' ? 'contactPage' : section === 'factory' ? 'factorySupply' : 'siteContent'}>
   <div class="mx-auto max-w-4xl space-y-5">
     <div class="flex flex-wrap items-center justify-between gap-3">
-      <h1 class="font-serif text-3xl">{orderWorkflow ? '首页订购流程' : '网站内容'}</h1>
+      <h1 class="font-serif text-3xl">{orderWorkflow ? '首页菜单' : '网站内容'}</h1>
       <a class="text-sm underline" href={path} target="_blank" rel="noopener">打开当前前台页面</a>
     </div>
     <nav aria-label="网站页面" class="flex flex-wrap gap-2">
