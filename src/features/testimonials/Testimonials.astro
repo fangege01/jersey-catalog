@@ -9,28 +9,25 @@ interface Props { settings?: string; locale?: StoreLocale }
 const { settings, locale } = Astro.props;
 const options = testimonialSettings(settings);
 const intro = display(locale, options.intro, options.sourceIntro);
-const data = options.enabled ? await publicTestimonials(env.DB).catch((error) => {
+const reviews = options.enabled ? await publicTestimonials(env.DB).catch((error) => {
   console.error('Customer reviews could not be loaded', error);
-  return null;
-}) : null;
+  return [];
+}) : [];
 const baseUrl = getConfig().images.baseUrl;
 ---
-{data && data.entries.length > 0 && (
+{reviews.length > 0 && (
   <section class="reviews" aria-labelledby="customer-reviews">
     <header class="reviews-heading">
-      <div>
-        <h2 id="customer-reviews">{display(locale, options.title, options.sourceTitle)}</h2>
-        {intro && <p class="reviews-intro">{intro}</p>}
-      </div>
-      {data.summary.average !== null && (
-        <p class="reviews-summary">{data.summary.average.toFixed(1)} / 5 · {data.summary.count} {display(locale, data.summary.count === 1 ? 'review' : 'reviews', '条评价')}</p>
-      )}
+      <h2 id="customer-reviews">{display(locale, options.title, options.sourceTitle)}</h2>
+      {intro && <p class="reviews-intro">{intro}</p>}
     </header>
     <ul class="reviews-grid" role="list">
-      {data.entries.map((review) => (
+      {reviews.map((review) => (
         <li class="review-card">
           {review.rating !== null && <p class="review-rating">
-            <span aria-hidden="true">★ </span>{review.rating.toFixed(1)} / 5
+            <span class="review-star" aria-hidden="true">★</span>
+            <span class="sr-only">{display(locale, 'Rating', '评分')}</span>
+            <span>{review.rating.toFixed(1)}</span>
           </p>}
           <blockquote>{display(locale, review.quote, review.sourceQuote ?? review.quote)}</blockquote>
           <div class="review-person">
@@ -48,13 +45,23 @@ const baseUrl = getConfig().images.baseUrl;
 
 <style>
   .reviews { width: min(calc(100% - 3rem), 75rem); margin-inline: auto; padding-block-end: clamp(1.5rem, 3vw, 2.25rem); }
-  .reviews-heading { display: flex; align-items: flex-start; flex-wrap: wrap; justify-content: space-between; gap: .8rem 1.25rem; margin-bottom: 1.3rem; }
+  .reviews-heading { margin-bottom: 1.3rem; }
   .reviews-heading h2 { margin: 0; font-size: clamp(1.8rem, 3.2vw, 2.65rem); font-weight: 750; color: var(--color-ink); line-height: 1.2; }
   .reviews-intro { max-width: 40rem; margin-top: .75rem; color: var(--color-muted); line-height: 1.65; white-space: pre-wrap; }
-  .reviews-summary { margin: 0; padding: .45rem .75rem; border: 1px solid var(--color-line); border-radius: 999px; background: var(--color-surface); color: var(--color-brand); font-size: .85rem; font-weight: 700; }
   .reviews-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1rem; margin: 0; padding: 0; list-style: none; }
   .review-card { display: flex; min-width: 0; flex-direction: column; gap: .9rem; padding: clamp(1rem, 2.2vw, 1.5rem); border: 1px solid var(--color-line); border-radius: 1.25rem; background: linear-gradient(145deg, var(--color-surface), var(--color-paper)); box-shadow: 0 8px 22px rgb(15 118 110 / 6%); overflow-wrap: anywhere; }
-  .review-rating { margin: 0; color: var(--color-brand); font-size: .85rem; font-weight: 750; }
+  .review-rating { display: flex; align-items: center; gap: .35rem; margin: 0; color: var(--color-brand); font-size: .85rem; font-weight: 750; }
+  .review-star { color: #956413; font-size: 1.1rem; line-height: 1; }
+  @supports (background-clip: text) {
+    .review-star {
+      color: transparent;
+      background: linear-gradient(155deg, #785019 4%, #c79538 26%, #ffdf8c 45%, #a36813 59%, #e3b75c 79%, #764916 96%);
+      background-clip: text;
+    }
+  }
+  @media (forced-colors: active) {
+    .review-star { color: CanvasText; background: none; }
+  }
   blockquote { flex: 1; margin: 0; color: var(--color-ink); font-size: .95rem; line-height: 1.7; white-space: pre-line; }
   .review-person { display: flex; align-items: center; gap: .7rem; padding-top: .85rem; border-top: 1px solid var(--color-line); }
   .review-person img { flex: none; width: 44px; height: 44px; border-radius: 50%; object-fit: cover; }

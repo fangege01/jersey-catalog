@@ -65,16 +65,9 @@ export function getTestimonial(db: D1Database, id: string) {
 }
 
 export async function publicTestimonials(db: D1Database) {
-  const [entries, summary] = await db.batch([
-    db.prepare(`SELECT ${COLUMNS} ${FROM} WHERE t.published = 1 ORDER BY t.position, t.id LIMIT 12`),
-    db.prepare(`SELECT COUNT(*) AS count,
-      ROUND(AVG(CASE WHEN rating_recorded = 1 THEN ROUND(rating * 10) END)) / 10.0 AS average
-      FROM customer_testimonials WHERE published = 1`),
-  ]);
-  return {
-    entries: entries.results as unknown as Testimonial[],
-    summary: summary.results[0] as unknown as { count: number; average: number | null },
-  };
+  const { results } = await db.prepare(`SELECT ${COLUMNS} ${FROM}
+    WHERE t.published = 1 ORDER BY t.position,t.id LIMIT 12`).all<Testimonial>();
+  return results;
 }
 
 export async function saveTestimonial(db: D1Database, form: FormData, id: string | null, ai?: Ai) {
