@@ -1,6 +1,12 @@
 ---
 import { env } from 'cloudflare:workers';
 import AdminLayout from '../../layouts/AdminLayout.astro';
+import { CACHE_TAG } from '../../features/cache/tags';
+import { purgeCacheTags } from '../../features/cache/purge';
+import { englishCopy, EnglishTranslationError } from '../../features/i18n/english';
+import { readSiteCopy, siteCopyKey, siteSections } from '../../features/site-content/copy';
+import { footerFields, footerLinkKeys, readFooterSettings } from '../../features/site-content/footerSettings';
+import { validContactEmail } from '../../features/site-content/inquiry';
 import {
   getMenus,
   MENU_CAPS,
@@ -18,15 +24,93 @@ import {
 } from '../../features/navigation/admin';
 
 const url = Astro.url;
-const error = url.searchParams.get('error');
+let error = url.searchParams.get('error');
 const saved = url.searchParams.get('saved');
+const teal = import.meta.env.MINSHOP_THEME === 'teal';
+const settings = Astro.locals.settings;
+const footerOptions = readFooterSettings(settings?.footerOptions);
+const sharedFields = {
+  footer: siteSections.global.fields.footer,
+  contactAddress: siteSections.contact.fields.contactAddress,
+  contactEmail: siteSections.contact.fields.contactEmail,
+};
+const sharedCopy = (locale: 'en' | 'zh-CN') => {
+  const global = readSiteCopy(settings?.siteContent, 'global', locale);
+  const contact = readSiteCopy(settings?.siteContent, 'contact', locale);
+  return { footer: global.footer, contactAddress: contact.contactAddress, contactEmail: contact.contactEmail };
+};
+const priorSource = { ...sharedCopy('zh-CN'), ...footerOptions.source };
+const priorEnglish = { ...sharedCopy('en'), ...footerOptions.english };
+let footerDraft: Record<string, string> = priorSource;
+let hiddenLinks = footerOptions.hidden;
+
+if (teal && Astro.request.method === 'POST') {
+  let persisted = false;
+  try {
+    const form = await Astro.request.formData();
+    if (form.get('_action') !== 'footer-content') {
+      error = '无法识别此操作。';
+    } else {
+      const specs = Object.entries({ ...sharedFields, ...footerFields });
+      footerDraft = Object.fromEntries(specs.map(([key]) => {
+        const value = form.get(key);
+        return [key, typeof value === 'string' ? value.trim() : ''];
+      }));
+      hiddenLinks = footerLinkKeys.filter(key => form.get('show_' + key) !== '1');
+      const invalidLength = specs.find(([key, field]) => footerDraft[key].length > field.max);
+      if (invalidLength) error = invalidLength[1].label + '最多可填写 ' + invalidLength[1].max + ' 字。';
+      else if (!footerDraft.footer || !footerDraft.contactAddress) error = '请填写页脚简介和联系地址。';
+      else if (footerDraft.contactEmail && !validContactEmail(footerDraft.contactEmail)) error = '请输入有效的联系邮箱。';
+      if (!error) {
+        const limits = Object.fromEntries(specs.map(([key, field]) => [key, field.max]));
+        const translated = await englishCopy(env.AI, footerDraft, limits, {
+          source: priorSource, english: priorEnglish,
+        });
+        const pick = (data: Record<string, string>) => ({
+          global: { footer: data.footer },
+          contact: { contactAddress: data.contactAddress, contactEmail: data.contactEmail },
+          footer: Object.fromEntries(Object.keys(footerFields).map(key => [key, data[key]])),
+        });
+        const source = pick(footerDraft);
+        const english = pick(translated);
+        const sharedPatch = `
+          INSERT INTO settings (key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET
+            value=json_patch(CASE WHEN json_valid(settings.value) THEN
+              CASE WHEN json_type(settings.value)='object' THEN settings.value ELSE '{}' END
+              ELSE '{}' END, excluded.value),
+            updated_at=datetime('now')`;
+        await env.DB.batch([
+          env.DB.prepare(sharedPatch).bind(siteCopyKey('global', 'zh-CN'), JSON.stringify(source.global)),
+          env.DB.prepare(sharedPatch).bind(siteCopyKey('global', 'en'), JSON.stringify(english.global)),
+          env.DB.prepare(sharedPatch).bind(siteCopyKey('contact', 'zh-CN'), JSON.stringify(source.contact)),
+          env.DB.prepare(sharedPatch).bind(siteCopyKey('contact', 'en'), JSON.stringify(english.contact)),
+          env.DB.prepare(`INSERT INTO settings (key,value) VALUES ('footer_options',?)
+            ON CONFLICT(key) DO UPDATE SET value=excluded.value,updated_at=datetime('now')`)
+            .bind(JSON.stringify({ source: source.footer, english: english.footer, hidden: hiddenLinks })),
+        ]);
+        persisted = true;
+        await purgeCacheTags([CACHE_TAG.shell, CACHE_TAG.catalog]);
+        return Astro.redirect('/admin/navigation?saved=footer#footer-content', 303);
+      }
+    }
+    Astro.response.status = 400;
+  } catch (cause) {
+    if (cause instanceof EnglishTranslationError) {
+      Astro.response.status = 503;
+      error = cause.message;
+    } else {
+      console.error('Footer settings could not be saved', cause);
+      Astro.response.status = 500;
+      error = persisted ? '内容已保存，前台缓存刷新失败。请重新保存。' : '页脚设置保存失败，请重试。';
+    }
+  }
+}
 
 // The picker is server-rendered and searchable rather than a giant <select>: a
 // store with thousands of products would otherwise put every one of them into
 // this page's HTML, and a bare cap would make anything past it unselectable.
 const rawType = url.searchParams.get('target_type');
 const pickerType: MenuTargetType = isMenuTargetType(rawType) ? rawType : 'page';
-const teal = import.meta.env.MINSHOP_THEME === 'teal';
 const pickerLocation: MenuLocation = teal || url.searchParams.get('location') === 'footer' ? 'footer' : 'header';
 const pickerQuery = url.searchParams.get('q') ?? '';
 
@@ -85,13 +169,18 @@ const locations: { key: MenuLocation; title: string; note: string }[] = [
   { key: 'footer', title: '页脚', note: `最多 ${MENU_CAPS.footer} 项。` },
 ];
 const visibleLocations = teal ? locations.filter(({ key }) => key === 'footer') : locations;
+const menuDefaults = readSiteCopy(settings?.siteContent, 'global', 'zh-CN');
+const footerPlaceholders = {
+  productsTitle: '产品', quickTitle: '快速链接', contactTitle: '联系方式',
+  products: menuDefaults.navProducts, factory: menuDefaults.navFactory, about: menuDefaults.navAbout, contact: menuDefaults.navContact,
+};
+const inputClass = 'mt-1 block w-full rounded-md border border-line bg-paper p-2.5 text-sm';
 ---
-<AdminLayout title={teal ? '页脚导航' : '导航'} active="navigation">
-  {teal && <p class="mb-4 text-sm text-muted">青绿主题的五个主菜单名称在 <a class="underline" href="/admin/site-content?section=global">网站内容 → 菜单与页脚</a> 编辑。这里的页脚项目会显示在前台。</p>}
+<AdminLayout title={teal ? '页脚设置' : '导航'} active="navigation">
   <div class="mb-8">
-    <h1 class="font-serif text-3xl tracking-tight">{teal ? '页脚导航' : '导航'}</h1>
+    <h1 class="font-serif text-3xl tracking-tight">{teal ? '页脚设置' : '导航'}</h1>
     <p class="mt-2 text-sm text-gray-500">
-      {teal ? '管理前台页脚的附加链接。' : '设置前台页眉和页脚的菜单。'}
+      {teal ? '管理每个页面底部的品牌介绍、栏目、链接与联系方式。' : '设置前台页眉和页脚的菜单。'}
     </p>
   </div>
 
@@ -105,11 +194,45 @@ const visibleLocations = teal ? locations.filter(({ key }) => key === 'footer') 
   {
     saved && !error && (
       <p class="mb-6 rounded-md border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700">
-        导航已更新。
+        {saved === 'footer' ? '页脚设置已保存并同步前台。' : '导航已更新。'}
       </p>
     )
   }
 
+  {teal && <form id="footer-content" method="POST" action="/admin/navigation#footer-content" class="mb-8 space-y-5 rounded-xl border border-line bg-surface p-5">
+    <input type="hidden" name="_action" value="footer-content" />
+    <div class="flex flex-wrap items-center justify-between gap-3">
+      <h2 class="font-serif text-xl">页脚内容</h2>
+      <a class="text-sm underline" href="/#site-footer" target="_blank" rel="noopener">查看前台页脚</a>
+    </div>
+    <label class="block text-sm font-medium">品牌介绍
+      <textarea name="footer" class={inputClass} rows="3" maxlength="600" required>{footerDraft.footer}</textarea>
+    </label>
+    <div class="grid gap-3 sm:grid-cols-2">
+      <label class="text-sm">联系地址<input name="contactAddress" class={inputClass} maxlength="160" value={footerDraft.contactAddress} required /></label>
+      <label class="text-sm">联系邮箱（选填）<input name="contactEmail" class={inputClass} type="email" maxlength="254" value={footerDraft.contactEmail} /></label>
+    </div>
+    <p class="text-sm text-muted">联系地址和邮箱与联系页面共用。<a class="underline" href="/admin/settings">修改全站名称或 Logo</a> · <a class="underline" href="/admin/whatsapp">修改全站 WhatsApp 号码</a></p>
+    <fieldset class="grid gap-3 rounded-lg border border-line p-3 sm:grid-cols-3">
+      <legend class="px-1 text-sm font-medium">栏目标题</legend>
+      {(['productsTitle','quickTitle','contactTitle'] as const).map(key => <label class="text-sm">{footerFields[key].label}
+        <input name={key} class={inputClass} maxlength={footerFields[key].max} value={footerDraft[key]} placeholder={footerPlaceholders[key]} />
+      </label>)}
+    </fieldset>
+    <fieldset class="space-y-3 rounded-lg border border-line p-3">
+      <legend class="px-1 text-sm font-medium">默认链接</legend>
+      <p class="text-sm text-muted">栏目标题和链接名称可留空，前台会使用默认文字。</p>
+      <div class="grid gap-3 sm:grid-cols-2">
+        {footerLinkKeys.map(key => <div class="rounded-lg border border-line bg-paper p-3">
+          <label class="flex items-center gap-2 text-sm"><input type="checkbox" name={'show_' + key} value="1" checked={!hiddenLinks.includes(key)} /> 显示{footerPlaceholders[key]}</label>
+          <label class="mt-2 block text-sm">{footerFields[key].label}
+            <input name={key} class={inputClass} maxlength={footerFields[key].max} value={footerDraft[key]} placeholder={footerPlaceholders[key]} />
+          </label>
+        </div>)}
+      </div>
+    </fieldset>
+    <button type="submit" class="rounded-md bg-brand px-4 py-2 text-sm font-medium text-white hover:bg-brand-hover">保存页脚设置</button>
+  </form>}
   <section class="mb-10 rounded-lg border border-line bg-white/60 p-5">
     <h2 class="mb-4 font-serif text-xl tracking-tight">新增导航项</h2>
 

@@ -87,7 +87,7 @@ const groups: { label: string; links: Item[] }[] = [
     { key: 'contactPage', label: '联系页面设置', href: '/admin/site-content?section=contact' },
     { key: 'pages', label: '自定义页面', href: '/admin/pages' },
     ...(catalogOnly ? [{ key: 'bottomInquiry' as const, label: '底部询盘设置', href: '/admin/site-content?section=home&focus=bottom-inquiry#bottom-inquiry' }] : []),
-    { key: 'navigation', label: import.meta.env.MINSHOP_THEME === 'teal' ? '页脚导航' : '导航', href: '/admin/navigation' },
+    { key: 'navigation', label: import.meta.env.MINSHOP_THEME === 'teal' ? '页脚设置' : '导航', href: '/admin/navigation' },
   ] },
   { label: '询价与营销', links: [
     { key: 'inquiries', label: '询盘管理', href: '/admin/inquiries' },

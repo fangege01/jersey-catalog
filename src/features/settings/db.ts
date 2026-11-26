@@ -21,6 +21,7 @@ export type SettingKey =
   | 'seo_controls'
   | 'testimonials'
   | 'home_metrics'
+  | 'footer_options'
   | 'showcase_cases_enabled'
   | 'showcase_cases_options'
   | 'showcase_factory_enabled'
@@ -76,6 +77,7 @@ export interface StoreSettings {
   seoControls?: string;
   testimonials?: string;
   homeMetrics?: string;
+  footerOptions?: string;
   siteContent?: SiteContentSettings;
   siteImages?: SiteImages;
   whatsappNumber?: string | null;
@@ -207,6 +209,7 @@ export function parseStoreSettings(
     seoControls: map.get('seo_controls'),
     testimonials: map.get('testimonials'),
     homeMetrics: map.get('home_metrics'),
+    footerOptions: map.get('footer_options'),
     siteContent: Object.fromEntries([...map].filter(([key]) => key.startsWith('site_content:'))),
     siteImages: Object.fromEntries([...map].filter(([key]) => key.startsWith('site_image:'))),
     whatsappNumber: map.get('whatsapp_number') ?? null,

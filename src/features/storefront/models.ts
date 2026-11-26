@@ -73,6 +73,7 @@ export interface StorefrontShellModel {
   storeName: string;
   whatsappHref?: string | null;
   footerCopy?: string;
+  footerTitles?: { products?: string; quick?: string; contact?: string };
   footerContact?: { address: string; email: string; emailHref: string | null };
   footerPrivacyPreferences?: boolean;
   languageSwitch?: { label: string; href?: string; locale: 'en' | 'zh-CN' };

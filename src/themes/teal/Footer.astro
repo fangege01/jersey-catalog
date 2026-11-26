@@ -12,7 +12,7 @@ const emailHref = model.footerContact?.emailHref;
 const number = model.whatsappHref ? '+' + new URL(model.whatsappHref).pathname.slice(1) : null;
 const linkClass = 'text-teal-100 underline-offset-4 hover:text-white hover:underline';
 ---
-<footer class="bg-linear-to-b from-teal-deep to-teal-footer text-white">
+<footer id="site-footer" class="bg-linear-to-b from-teal-deep to-teal-footer text-white">
   <div class="mx-auto w-full max-w-6xl px-6 pt-12 pb-6 sm:pt-14">
     <div class="grid grid-cols-2 gap-x-6 gap-y-8 lg:grid-cols-[minmax(0,1.35fr)_minmax(0,.8fr)_minmax(0,1fr)_minmax(0,1.25fr)]" data-footer-columns>
       <div class="col-span-2 min-w-0 space-y-4 lg:col-span-1">
@@ -24,13 +24,13 @@ const linkClass = 'text-teal-100 underline-offset-4 hover:text-white hover:under
         {model.footerCopy && <p class="max-w-xs text-sm leading-relaxed text-teal-100">{model.footerCopy}</p>}
       </div>
       {productLinks.length > 0 && <nav aria-label={zh ? '页脚产品' : 'Footer products'}>
-        <h2 id="footer-products" class="text-base font-bold">{zh ? '产品' : 'Products'}</h2>
+        <h2 id="footer-products" class="text-base font-bold">{model.footerTitles?.products ?? (zh ? '产品' : 'Products')}</h2>
         <ul class="mt-4 space-y-3 text-sm">
           {productLinks.map(link => <li><a class={linkClass} href={link.href}>{link.text}</a></li>)}
         </ul>
       </nav>}
       {(quickLinks.length > 0 || model.footerPrivacyPreferences) && <nav aria-label={zh ? '页脚快速链接' : 'Footer quick links'}>
-        <h2 id="footer-quick-links" class="text-base font-bold">{zh ? '快速链接' : 'Quick Links'}</h2>
+        <h2 id="footer-quick-links" class="text-base font-bold">{model.footerTitles?.quick ?? (zh ? '快速链接' : 'Quick Links')}</h2>
         <ul class="mt-4 space-y-3 text-sm">
           {quickLinks.map(link => <li><a class={linkClass} href={link.href}>{link.text}</a></li>)}
           {model.footerPrivacyPreferences && <li><button type="button" data-consent-open hidden class={linkClass}>
@@ -39,7 +39,7 @@ const linkClass = 'text-teal-100 underline-offset-4 hover:text-white hover:under
         </ul>
       </nav>}
       <div class="col-span-2 min-w-0 lg:col-span-1">
-        <h2 class="text-base font-bold">{zh ? '联系方式' : 'Contact Information'}</h2>
+        <h2 class="text-base font-bold">{model.footerTitles?.contact ?? (zh ? '联系方式' : 'Contact Information')}</h2>
         <ul class="mt-4 space-y-3 text-sm text-teal-100">
           {address && <li class="flex items-start gap-2.5">
             <span aria-hidden="true">📍</span><span>{address}</span>

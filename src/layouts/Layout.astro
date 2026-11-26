@@ -17,6 +17,7 @@ import Testimonials from '../features/testimonials/Testimonials.astro';
 import Tracking from '../features/analytics/Tracking.astro';
 import { readSiteCopy, siteSections } from '../features/site-content/copy';
 import { validContactEmail } from '../features/site-content/inquiry';
+import { footerLinkKeys, readFooterSettings } from '../features/site-content/footerSettings';
 import { buildShellModel } from '../features/storefront/shell';
 import type { StorefrontShellModel } from '../features/storefront/models';
 import StoreHeader from '#theme/Header.astro';
@@ -133,20 +134,26 @@ const shellModel = buildShellModel({
   accountsEnabled: accountsOn,
 });
 const copy = readSiteCopy(Astro.locals.settings?.siteContent, 'global', locale);
-const mainLinks = [
-  { href: '/', text: copy.navHome },
-  { href: '/products', text: copy.navProducts },
-  { href: siteSections.factory.url, text: copy.navFactory },
-  { href: siteSections.about.url, text: copy.navAbout },
-  { href: siteSections.contact.url, text: copy.navContact },
-];
+const primaryLinks = {
+  home: { href: '/', text: copy.navHome },
+  products: { href: '/products', text: copy.navProducts },
+  factory: { href: siteSections.factory.url, text: copy.navFactory },
+  about: { href: siteSections.about.url, text: copy.navAbout },
+  contact: { href: siteSections.contact.url, text: copy.navContact },
+};
+const mainLinks = Object.values(primaryLinks);
 const uniqueLinks = (links: typeof shellModel.headerLinks) =>
   links.filter((link, index) => links.findIndex(item => item.href === link.href) === index);
+const footerOptions = teal ? readFooterSettings(Astro.locals.settings?.footerOptions) : null;
+const footerLabels = footerOptions ? (locale === 'zh-CN' ? footerOptions.source : footerOptions.english) : {};
+const footerDefaults = footerLinkKeys.flatMap(key => footerOptions?.hidden.includes(key)
+  ? [] : [{ ...primaryLinks[key], text: footerLabels[key] ?? primaryLinks[key].text }]);
 const themedMenu = teal ? {
   headerLinks: mainLinks.map(link => ({ ...link, current: link.href === '/' ? basePath === '/' :
     basePath.replace(/\/$/, '') === link.href || (link.href === '/products' && /^\/(products|categories)\//.test(basePath)) })),
   footerCopy: copy.footer,
-  footerLinks: uniqueLinks([...mainLinks.slice(1), ...shellModel.footerLinks]),
+  footerTitles: { products: footerLabels.productsTitle, quick: footerLabels.quickTitle, contact: footerLabels.contactTitle },
+  footerLinks: uniqueLinks([...footerDefaults, ...shellModel.footerLinks]),
 } : {};
 const contactCopy = teal ? readSiteCopy(Astro.locals.settings?.siteContent, 'contact', locale) : undefined;
 const contactEmail = contactCopy?.contactEmail.trim() ?? '';
