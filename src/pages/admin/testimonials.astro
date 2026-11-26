@@ -5,9 +5,8 @@ import AdminLayout from '../../layouts/AdminLayout.astro';
 import MediaPicker from '../../features/media/MediaPicker.astro';
 import { mediaUrl } from '../../features/media/url';
 import { getSetting, setSetting } from '../../features/settings/db';
-import { CACHE_TAG } from '../../features/cache/tags';
-import { purgeCacheTags } from '../../features/cache/purge';
-import { englishCopy, EnglishTranslationError } from '../../features/i18n/english';
+import { prepareEnglishSave } from '../../features/i18n/english';
+import { refreshStorefront, syncEnglishSetting } from '../../features/i18n/englishSettings';
 import {
   testimonialSettings, reviewText, testimonialId, getTestimonial, listTestimonials,
   saveTestimonial, moveTestimonial, deleteTestimonial, TestimonialInputError,
@@ -29,30 +28,32 @@ if (Astro.request.method === 'POST') {
       const title = reviewText(form, 'title', 100, true);
       const intro = reviewText(form, 'intro', 500);
       const prior = testimonialSettings((await getSetting(env.DB, 'testimonials')) ?? undefined);
-      const english = await englishCopy(env.AI, { title, intro }, { title: 100, intro: 500 }, {
+      const limits = { title: 100, intro: 500 };
+      const { fallback, pending } = prepareEnglishSave({ title, intro }, {
         source: { title: prior.sourceTitle, intro: prior.sourceIntro }, english: { title: prior.title, intro: prior.intro },
-      });
-      await setSetting(env.DB, 'testimonials', JSON.stringify({ enabled: form.get('enabled') === '1', ...english, sourceTitle: title, sourceIntro: intro }));
+      }, ['title', 'intro']);
+      const value = { enabled: form.get('enabled') === '1', ...fallback, sourceTitle: title, sourceIntro: intro };
+      const serialized = JSON.stringify(value);
+      await setSetting(env.DB, 'testimonials', serialized);
+      syncEnglishSetting(Astro.locals.cfContext, env.AI, env.DB, pending, limits,
+        'testimonials', serialized, translated => JSON.stringify({ ...value, ...translated }));
     } else if (action === 'create') {
-      await saveTestimonial(env.DB, form, null, env.AI);
+      await saveTestimonial(env.DB, form, null, env.AI, Astro.locals.cfContext);
     } else {
       editId = testimonialId(form.get('id'));
       if (!editId) throw new TestimonialInputError('评价编号无效。');
-      if (action === 'edit') await saveTestimonial(env.DB, form, editId, env.AI);
+      if (action === 'edit') await saveTestimonial(env.DB, form, editId, env.AI, Astro.locals.cfContext);
       else if (action === 'up' || action === 'down') await moveTestimonial(env.DB, editId, action === 'up');
       else if (action === 'delete') await deleteTestimonial(env.DB, editId);
       else throw new TestimonialInputError('未知操作。');
     }
     changed = true;
-    await purgeCacheTags([CACHE_TAG.shell, CACHE_TAG.catalog]);
+    refreshStorefront(Astro.locals.cfContext);
     return Astro.redirect(pageHref(page) + '&saved=1', 303);
   } catch (cause) {
     if (cause instanceof TestimonialInputError) {
       error = cause.message;
       Astro.response.status = 400;
-    } else if (cause instanceof EnglishTranslationError) {
-      error = cause.message;
-      Astro.response.status = 503;
     } else {
       console.error('Testimonial admin operation failed', cause);
       error = changed ? '改动已保存，前台缓存未能刷新。请重试保存。' : '操作失败，请稍后重试。';

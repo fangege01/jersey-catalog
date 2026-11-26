@@ -1,9 +1,31 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { Ai } from '@cloudflare/workers-types';
-import { englishCopy } from './english';
+import { completeEnglishSave, englishCopy, prepareEnglishSave } from './english';
 
 describe('single-source storefront editing', () => {
   const limits = { title: 100, body: 500 };
+
+  it('prepares a save without a provider and retries a failed unchanged field', () => {
+    const source = { title: '最新球衣', body: 'Sizes S to XL' };
+    const english = { title: 'Previous jerseys', body: 'Old sizes' };
+    const expected = { fallback: { ...source, title: english.title }, pending: { title: source.title } };
+    expect(prepareEnglishSave(source, { source: { ...source, title: '旧球衣' }, english })).toEqual(expected);
+    expect(prepareEnglishSave(source, { source, english }, ['title'])).toEqual(expected);
+  });
+
+  it('publishes a validated fallback translation when the primary provider fails', async () => {
+    const run = vi.fn().mockRejectedValueOnce(new Error('Provider unavailable'))
+      .mockResolvedValueOnce({ translated_text: 'Choose from 26 jerseys.' });
+    const ai = { run } as unknown as Ai;
+    await expect(completeEnglishSave(ai, { body: '有26款球衣可选。' }, limits))
+      .resolves.toEqual({ body: 'Choose from 26 jerseys.' });
+    expect(run).toHaveBeenLastCalledWith('@cf/meta/m2m100-1.2b', {
+      text: '有26款球衣可选。', source_lang: 'zh', target_lang: 'en',
+    });
+    run.mockRejectedValueOnce(new Error('Provider unavailable'))
+      .mockResolvedValueOnce({ translated_text: 'Choose from 25 jerseys.' });
+    await expect(completeEnglishSave(ai, { body: '有26款球衣可选。' }, limits)).rejects.toThrow('数字或链接');
+  });
 
   it('preserves submitted English exactly without requiring a provider', async () => {
     const source = { title: '2026 FXF Away Jersey — XL', body: '## Sizing\n- EUR 19.95' };

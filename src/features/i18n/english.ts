@@ -4,12 +4,60 @@ const han = /\p{Script=Han}/u;
 const model = '@cf/meta/llama-3.3-70b-instruct-fp8-fast';
 type Text = Record<string, string>;
 type Limits = Record<string, number>;
+type Previous = { source: Text; english: Text };
 
 export class EnglishTranslationError extends Error {}
 
+export function prepareEnglishSave<T extends Text>(source: T, previous?: Previous, retry: readonly string[] = []) {
+  const fallback: Text = {};
+  const pending: Text = {};
+  for (const [key, value] of Object.entries(source)) {
+    const saved = previous?.english[key] ?? '';
+    const needsTranslation = han.test(value);
+    fallback[key] = needsTranslation ? (han.test(saved) ? '' : saved) : value;
+    if (needsTranslation && (retry.includes(key) || previous?.source[key] !== value || !fallback[key])) {
+      pending[key] = value;
+    }
+  }
+  return { fallback: fallback as T, pending };
+}
+
+async function timeLimit<T>(operation: Promise<T>, ms: number): Promise<T> {
+  let timer: ReturnType<typeof setTimeout>;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new EnglishTranslationError('英文翻译暂未完成。')), ms);
+  });
+  try {
+    return await Promise.race([operation, timeout]);
+  } finally {
+    clearTimeout(timer!);
+  }
+}
+
+export async function completeEnglishSave(
+  ai: Ai | undefined, pending: Text, limits: Limits,
+): Promise<Text> {
+  if (!Object.keys(pending).length) return {};
+  if (!ai) throw new EnglishTranslationError('自动翻译暂不可用。');
+  try {
+    return await timeLimit(englishCopy(ai, pending, limits), 6000);
+  } catch {
+    const results = await timeLimit(Promise.all(Object.entries(pending).map(async ([key, source]) => {
+      const result = await ai.run('@cf/meta/m2m100-1.2b', { text: source, source_lang: 'zh', target_lang: 'en' });
+      const value = (result as { translated_text?: unknown }).translated_text;
+      if (typeof value !== 'string' || !value.trim() || value.trim().length > limits[key] ||
+          han.test(value) || protectedText(source) !== protectedText(value)) {
+        throw new EnglishTranslationError('备用翻译未能保留文案中的数字或链接。');
+      }
+      return [key, value.trim()] as const;
+    })), 8000);
+    return Object.fromEntries(results);
+  }
+}
+
 /** Keep the saved English for untouched fields. Translate only new Chinese copy. */
 export async function englishCopy<T extends Text>(
-  ai: Ai | undefined, source: T, limits: Limits, previous?: { source: Text; english: Text },
+  ai: Ai | undefined, source: T, limits: Limits, previous?: Previous,
 ): Promise<T> {
   const result: Text = { ...source };
   const pending = Object.entries(source).filter(([key, value]) => {

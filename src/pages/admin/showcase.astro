@@ -5,11 +5,10 @@ import MediaPicker from '../../features/media/MediaPicker.astro';
 import { getConfig } from '../../config';
 import { mediaUrl } from '../../features/media/url';
 import { getSetting, setSetting } from '../../features/settings/db';
-import { CACHE_TAG } from '../../features/cache/tags';
-import { purgeCacheTags } from '../../features/cache/purge';
 import { caseCopyFields, caseCopyLimits, factorySlots, listShowcase, readCaseOptions, readCaseOptionsForm,
   readShowcaseItem, showcaseLimits, type FactorySlot } from '../../features/site-content/showcase';
-import { englishCopy, EnglishTranslationError } from '../../features/i18n/english';
+import { prepareEnglishSave } from '../../features/i18n/english';
+import { refreshStorefront, syncEnglishSetting, syncSiteEnglish } from '../../features/i18n/englishSettings';
 
 const cases = Astro.url.searchParams.get('section') === 'cases';
 const section = cases ? 'cases' : 'factory';
@@ -34,14 +33,17 @@ if (Astro.request.method === 'POST') {
       if (!cases || options) {
         enabled = form.get('enabled') === '1';
         if (options) {
-          const english = await englishCopy(env.AI, options.copy, caseCopyLimits, {
+          const { fallback, pending } = prepareEnglishSave(options.copy, {
             source: caseOptions.copy['zh-CN'], english: caseOptions.copy.en,
-          });
-          const translated = { ...options, copy: { 'zh-CN': options.copy, en: english } };
+          }, Object.keys(options.copy));
+          const translated = { ...options, copy: { 'zh-CN': options.copy, en: fallback } };
+          const value = JSON.stringify(translated);
           await env.DB.batch([
             env.DB.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)').bind(key, enabled ? '1' : '0'),
-            env.DB.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('showcase_cases_options', ?)").bind(JSON.stringify(translated)),
+            env.DB.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('showcase_cases_options', ?)").bind(value),
           ]);
+          syncEnglishSetting(Astro.locals.cfContext, env.AI, env.DB, pending, caseCopyLimits, 'showcase_cases_options',
+            value, english => JSON.stringify({ ...options, copy: { 'zh-CN': options.copy, en: { ...fallback, ...english } } }));
           caseOptions = translated;
         } else {
           await setSetting(env.DB, key, enabled ? '1' : '0');
@@ -58,12 +60,13 @@ if (Astro.request.method === 'POST') {
       if (item && (cases || slot)) {
         const position = slot ? Object.keys(factorySlots).indexOf(slot) : item.position;
         const previous = items.find(entry => slot ? entry.slot === slot : entry.id === Number(id));
-        const english = await englishCopy(env.AI, { title: item.title_zh, body: item.body_zh, alt: item.alt_zh },
-          { title: showcaseLimits.title_en, body: showcaseLimits.body_en, alt: showcaseLimits.alt_en },
+        const source = { title: item.title_zh, body: item.body_zh, alt: item.alt_zh };
+        const limits = { title: showcaseLimits.title_en, body: showcaseLimits.body_en, alt: showcaseLimits.alt_en };
+        const { fallback: english, pending } = prepareEnglishSave(source,
           previous && {
             source: { title: previous.title_zh, body: previous.body_zh, alt: previous.alt_zh },
             english: { title: previous.title_en, body: previous.body_en, alt: previous.alt_en },
-          });
+          }, Object.keys(source));
         const args = [position, item.visible, english.title, item.title_zh, english.body, item.body_zh, english.alt, item.alt_zh];
         const stmt = cases && validId ? env.DB.prepare(`
           UPDATE storefront_showcase_items SET image_id = (SELECT id FROM media WHERE image_key = ?1),
@@ -76,7 +79,22 @@ if (Astro.request.method === 'POST') {
             title_en = excluded.title_en, title_zh = excluded.title_zh, body_en = excluded.body_en, body_zh = excluded.body_zh,
             alt_en = excluded.alt_en, alt_zh = excluded.alt_zh
         `).bind(section, slot, ...args, item.imageKey);
-        stored = !!(await stmt.run()).meta.changes;
+        const result = await stmt.run();
+        stored = !!result.meta.changes;
+        if (stored) {
+          const itemId = validId ? Number(id) : result.meta.last_row_id;
+          const context = Astro.locals.cfContext;
+          syncSiteEnglish(context, env.AI, pending, limits, async translated => {
+            const copy = { ...english, ...translated };
+            const target = slot ? 'slot=?' : 'id=?';
+            const updated = await env.DB.prepare(`UPDATE storefront_showcase_items SET title_en=?,body_en=?,alt_en=?
+              WHERE section=? AND ${target} AND title_zh IS ? AND body_zh IS ? AND alt_zh IS ?
+              AND title_en IS ? AND body_en IS ? AND alt_en IS ?`)
+              .bind(copy.title, copy.body, copy.alt, section, slot ?? itemId, source.title, source.body, source.alt,
+                english.title, english.body, english.alt).run();
+            if (updated.meta.changes) refreshStorefront(context);
+          });
+        }
       }
     }
     if (!stored) {
@@ -84,18 +102,13 @@ if (Astro.request.method === 'POST') {
       error = action === 'toggle' ? '无法保存模块设置。请核对轮播间隔和文案长度。'
         : '无法保存。请核对标题、替代文字、顺序，并选择仍在素材库中的图片。';
     } else {
-      await purgeCacheTags([CACHE_TAG.shell, CACHE_TAG.catalog]);
+      refreshStorefront(Astro.locals.cfContext);
       return Astro.redirect(page + '&saved=1', 303);
     }
   } catch (cause) {
-    if (cause instanceof EnglishTranslationError) {
-      Astro.response.status = 503;
-      error = cause.message;
-    } else {
-      console.error('Showcase update failed', { section, cause });
-      Astro.response.status = 500;
-      error = stored ? '已保存，缓存刷新失败。' : '保存失败，请重试。';
-    }
+    console.error('Showcase update failed', { section, cause });
+    Astro.response.status = 500;
+    error = stored ? '已保存，请刷新查看。' : '保存失败，请重试。';
   }
 }
 const editors = cases

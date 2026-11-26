@@ -1,5 +1,5 @@
-import type { Ai, D1Database } from '@cloudflare/workers-types';
-import { englishCopy } from '../i18n/english';
+import type { D1Database } from '@cloudflare/workers-types';
+import { prepareEnglishSave } from '../i18n/english';
 
 export const homeMetricsKey = 'home_metrics';
 export const homeMetricSlots = 4;
@@ -27,7 +27,7 @@ export async function loadHomeMetrics(db: D1Database, stored?: string | null): P
           enabled: data.enabled,
           items: data.items.slice(0, homeMetricSlots).filter(item => item &&
             typeof item.value === 'string' && numberPattern.test(item.value) &&
-            [item.label, item.sourceLabel].every(label => typeof label === 'string' && label.trim() && label.length <= labelLimit) &&
+            [item.label, item.sourceLabel].every(label => typeof label === 'string' && label.length <= labelLimit) && item.sourceLabel.trim() &&
             typeof item.suffix === 'string' && item.suffix.length <= suffixLimit &&
             typeof item.sourceSuffix === 'string' && item.sourceSuffix.length <= suffixLimit),
         };
@@ -72,7 +72,7 @@ export function homeMetricsForm(form: FormData): HomeMetrics {
   };
 }
 
-export async function prepareHomeMetrics(input: HomeMetrics, previous: HomeMetrics, ai?: Ai): Promise<HomeMetrics> {
+export function prepareHomeMetrics(input: HomeMetrics, previous: HomeMetrics) {
   const items = input.items.filter(item => item.value || item.sourceLabel || item.sourceSuffix);
   if (input.enabled && !items.length) throw new HomeMetricInputError('启用时请至少填写一项指标。');
   if (items.some(item => !numberPattern.test(item.value) || !item.sourceLabel ||
@@ -97,9 +97,11 @@ export async function prepareHomeMetrics(input: HomeMetrics, previous: HomeMetri
       }
     }
   });
-  const english = await englishCopy(ai, original, limits, before);
-  return {
+  const { fallback, pending } = prepareEnglishSave(original, before, Object.keys(original));
+  const makeValue = (english: Record<string, string>): HomeMetrics => ({
     enabled: input.enabled,
     items: items.map((item, i) => ({ ...item, label: english['label' + i], suffix: english['suffix' + i] })),
-  };
+  });
+  return { fallback: makeValue(fallback), pending, limits,
+    complete: (translated: Record<string, string>) => makeValue({ ...fallback, ...translated }) };
 }

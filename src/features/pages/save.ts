@@ -41,7 +41,10 @@ export async function savePageBody(
   },
   options: { baseUrl?: string; original?: SourceCopy } = {},
 ): Promise<SaveResult> {
-  const referenced = extractMediaKeys(fields.body_markdown, { baseUrl: options.baseUrl });
+  const referenced = [...new Set([
+    ...extractMediaKeys(fields.body_markdown, { baseUrl: options.baseUrl }),
+    ...extractMediaKeys(options.original?.body ?? '', { baseUrl: options.baseUrl }),
+  ])];
   const resolved = await findMediaByKeys(db, referenced);
   const resolvedKeys = new Set(resolved.map((m) => m.image_key));
   const unresolved = referenced.filter((key) => !resolvedKeys.has(key));

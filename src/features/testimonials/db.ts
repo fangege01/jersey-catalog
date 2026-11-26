@@ -1,7 +1,8 @@
 import type { Ai, D1Database } from '@cloudflare/workers-types';
 import { getMediaByPublicId } from '../media/db';
 import { parsePublicId } from '../ids/publicId';
-import { englishCopy } from '../i18n/english';
+import { prepareEnglishSave } from '../i18n/english';
+import { refreshStorefront, syncSiteEnglish } from '../i18n/englishSettings';
 
 export const DEFAULT_TESTIMONIAL_SETTINGS = { enabled: false, title: 'Customer reviews', intro: '', sourceTitle: '客户评价', sourceIntro: '' };
 
@@ -70,7 +71,8 @@ export async function publicTestimonials(db: D1Database) {
   return results;
 }
 
-export async function saveTestimonial(db: D1Database, form: FormData, id: string | null, ai?: Ai) {
+export async function saveTestimonial(db: D1Database, form: FormData, id: string | null, ai?: Ai,
+  context?: { waitUntil(promise: Promise<unknown>): void }) {
   const name = reviewText(form, 'name', 100, true);
   const attribution = reviewText(form, 'attribution', 120);
   const quote = reviewText(form, 'quote', 1200, true);
@@ -86,12 +88,15 @@ export async function saveTestimonial(db: D1Database, form: FormData, id: string
   if (avatar && !media) throw new TestimonialInputError('头像素材已不存在，请重新选择。');
   const existing = id ? await getTestimonial(db, id) : null;
   if (id && !existing) throw new TestimonialInputError('这条评价已不存在。');
-  const translated = await englishCopy(ai, { attribution, quote }, { attribution: 120, quote: 1200 }, existing ? {
+  const source = { attribution, quote };
+  const limits = { attribution: 120, quote: 1200 };
+  const { fallback, pending } = prepareEnglishSave(source, existing ? {
     source: { attribution: existing.sourceAttribution ?? existing.attribution, quote: existing.sourceQuote ?? existing.quote },
     english: { attribution: existing.attribution, quote: existing.quote },
-  } : undefined);
+  } : undefined, Object.keys(source));
+  const reviewId = id ?? crypto.randomUUID();
   // Keep the existing required rating column compatible with older rows.
-  const values = [name, translated.attribution, translated.quote, attribution, quote, Number(score || '1'), Number(Boolean(score)), published, media?.id ?? null] as const;
+  const values = [name, fallback.attribution, fallback.quote, attribution, quote, Number(score || '1'), Number(Boolean(score)), published, media?.id ?? null] as const;
   if (id) {
     const result = await db.prepare(`UPDATE customer_testimonials
       SET name = ?, attribution = ?, quote = ?, source_attribution = ?, source_quote = ?, rating = ?, rating_recorded = ?, published = ?, avatar_media_id = ? WHERE id = ?`)
@@ -100,8 +105,15 @@ export async function saveTestimonial(db: D1Database, form: FormData, id: string
   } else {
     await db.prepare(`INSERT INTO customer_testimonials (name, attribution, quote, source_attribution, source_quote, rating, rating_recorded, published, avatar_media_id, id, position)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, (SELECT COALESCE(MAX(position), 0) + 1 FROM customer_testimonials))`)
-      .bind(...values, crypto.randomUUID()).run();
+      .bind(...values, reviewId).run();
   }
+  syncSiteEnglish(context, ai, pending, limits, async translated => {
+    const updated = { ...fallback, ...translated };
+    const result = await db.prepare(`UPDATE customer_testimonials SET attribution=?,quote=?
+      WHERE id=? AND source_attribution IS ? AND source_quote IS ? AND attribution IS ? AND quote IS ?`)
+      .bind(updated.attribution, updated.quote, reviewId, attribution, quote, fallback.attribution, fallback.quote).run();
+    if (result.meta.changes) refreshStorefront(context);
+  });
 }
 
 export async function moveTestimonial(db: D1Database, id: string, up: boolean) {

@@ -3,7 +3,8 @@ import { env } from 'cloudflare:workers';
 import AdminLayout from '../../layouts/AdminLayout.astro';
 import { CACHE_TAG } from '../../features/cache/tags';
 import { purgeCacheTags } from '../../features/cache/purge';
-import { englishCopy, EnglishTranslationError } from '../../features/i18n/english';
+import { prepareEnglishSave } from '../../features/i18n/english';
+import { refreshStorefront, syncSiteEnglish } from '../../features/i18n/englishSettings';
 import { readSiteCopy, siteCopyKey, siteSections } from '../../features/site-content/copy';
 import { footerFields, footerLinkKeys, readFooterSettings } from '../../features/site-content/footerSettings';
 import { validContactEmail } from '../../features/site-content/inquiry';
@@ -29,6 +30,9 @@ const saved = url.searchParams.get('saved');
 const teal = import.meta.env.MINSHOP_THEME === 'teal';
 const settings = Astro.locals.settings;
 const footerOptions = readFooterSettings(settings?.footerOptions);
+if (teal && Astro.request.method === 'GET' && url.searchParams.get('footer-sync') === '1') {
+  return Response.json({ status: footerOptions.syncStatus }, { headers: { 'cache-control': 'private, no-store' } });
+}
 const sharedFields = {
   footer: siteSections.global.fields.footer,
   contactAddress: siteSections.contact.fields.contactAddress,
@@ -63,16 +67,19 @@ if (teal && Astro.request.method === 'POST') {
       else if (footerDraft.contactEmail && !validContactEmail(footerDraft.contactEmail)) error = '请输入有效的联系邮箱。';
       if (!error) {
         const limits = Object.fromEntries(specs.map(([key, field]) => [key, field.max]));
-        const translated = await englishCopy(env.AI, footerDraft, limits, {
+        const { fallback, pending } = prepareEnglishSave(footerDraft, {
           source: priorSource, english: priorEnglish,
-        });
+        }, footerOptions.retry);
         const pick = (data: Record<string, string>) => ({
           global: { footer: data.footer },
           contact: { contactAddress: data.contactAddress, contactEmail: data.contactEmail },
           footer: Object.fromEntries(Object.keys(footerFields).map(key => [key, data[key]])),
         });
         const source = pick(footerDraft);
-        const english = pick(translated);
+        const english = pick(fallback);
+        const keys = Object.keys(pending);
+        const options = { source: source.footer, english: english.footer, hidden: hiddenLinks };
+        const value = JSON.stringify(keys.length ? { ...options, sync: { status: 'pending', keys, id: crypto.randomUUID() } } : options);
         const sharedPatch = `
           INSERT INTO settings (key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET
             value=json_patch(CASE WHEN json_valid(settings.value) THEN
@@ -86,23 +93,37 @@ if (teal && Astro.request.method === 'POST') {
           env.DB.prepare(sharedPatch).bind(siteCopyKey('contact', 'en'), JSON.stringify(english.contact)),
           env.DB.prepare(`INSERT INTO settings (key,value) VALUES ('footer_options',?)
             ON CONFLICT(key) DO UPDATE SET value=excluded.value,updated_at=datetime('now')`)
-            .bind(JSON.stringify({ source: source.footer, english: english.footer, hidden: hiddenLinks })),
+            .bind(value),
         ]);
         persisted = true;
-        await purgeCacheTags([CACHE_TAG.shell, CACHE_TAG.catalog]);
+        refreshStorefront(Astro.locals.cfContext);
+        syncSiteEnglish(Astro.locals.cfContext, env.AI, pending, limits, async translated => {
+          const final = pick({ ...fallback, ...translated });
+          const guardedPatch = `UPDATE settings SET value=json_patch(value,?),updated_at=datetime('now')
+            WHERE key=? AND EXISTS (SELECT 1 FROM settings WHERE key='footer_options' AND value=?)
+            AND EXISTS (SELECT 1 FROM settings WHERE key=? AND json_extract(value,'$.footer')=?)
+            AND EXISTS (SELECT 1 FROM settings WHERE key=?
+              AND json_extract(value,'$.contactAddress')=? AND json_extract(value,'$.contactEmail')=?)`;
+          const globalZh = siteCopyKey('global', 'zh-CN');
+          const contactZh = siteCopyKey('contact', 'zh-CN');
+          const guard = [value, globalZh, source.global.footer, contactZh, source.contact.contactAddress, source.contact.contactEmail] as const;
+          const finish = guardedPatch.replace('value=json_patch(value,?)', 'value=?');
+          const results = await env.DB.batch([
+            env.DB.prepare(guardedPatch).bind(JSON.stringify(final.global), siteCopyKey('global', 'en'), ...guard),
+            env.DB.prepare(guardedPatch).bind(JSON.stringify(final.contact), siteCopyKey('contact', 'en'), ...guard),
+            env.DB.prepare(finish).bind(JSON.stringify({ ...options, english: final.footer }), 'footer_options', ...guard),
+          ]);
+          if (results[2].meta.changes) await purgeCacheTags([CACHE_TAG.shell, CACHE_TAG.catalog]);
+          else await env.DB.prepare("UPDATE settings SET value=json_set(value,'$.sync.status','failed') WHERE key='footer_options' AND value=?").bind(value).run();
+        }, () => env.DB.prepare("UPDATE settings SET value=json_set(value,'$.sync.status','failed') WHERE key='footer_options' AND value=?").bind(value).run());
         return Astro.redirect('/admin/navigation?saved=footer#footer-content', 303);
       }
     }
     Astro.response.status = 400;
   } catch (cause) {
-    if (cause instanceof EnglishTranslationError) {
-      Astro.response.status = 503;
-      error = cause.message;
-    } else {
-      console.error('Footer settings could not be saved', cause);
-      Astro.response.status = 500;
-      error = persisted ? '内容已保存，前台缓存刷新失败。请重新保存。' : '页脚设置保存失败，请重试。';
-    }
+    console.error('Footer settings could not be saved', cause);
+    Astro.response.status = 500;
+    error = persisted ? '中文已保存。请刷新查看英文同步状态。' : '页脚设置保存失败，请重试。';
   }
 }
 
@@ -194,13 +215,16 @@ const inputClass = 'mt-1 block w-full rounded-md border border-line bg-paper p-2
   {
     saved && !error && (
       <p class="mb-6 rounded-md border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700">
-        {saved === 'footer' ? '页脚设置已保存并同步前台。' : '导航已更新。'}
+        {saved === 'footer' ? '页脚设置已保存。' : '导航已更新。'}
       </p>
     )
   }
 
   {teal && <form id="footer-content" method="POST" action="/admin/navigation#footer-content" class="mb-8 space-y-5 rounded-xl border border-line bg-surface p-5">
     <input type="hidden" name="_action" value="footer-content" />
+    {footerOptions.syncStatus && <p role="status" class="text-sm text-muted" data-footer-sync={footerOptions.syncStatus}>
+      {footerOptions.syncStatus === 'pending' ? '中文已保存，英文正在同步。' : '中文已保存，英文暂未同步。再次保存可重试。'}
+    </p>}
     <div class="flex flex-wrap items-center justify-between gap-3">
       <h2 class="font-serif text-xl">页脚内容</h2>
       <a class="text-sm underline" href="/#site-footer" target="_blank" rel="noopener">查看前台页脚</a>
@@ -542,6 +566,24 @@ const inputClass = 'mt-1 block w-full rounded-md border border-line bg-paper p-2
 
 
 <script>
+  const footerSync = document.querySelector<HTMLElement>('[data-footer-sync="pending"]');
+  if (footerSync) {
+    let attempts = 0;
+    const check = async () => {
+      try {
+        const response = await fetch('/admin/navigation?footer-sync=1', { cache: 'no-store' });
+        if (!response.ok) throw new Error('Could not read sync status');
+        const { status } = await response.json() as { status?: string };
+        if (status !== 'pending') {
+          footerSync.textContent = status === 'failed' ? '中文已保存，英文暂未同步。再次保存可重试。' : '英文文案已同步。';
+          return;
+        }
+      } catch { /* A temporary connection failure can be checked again. */ }
+      if (++attempts < 16) setTimeout(check, 1500);
+      else footerSync.textContent = '中文已保存。请刷新查看英文同步状态，或再次保存重试。';
+    };
+    setTimeout(check, 1000);
+  }
   // Progressive enhancement over a form that already works without it.
   //
   // Baseline: pick a type, pick from its (server-filtered) <select>, submit —

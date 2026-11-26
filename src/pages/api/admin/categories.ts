@@ -6,14 +6,13 @@ import { uniqueCategorySlug } from '../../../features/categories/slug';
 import { CACHE_TAG } from '../../../features/cache/tags';
 import { purgeCacheTags } from '../../../features/cache/purge';
 import { saveCopyInEnglish } from '../../../features/i18n/adminCopy';
-import { EnglishTranslationError } from '../../../features/i18n/english';
 
 export const prerender = false;
 
 const fail = (msg: string) => `/admin/categories/new?error=${encodeURIComponent(msg)}`;
 
 // POST /api/admin/categories — create a category, then redirect to the list.
-export const POST: APIRoute = async ({ request, redirect }) => {
+export const POST: APIRoute = async ({ request, redirect, locals }) => {
   const form = await request.formData();
   const parsed = parseCategoryForm(form);
   if ('error' in parsed) return redirect(fail(parsed.error), 303);
@@ -27,19 +26,14 @@ export const POST: APIRoute = async ({ request, redirect }) => {
     parentId = parent.id;
   }
 
-  let copy;
-  try {
-    copy = await saveCopyInEnglish(env.DB, env.AI, 'category', { title: parsed.data.name, body: null });
-  } catch (cause) {
-    if (cause instanceof EnglishTranslationError) return redirect(fail(cause.message), 303);
-    throw cause;
-  }
+  const copy = await saveCopyInEnglish(env.DB, env.AI, 'category', { title: parsed.data.name, body: null });
   const slug = await uniqueCategorySlug(env.DB, parsed.data.slugInput || copy.title);
-  await createCategory(env.DB, {
+  const id = await createCategory(env.DB, {
     name: copy.title,
     slug,
     parent_id: parentId,
   }, copy.source);
+  copy.sync(locals.cfContext, id);
   await purgeCacheTags([CACHE_TAG.catalog]);
   return redirect('/admin/categories', 303);
 };

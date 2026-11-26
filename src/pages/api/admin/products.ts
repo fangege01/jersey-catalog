@@ -12,7 +12,7 @@ import { setProductCategories, getCategoriesByPublicIds } from '../../../feature
 import { parsePublicId } from '../../../features/ids/publicId';
 import { indexProduct } from '../../../features/search';
 import { parseProductForm } from '../../../features/products/form';
-import { parseProductDetailSections, translateProductDetailSections } from '../../../features/products/detailSections';
+import { parseProductDetailSections, prepareProductDetailSections } from '../../../features/products/detailSections';
 import { zonesRequireWeight } from '../../../features/shipping/calculator';
 import { shippingFor } from '../../../features/shipping/effective';
 import { uniqueSlug } from '../../../features/products/slug';
@@ -26,7 +26,6 @@ import { productAttachmentsEnabled } from '../../../features/digitalDelivery/rol
 import { CACHE_TAG } from '../../../features/cache/tags';
 import { purgeCacheTags } from '../../../features/cache/purge';
 import { saveCopyInEnglish } from '../../../features/i18n/adminCopy';
-import { EnglishTranslationError } from '../../../features/i18n/english';
 
 export const prerender = false;
 
@@ -48,15 +47,8 @@ export const POST: APIRoute = async ({ request, redirect, locals }) => {
   if ('error' in parsed) return redirect(fail(parsed.error), 303);
   const sections = parseProductDetailSections(form);
   if ('error' in sections) return redirect(fail(sections.error), 303);
-  let copy;
-  let detail_sections;
-  try {
-    copy = await saveCopyInEnglish(env.DB, env.AI, 'product', { title: parsed.data.name, body: parsed.data.description });
-    detail_sections = await translateProductDetailSections(env.AI, sections.source);
-  } catch (cause) {
-    if (cause instanceof EnglishTranslationError) return redirect(fail(cause.message), 303);
-    throw cause;
-  }
+  const copy = await saveCopyInEnglish(env.DB, env.AI, 'product', { title: parsed.data.name, body: parsed.data.description });
+  const details = prepareProductDetailSections(env.DB, env.AI, sections.source);
 
   let mediaId: number | null = null;
   const file = form.get('image');
@@ -82,7 +74,7 @@ export const POST: APIRoute = async ({ request, redirect, locals }) => {
   // Writing the uploaded key here directly would be an UNGUARDED reference: the
   // media row is unreferenced until the attach lands, so a concurrent library
   // delete could leave the product pointing at an object that no longer exists.
-  const productId = await createProduct(env.DB, { ...parsed.data, name: copy.title, description: copy.body, image_key: null, slug, detail_sections }, copy.source);
+  const productId = await createProduct(env.DB, { ...parsed.data, name: copy.title, description: copy.body, image_key: null, slug, detail_sections: details?.value }, copy.source);
   if (deliverable instanceof File && deliverable.size > 0) {
     await setProductFile(env.DB, productId, await uploadDigitalFile(getFileStorage(), deliverable));
   }
@@ -110,6 +102,8 @@ export const POST: APIRoute = async ({ request, redirect, locals }) => {
   // Keep the semantic-search index in sync (no-op unless vector search is on).
   // Never let an indexing hiccup block the create.
   const created = await getProduct(env.DB, productId);
+  copy.sync(locals.cfContext, productId);
+  details?.sync(locals.cfContext, productId, created?.public_id);
   try {
     if (created) await indexProduct(created);
   } catch (err) {

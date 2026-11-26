@@ -1,5 +1,8 @@
-import type { Ai } from '@cloudflare/workers-types';
-import { englishCopy, EnglishTranslationError } from '../i18n/english';
+import type { Ai, D1Database } from '@cloudflare/workers-types';
+import { prepareEnglishSave } from '../i18n/english';
+import { syncSiteEnglish } from '../i18n/englishSettings';
+import { CACHE_TAG } from '../cache/tags';
+import { purgeCacheTags } from '../cache/purge';
 
 export const detailSectionFields = {
   quoteNote: '价格下方说明',
@@ -49,14 +52,24 @@ export function parseProductDetailSections(form: FormData): { source?: Fields } 
   return { source };
 }
 
-export async function translateProductDetailSections(ai: Ai | undefined, source: Fields | undefined, raw?: string | null) {
+export function prepareProductDetailSections(db: D1Database, ai: Ai | undefined, source: Fields | undefined, raw?: string | null) {
   if (!source) return undefined;
   const previous = readProductDetailSections(raw);
-  const english = await englishCopy(ai, source, {
+  const limits = {
     quoteNote: DETAIL_SECTION_LIMIT, specifications: DETAIL_SECTION_LIMIT, shippingPayment: DETAIL_SECTION_LIMIT,
-  }, previous);
-  if (detailSectionKeys.some(key => detailSectionLines(source[key]).length !== detailSectionLines(english[key]).length)) {
-    throw new EnglishTranslationError('详情翻译未保留原有条目，请重试或填写英文。');
-  }
-  return JSON.stringify({ source, english });
+  };
+  const { fallback, pending } = prepareEnglishSave(source, previous, detailSectionKeys);
+  const value = JSON.stringify({ source, english: fallback });
+  return { value, sync(context: { waitUntil(promise: Promise<unknown>): void } | undefined, id: number, publicId?: string | null) {
+    syncSiteEnglish(context, ai, pending, limits, async translated => {
+      const english = { ...fallback };
+      for (const key of detailSectionKeys) {
+        const text = translated[key];
+        if (text && detailSectionLines(source[key]).length === detailSectionLines(text).length) english[key] = text;
+      }
+      const updated = await db.prepare('UPDATE products SET detail_sections=? WHERE id=? AND detail_sections=?')
+        .bind(JSON.stringify({ source, english }), id, value).run();
+      if (updated.meta.changes) await purgeCacheTags([CACHE_TAG.catalog, ...(publicId ? [CACHE_TAG.product(publicId)] : [])]);
+    });
+  } };
 }

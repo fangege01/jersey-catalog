@@ -11,7 +11,7 @@ import {
   setProductFile,
 } from '../../../../features/products/db';
 import { parseProductForm } from '../../../../features/products/form';
-import { parseProductDetailSections, translateProductDetailSections } from '../../../../features/products/detailSections';
+import { parseProductDetailSections, prepareProductDetailSections } from '../../../../features/products/detailSections';
 import { zonesRequireWeight } from '../../../../features/shipping/calculator';
 import { shippingFor } from '../../../../features/shipping/effective';
 import { uniqueSlug } from '../../../../features/products/slug';
@@ -40,7 +40,6 @@ import { parsePublicId } from '../../../../features/ids/publicId';
 import { CACHE_TAG } from '../../../../features/cache/tags';
 import { purgeCacheTags } from '../../../../features/cache/purge';
 import { saveCopyInEnglish } from '../../../../features/i18n/adminCopy';
-import { EnglishTranslationError } from '../../../../features/i18n/english';
 
 export const prerender = false;
 
@@ -155,16 +154,9 @@ export const POST: APIRoute = async ({ request, params, redirect, locals }) => {
   // Public-ID → row-id translation for the variants editor, before any write.
   const badReference = await resolveVariantFormIds(form, env.DB, id);
   if (badReference) return fail(badReference);
-  let copy;
-  let detail_sections;
-  try {
-    copy = await saveCopyInEnglish(env.DB, env.AI, 'product', { title: parsed.data.name, body: parsed.data.description },
+  const copy = await saveCopyInEnglish(env.DB, env.AI, 'product', { title: parsed.data.name, body: parsed.data.description },
       { title: existing.name, body: existing.description, publicId });
-    detail_sections = await translateProductDetailSections(env.AI, sections.source, existing.detail_sections);
-  } catch (cause) {
-    if (cause instanceof EnglishTranslationError) return fail(cause.message);
-    throw cause;
-  }
+  const details = prepareProductDetailSections(env.DB, env.AI, sections.source, existing.detail_sections);
 
   // The uploaded key is NOT written to products.image_key here: that reference
   // would be unguarded, and the media row is deletable until something claims
@@ -210,7 +202,7 @@ export const POST: APIRoute = async ({ request, params, redirect, locals }) => {
     }
   }
 
-  await updateProduct(env.DB, id, { ...parsed.data, name: copy.title, description: copy.body, image_key, slug, detail_sections },
+  await updateProduct(env.DB, id, { ...parsed.data, name: copy.title, description: copy.body, image_key, slug, detail_sections: details?.value },
     copy.source && { publicId, source: copy.source });
   if (deliverable instanceof File && deliverable.size > 0) {
     await setProductFile(env.DB, id, await uploadDigitalFile(getFileStorage(), deliverable));
@@ -234,6 +226,8 @@ export const POST: APIRoute = async ({ request, params, redirect, locals }) => {
   // validates every weight before it writes anything.
   const variantResult = await applyVariantForm(env.DB, id, form, parsed.data.currency, weightUnit, catalogOnly);
   if (variantResult.error) return fail(variantResult.error);
+  copy.sync(locals.cfContext, id);
+  details?.sync(locals.cfContext, id, publicId);
 
   // Re-embed for semantic search (no-op unless vector search is on).
   try {

@@ -5,12 +5,11 @@ import MediaPicker from '../../features/media/MediaPicker.astro';
 import { setStoreImageFromMedia } from '../../features/media/db';
 import { mediaUrl } from '../../features/media/url';
 import { getSetting, setSetting } from '../../features/settings/db';
-import { purgeCacheTags } from '../../features/cache/purge';
-import { CACHE_TAG } from '../../features/cache/tags';
 import { imageSections, readSiteCopy, siteCopyKey, siteImageEditor, siteImageKey, siteImageLabel, siteSections, type SiteSection } from '../../features/site-content/copy';
 import { getConfig } from '../../config';
 import { validContactEmail } from '../../features/site-content/inquiry';
-import { englishCopy, EnglishTranslationError } from '../../features/i18n/english';
+import { prepareEnglishSave } from '../../features/i18n/english';
+import { refreshStorefront, syncEnglishSetting } from '../../features/i18n/englishSettings';
 import { homeMetricSlots, homeMetricsForm, homeMetricsKey, HomeMetricInputError, loadHomeMetrics, prepareHomeMetrics } from '../../features/site-content/homeMetrics';
 
 const sectionQuery = Astro.url.searchParams.get('section') ?? 'home';
@@ -65,18 +64,27 @@ if (Astro.request.method === 'POST') {
       if (!error) {
         const priorEnglish = readSiteCopy({ [englishKey]: (await getSetting(env.DB, englishKey)) ?? undefined }, section, 'en');
         const limits = Object.fromEntries(fields.map(([name, field]) => [name, field.max]));
-        const translated = await englishCopy(env.AI, values, limits, { source: previous, english: priorEnglish });
+        const { fallback, pending } = prepareEnglishSave(values,
+          { source: previous, english: priorEnglish }, Object.keys(values));
+        const sourceValue = JSON.stringify(draft);
+        const immediateEnglish = { ...priorEnglish, ...fallback };
+        const englishValue = JSON.stringify(immediateEnglish);
         const statement = 'INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = datetime(\'now\')';
         await env.DB.batch([
-          env.DB.prepare(statement).bind(key, JSON.stringify(draft)),
-          env.DB.prepare(statement).bind(englishKey, JSON.stringify({ ...priorEnglish, ...translated })),
+          env.DB.prepare(statement).bind(key, sourceValue),
+          env.DB.prepare(statement).bind(englishKey, englishValue),
         ]);
+        syncEnglishSetting(Astro.locals.cfContext, env.AI, env.DB, pending, limits, englishKey,
+          englishValue, translated => JSON.stringify({ ...immediateEnglish, ...translated }), { key, expected: sourceValue });
         persisted = true;
       }
     } else if (action === 'metrics' && priorMetrics) {
       metricsDraft = homeMetricsForm(form);
-      const metrics = await prepareHomeMetrics(metricsDraft, priorMetrics, env.AI);
-      await setSetting(env.DB, homeMetricsKey, JSON.stringify(metrics));
+      const metrics = prepareHomeMetrics(metricsDraft, priorMetrics);
+      const value = JSON.stringify(metrics.fallback);
+      await setSetting(env.DB, homeMetricsKey, value);
+      syncEnglishSetting(Astro.locals.cfContext, env.AI, env.DB, metrics.pending, metrics.limits,
+        homeMetricsKey, value, translated => JSON.stringify(metrics.complete(translated)));
       persisted = true;
     } else if (action === 'image') {
       const slot = imageSlots.find(item => item === (form.get('slot') ?? section));
@@ -98,16 +106,13 @@ if (Astro.request.method === 'POST') {
     }
 
     if (persisted) {
-      await purgeCacheTags([CACHE_TAG.shell, CACHE_TAG.catalog]);
+      refreshStorefront(Astro.locals.cfContext);
       return Astro.redirect(formUrl + '&saved=1' + (action === 'metrics' ? '#home-metrics' : anchor), 303);
     }
     Astro.response.status = 400;
   } catch (cause) {
     if (cause instanceof HomeMetricInputError) {
       Astro.response.status = 400;
-      error = cause.message;
-    } else if (cause instanceof EnglishTranslationError) {
-      Astro.response.status = 503;
       error = cause.message;
     } else {
       console.error('Site content save failed', { section, cause });
@@ -177,7 +182,7 @@ const descriptions: Record<SiteSection, string> = {
     {section === 'global' && <a class="block text-sm underline" href="/admin/settings">修改站点名称和 Logo</a>}
     {section === 'contact' && <a class="block text-sm underline" href="/admin/whatsapp">修改全站 WhatsApp 号码</a>}
     {error ? <p role="alert" class="text-sm font-medium text-red-700">{error}</p> :
-      Astro.url.searchParams.get('saved') === '1' && <p role="status" class="text-sm font-medium text-green-700">已保存并同步前台。</p>}
+      Astro.url.searchParams.get('saved') === '1' && <p role="status" class="text-sm font-medium text-green-700">内容已保存。英文文案自动同步。</p>}
     {metricsDraft && <form id="home-metrics" method="POST" action={formUrl} class="space-y-4 rounded-xl border border-line bg-surface p-5">
       <input type="hidden" name="_action" value="metrics" />
       <h2 class="font-semibold">首页数字指标</h2>

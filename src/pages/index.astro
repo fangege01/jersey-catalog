@@ -28,7 +28,8 @@ if (landing && ['page', 'sort', 'dir'].some(key => searchParams.has(key))) {
 }
 const settings = Astro.locals.settings;
 const configuredMetrics = landing ? await loadHomeMetrics(env.DB, settings?.homeMetrics) : null;
-const metrics = configuredMetrics?.enabled ? configuredMetrics.items.map(item => ({
+const metrics = configuredMetrics?.enabled ? configuredMetrics.items
+  .filter(item => locale === 'zh-CN' || item.label.trim()).map(item => ({
   value: item.value,
   label: locale === 'zh-CN' ? item.sourceLabel : item.label,
   suffix: locale === 'zh-CN' ? item.sourceSuffix : item.suffix,

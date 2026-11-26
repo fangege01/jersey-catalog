@@ -24,13 +24,16 @@ export function readFooterSettings(raw?: string | null) {
   };
   try {
     const settings = JSON.parse(raw ?? '{}');
+    const syncStatus = settings?.sync?.status;
     return {
       source: copy(settings?.source),
       english: copy(settings?.english),
       hidden: Array.isArray(settings?.hidden)
         ? footerLinkKeys.filter(key => settings.hidden.includes(key)) : [],
+      syncStatus: syncStatus === 'pending' || syncStatus === 'failed' ? syncStatus as 'pending' | 'failed' : null,
+      retry: Array.isArray(settings?.sync?.keys) ? settings.sync.keys.filter((key: unknown): key is string => typeof key === 'string') as string[] : [],
     };
   } catch {
-    return { source: {} as FooterCopy, english: {} as FooterCopy, hidden: [] as FooterLinkKey[] };
+    return { source: {} as FooterCopy, english: {} as FooterCopy, hidden: [] as FooterLinkKey[], syncStatus: null, retry: [] };
   }
 }
