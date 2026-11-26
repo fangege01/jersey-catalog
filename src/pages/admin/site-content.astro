@@ -11,6 +11,7 @@ import { imageSections, readSiteCopy, siteCopyKey, siteImageEditor, siteImageKey
 import { getConfig } from '../../config';
 import { validContactEmail } from '../../features/site-content/inquiry';
 import { englishCopy, EnglishTranslationError } from '../../features/i18n/english';
+import { homeMetricSlots, homeMetricsForm, homeMetricsKey, HomeMetricInputError, loadHomeMetrics, prepareHomeMetrics } from '../../features/site-content/homeMetrics';
 
 const sectionQuery = Astro.url.searchParams.get('section') ?? 'home';
 const validSection = Object.hasOwn(siteSections, sectionQuery);
@@ -22,6 +23,7 @@ const englishKey = siteCopyKey(section, 'en');
 const focus = section === 'home' ? Astro.url.searchParams.get('focus') : null;
 const orderWorkflow = focus === 'process-copy';
 const bottomInquiry = focus === 'bottom-inquiry';
+const canEditMetrics = section === 'home' && !focus;
 const imageSlots = orderWorkflow ? [] : imageSections.filter(item => siteImageEditor(item) === section);
 const images = await Promise.all(imageSlots.map(async slot => ({
   slot, label: siteImageLabel(slot), image: await getSetting(env.DB, siteImageKey(slot)),
@@ -37,6 +39,9 @@ const current = await getSetting(env.DB, key);
 const previous = readSiteCopy({ [key]: current ?? undefined }, section, locale);
 let draft: Record<string, string> = previous;
 let error = '';
+const storedMetrics = canEditMetrics ? await getSetting(env.DB, homeMetricsKey) : null;
+const priorMetrics = canEditMetrics ? await loadHomeMetrics(env.DB, storedMetrics) : null;
+let metricsDraft = priorMetrics;
 
 if (Astro.request.method === 'POST') {
   let persisted = false;
@@ -68,6 +73,11 @@ if (Astro.request.method === 'POST') {
         ]);
         persisted = true;
       }
+    } else if (action === 'metrics' && priorMetrics) {
+      metricsDraft = homeMetricsForm(form);
+      const metrics = await prepareHomeMetrics(metricsDraft, priorMetrics, env.AI);
+      await setSetting(env.DB, homeMetricsKey, JSON.stringify(metrics));
+      persisted = true;
     } else if (action === 'image') {
       const slot = imageSlots.find(item => item === (form.get('slot') ?? section));
       const imageKey = slot ? siteImageKey(slot) : null;
@@ -89,11 +99,14 @@ if (Astro.request.method === 'POST') {
 
     if (persisted) {
       await purgeCacheTags([CACHE_TAG.shell, CACHE_TAG.catalog]);
-      return Astro.redirect(formUrl + '&saved=1' + anchor, 303);
+      return Astro.redirect(formUrl + '&saved=1' + (action === 'metrics' ? '#home-metrics' : anchor), 303);
     }
     Astro.response.status = 400;
   } catch (cause) {
-    if (cause instanceof EnglishTranslationError) {
+    if (cause instanceof HomeMetricInputError) {
+      Astro.response.status = 400;
+      error = cause.message;
+    } else if (cause instanceof EnglishTranslationError) {
       Astro.response.status = 503;
       error = cause.message;
     } else {
@@ -156,6 +169,7 @@ const descriptions: Record<SiteSection, string> = {
         aria-current={name === section ? 'page' : undefined}>{item.label}</a>)}
     </nav>
     {!orderWorkflow && <p class="text-sm text-muted">{descriptions[section]}</p>}
+    {metricsDraft && <a class="block text-sm underline" href="#home-metrics">首页数字指标</a>}
     <p class="text-sm text-muted">可填中文或英文。中文保存时自动生成英文文案，英文按原文显示。</p>
     {section === 'products' && <div class="flex flex-wrap gap-4 text-sm">
       <a class="underline" href="/admin/products">商品管理</a><a class="underline" href="/admin/categories">分类管理</a>
@@ -164,6 +178,26 @@ const descriptions: Record<SiteSection, string> = {
     {section === 'contact' && <a class="block text-sm underline" href="/admin/whatsapp">修改全站 WhatsApp 号码</a>}
     {error ? <p role="alert" class="text-sm font-medium text-red-700">{error}</p> :
       Astro.url.searchParams.get('saved') === '1' && <p role="status" class="text-sm font-medium text-green-700">已保存并同步前台。</p>}
+    {metricsDraft && <form id="home-metrics" method="POST" action={formUrl} class="space-y-4 rounded-xl border border-line bg-surface p-5">
+      <input type="hidden" name="_action" value="metrics" />
+      <h2 class="font-semibold">首页数字指标</h2>
+      <p class="text-sm text-muted">{storedMetrics === null
+        ? '当前使用站点实际统计。保存后使用你填写的数字、名称和单位。'
+        : '修改数字、名称和单位后，首页会使用保存的值。'}</p>
+      <label class="flex items-center gap-2 text-sm"><input type="checkbox" name="metricsEnabled" value="1" checked={metricsDraft.enabled} /> 在首页显示数字指标</label>
+      <div class="grid gap-3">
+        {Array.from({ length: homeMetricSlots }, (_, i) => {
+          const metric = metricsDraft?.items[i];
+          return <fieldset class="grid gap-3 rounded-lg border border-line px-3 pb-3 sm:grid-cols-[1.5fr_1fr_1fr]">
+            <legend class="px-1 text-xs font-semibold text-muted">指标 {i + 1}</legend>
+            <label class="text-sm">显示名称<input class={fieldClass} name={'metricLabel' + i} maxlength="48" value={metric?.sourceLabel} /></label>
+            <label class="text-sm">数字<input class={fieldClass} name={'metricValue' + i} inputmode="decimal" pattern="[0-9]{1,6}(\.[0-9]{1,2})?" maxlength="9" value={metric?.value} /></label>
+            <label class="text-sm">单位／后缀（可选）<input class={fieldClass} name={'metricSuffix' + i} maxlength="12" value={metric?.sourceSuffix} /></label>
+          </fieldset>;
+        })}
+      </div>
+      <button class={buttonClass}>保存数字指标</button>
+    </form>}
     {images.map(({slot, label, image}) => <form method="POST" action={formUrl} data-site-image-form class="space-y-3 rounded-xl border border-line bg-surface p-5">
       <input type="hidden" name="_action" value="image" />
       <input type="hidden" name="slot" value={slot} />

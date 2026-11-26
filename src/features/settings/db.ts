@@ -20,6 +20,7 @@ export type SettingKey =
   | 'contact_popup'
   | 'seo_controls'
   | 'testimonials'
+  | 'home_metrics'
   | 'showcase_cases_enabled'
   | 'showcase_cases_options'
   | 'showcase_factory_enabled'
@@ -74,6 +75,7 @@ export interface StoreSettings {
   contactPopup?: string;
   seoControls?: string;
   testimonials?: string;
+  homeMetrics?: string;
   siteContent?: SiteContentSettings;
   siteImages?: SiteImages;
   whatsappNumber?: string | null;
@@ -204,6 +206,7 @@ export function parseStoreSettings(
     contactPopup: map.get('contact_popup'),
     seoControls: map.get('seo_controls'),
     testimonials: map.get('testimonials'),
+    homeMetrics: map.get('home_metrics'),
     siteContent: Object.fromEntries([...map].filter(([key]) => key.startsWith('site_content:'))),
     siteImages: Object.fromEntries([...map].filter(([key]) => key.startsWith('site_image:'))),
     whatsappNumber: map.get('whatsapp_number') ?? null,

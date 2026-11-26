@@ -15,13 +15,13 @@ const zh = model.locale === 'zh-CN';
   <div class="catalog" data-wide-catalog>
     <section class="catalog-banner">
       <div class="frame">
+        <h1>{model.heading}</h1>
+        <p>{copy?.intro}</p>
         <nav aria-label={zh ? '当前位置' : 'Breadcrumb'} class="crumb">
           <a href="/">{zh ? '首页' : 'Home'}</a><span aria-hidden="true">/</span>
           {model.categoryPage ? <><a href="/products">{zh ? '球衣目录' : 'Catalog'}</a><span aria-hidden="true">/</span></> : null}
           <span aria-current="page">{model.categoryPage ? model.heading : (zh ? '球衣目录' : 'Catalog')}</span>
         </nav>
-        <h1>{model.heading}</h1>
-        <p>{copy?.intro}</p>
       </div>
     </section>
     <section class="frame results">
@@ -42,10 +42,10 @@ const zh = model.locale === 'zh-CN';
 )}
 <style>
 .frame{max-width:75rem;width:calc(100% - 3rem);margin-inline:auto;}
-.catalog-banner{padding:3.3rem 0 3.8rem;background:linear-gradient(135deg,#0b2b2a,#0f766e 80%,#0c83ab);color:white;border-radius:0 0 38px 38px;}
+.catalog-banner{padding:3.3rem 0 3.8rem;background:repeating-linear-gradient(90deg,transparent 0 5.45rem,#ffffff0c 5.45rem 5.5rem),linear-gradient(110deg,#0b2b2a,#0f766e 60%,#0c83ab);color:white;}
 .catalog-banner h1{margin:.55rem 0 .65rem;font-size:clamp(2.1rem,5vw,3.9rem);line-height:1.13;font-weight:800;}
 .catalog-banner p{color:#e4f8f7;}
-.crumb{display:flex;flex-wrap:wrap;gap:.5rem;font-size:.82rem;color:#c9f4ed;}
+.crumb{display:flex;flex-wrap:wrap;gap:.5rem;margin-top:1rem;font-size:.82rem;color:#c9f4ed;}
 .crumb a:hover{text-decoration:underline;}
 .results{padding-block:2rem 3.5rem;}
 .filter-row{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:1rem;margin-bottom:1.5rem;}
@@ -56,7 +56,7 @@ const zh = model.locale === 'zh-CN';
 @media(max-width:64rem){.product-grid{grid-template-columns:repeat(3,minmax(0,1fr));}}
 @media(max-width:47rem){
   .frame{width:calc(100% - 1.5rem);}
-  .catalog-banner{padding-block:2.25rem;border-radius:0 0 24px 24px;}
+  .catalog-banner{padding-block:2.25rem;}
   .results{padding-top:1rem;}
   .filter-row{gap:.65rem;margin-bottom:1rem;}
   .chips{width:100%;flex-wrap:nowrap;gap:.4rem;overflow-x:auto;scrollbar-width:thin;padding:.2rem .15rem .45rem;}

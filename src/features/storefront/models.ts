@@ -127,7 +127,12 @@ export interface StorefrontPaginationModel {
  * URL stays clean and cacheable.
  */
 export interface CatalogPageModel {
-  landing?: { whatsappHref: string | null; copy: import('../site-content/copy').SiteCopy<'home'>; image: StorefrontImage; };
+  landing?: {
+    whatsappHref: string | null;
+    copy: import('../site-content/copy').SiteCopy<'home'>;
+    image: StorefrontImage;
+    metrics?: { value: string; label: string; suffix: string }[];
+  };
   copy?: import('../site-content/copy').SiteCopy<'products'>;
   categoryPage?: string;
   locale?: import('../i18n/locale').StoreLocale;

@@ -3,9 +3,16 @@ import type { CatalogPageModel } from '../../features/storefront/models';
 import ProductCard from './ProductCard.astro';
 interface Props { model: CatalogPageModel; landing: NonNullable<CatalogPageModel['landing']>; }
 const { model, landing } = Astro.props;
-const { copy, image, whatsappHref: contact } = landing;
+const { copy, image, metrics = [], whatsappHref: contact } = landing;
 const zh = model.locale === 'zh-CN';
 const t = (en: string, cn: string) => zh ? cn : en;
+const shownMetrics = metrics.map(metric => {
+  const decimals = metric.value.split('.')[1]?.length ?? 0;
+  const displayValue = new Intl.NumberFormat(model.locale ?? 'en', {
+    minimumFractionDigits: decimals, maximumFractionDigits: decimals,
+  }).format(Number(metric.value));
+  return { ...metric, displayValue };
+});
 const offers = [
   [copy.retailTitle, copy.retailText],
   [copy.teamTitle, copy.teamText],
@@ -32,6 +39,13 @@ const steps = [
       <ul class="hero-options">
         {offers.map(([title]) => <li>{title}</li>)}
       </ul>
+      {shownMetrics.length > 0 && <ul class="hero-stats" aria-label={t('Catalog at a glance', '网站数字指标')} role="list">
+        {shownMetrics.map(({ value, displayValue, label, suffix }) => <li>
+          <strong aria-hidden="true"><span data-hero-count={value}>{displayValue}</span>{suffix && <small>{suffix}</small>}</strong>
+          <span class="sr-only">{displayValue}{suffix ? ' ' + suffix : ''}</span>
+          <span class="hero-stat-label">{label}</span>
+        </li>)}
+      </ul>}
     </div>
     <div class="hero-visual">
       <img src={image.src} srcset={image.srcset} sizes={image.sizes} width="900" height="900"
@@ -139,6 +153,7 @@ const steps = [
   position: relative;
   isolation: isolate;
   overflow: hidden;
+  border-radius: 0 0 60px 60px;
   color: white;
   background: radial-gradient(ellipse at 84% 10%, rgba(14, 165, 233, .36), transparent 54%), linear-gradient(135deg, #0b2b2a 0%, #0f766e 58%, #0ea5e9 130%);
   border-block-end: 1px solid #ffffff45;
@@ -171,16 +186,22 @@ const steps = [
 .hero-options { display: flex; flex-wrap: wrap; gap: .5rem 1.25rem; margin-top: 1.6rem; padding-top: 1rem; border-top: 1px solid #ffffff45; color: #e0f5f2; font-size: .82rem; }
 .hero-options li { display: flex; align-items: baseline; gap: .45rem; }
 .hero-options li::before { content: ''; flex: none; width: .32rem; height: .32rem; align-self: center; border-radius: 50%; background: #7dd3fc; }
+.hero-options:has(+ .hero-stats) { border-top: 0; padding-top: 0; margin-top: 1.15rem; }
+.hero-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1.25rem .95rem; margin: 1.45rem 0 0; padding: 1.25rem 0 0; border-top: 1px solid #ffffff45; }
+.hero-stats li { min-width: 0; overflow-wrap: anywhere; }
+.hero-stats strong { display: block; color: white; font-size: clamp(1.45rem, 2.65vw, 2.125rem); font-weight: 800; font-variant-numeric: tabular-nums; line-height: 1.08; }
+.hero-stats small { margin-inline-start: .18em; color: #a9e8fc; font-size: .45em; }
+.hero-stat-label { display: block; margin-top: .35rem; color: #e0f5f2; font-size: .85rem; line-height: 1.4; }
 .hero-visual {
   min-width: 0;
   overflow: hidden;
   padding: .5rem;
   border: 1px solid #a9e8fc80;
-  border-radius: 1.45rem;
+  border-radius: 1.75rem;
   background: linear-gradient(150deg, #5eead4ad, #0ea5e9ad);
   box-shadow: 0 24px 60px #020d135e;
 }
-.hero-visual img { display: block; width: 100%; height: auto; aspect-ratio: 1.06; object-fit: contain; border-radius: 1rem; background: #082e39; }
+.hero-visual img { display: block; width: 100%; height: auto; aspect-ratio: 1.06; object-fit: contain; border-radius: 1.25rem; background: #082e39; }
 .supply-feature-inner { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 1.35rem; padding: clamp(1.25rem, 4vw, 2.5rem); border: 1px solid #cde4e1; border-radius: 1.4rem; background: #fff; }
 .supply-feature-inner p { max-width: 42rem; margin-top: .6rem; color: var(--color-muted); line-height: 1.65; }
 .supply-feature-inner a { gap: .65rem; border: 1px solid #cde4e1; color: var(--color-brand); }
@@ -218,6 +239,34 @@ const steps = [
 .questions details{border:1px solid #dcebe9;border-radius:12px;padding:.9rem 1rem;}
 .questions summary{font-weight:650;}.questions p{padding-top:.5rem;}
 @media(max-width:62rem){.grid,.steps{grid-template-columns:repeat(2,minmax(0,1fr));}}
-@media(max-width:47rem){.frame{width:calc(100% - 2rem);}.hero-layout{grid-template-columns:1fr;gap:1.45rem;padding-block:2.35rem;}.hero-visual{width:min(100%,32rem);}.hero-visual img{aspect-ratio:1.24;}.steps,.team-layout{grid-template-columns:1fr;}}
+@media(max-width:47rem){.frame{width:calc(100% - 2rem);}.hero{border-radius:0 0 32px 32px;}.hero-layout{grid-template-columns:1fr;gap:1.45rem;padding-block:2.35rem;}.hero-visual{width:min(100%,32rem);}.hero-visual img{aspect-ratio:1.24;}.hero-stats{grid-template-columns:repeat(2,minmax(0,1fr));}.steps,.team-layout{grid-template-columns:1fr;}}
 @media(max-width:27rem){.grid{gap:.65rem;}.box{padding:.8rem;}.box p{font-size:.85rem;}}
 </style>
+
+<script>
+  // The server renders the final number for no-JS and reduced-motion visitors.
+  if ('IntersectionObserver' in window && !matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    const observer = new IntersectionObserver(entries => {
+      for (const entry of entries) {
+        if (!entry.isIntersecting || !(entry.target instanceof HTMLElement)) continue;
+        observer.unobserve(entry.target);
+        const element = entry.target;
+        const raw = element.dataset.heroCount ?? '';
+        const value = Number(raw);
+        if (!value) continue;
+        const precision = raw.split('.')[1]?.length ?? 0;
+        const format = new Intl.NumberFormat(document.documentElement.lang || 'en', {
+          minimumFractionDigits: precision, maximumFractionDigits: precision,
+        });
+        const started = performance.now();
+        function step(now: number) {
+          const progress = Math.min(Math.max((now - started) / 1400, 0), 1);
+          element.textContent = format.format(value * (1 - (1 - progress) ** 3));
+          if (progress < 1) requestAnimationFrame(step);
+        }
+        requestAnimationFrame(step);
+      }
+    }, { threshold: .4 });
+    for (const element of document.querySelectorAll('[data-hero-count]')) observer.observe(element);
+  }
+</script>
