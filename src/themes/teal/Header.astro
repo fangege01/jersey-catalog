@@ -24,7 +24,22 @@ const switcher = model.languageSwitch;
       {links.map((link) => <a href={link.href} aria-current={link.current ? 'page' : undefined} class="hover:text-brand">{link.text}</a>)}
     </nav>
     <div class="actions">
-      {switcher && <a class="language" data-language-switch lang={switcher.locale} hreflang={switcher.locale} href={switcher.href}>{switcher.label}</a>}
+      {switcher && (switcher.href
+        ? <a class="language desktop-language" data-language-switch lang={switcher.locale} hreflang={switcher.locale} href={switcher.href}>{switcher.label}</a>
+        : <span class="language desktop-language text-muted" lang={switcher.locale}>{switcher.label}</span>)}
+      {switcher && <details class="language-picker" data-mobile-language>
+        <summary class="language" aria-label={zh ? '选择语言' : 'Choose language'}>
+          <span>{zh ? '简体中文' : 'English'}</span><span class="picker-chevron" aria-hidden="true"></span>
+        </summary>
+        <div class="language-options">
+          <span class="selected-language" aria-current="true" lang={zh ? 'zh-CN' : 'en'}>
+            {zh ? '简体中文' : 'English'} <span aria-hidden="true">✓</span>
+          </span>
+          {switcher.href
+            ? <a data-language-switch lang={switcher.locale} hreflang={switcher.locale} href={switcher.href}>{switcher.label}</a>
+            : <span class="text-muted" lang={switcher.locale}>{switcher.label}</span>}
+        </div>
+      </details>}
       {model.whatsappHref && <a class="contact" data-whatsapp-inquiry href={model.whatsappHref}>WhatsApp</a>}
       {model.cart.enabled && <StoreCartControl href={model.cart.href} />}
       {model.account.enabled && <StoreAccountControl href={model.account.href} />}
@@ -55,6 +70,14 @@ const switcher = model.languageSwitch;
 .contact,.language{display:inline-flex;align-items:center;min-height:40px;padding:.55rem .8rem;border-radius:12px;white-space:nowrap;}
 .contact{background:#0f766e;color:white;}
 .language{border:1px solid #dcebe9;}
+.language-picker{display:none;}
+.language-picker summary{cursor:pointer;gap:.5rem;list-style:none;min-height:44px;}
+.language-picker summary::-webkit-details-marker{display:none;}
+.picker-chevron{width:.4rem;height:.4rem;border:solid currentColor;border-width:0 1.5px 1.5px 0;transform:translateY(-2px) rotate(45deg);}
+.language-picker[open] .picker-chevron{transform:translateY(1px) rotate(225deg);}
+.language-options{position:absolute;top:calc(100% + .45rem);inset-inline-end:0;z-index:3;width:min(13rem,calc(100vw - 1.25rem));padding:.35rem;background:white;border:1px solid #dcebe9;border-radius:14px;box-shadow:0 12px 30px rgba(13,148,136,.14);}
+.language-options > *{display:flex;align-items:center;justify-content:space-between;min-height:44px;padding:.5rem .7rem;border-radius:8px;}
+.language-options a:hover,.language-options a:focus-visible,.selected-language{background:#f2f9f8;color:#0f766e;}
 .desktop-search{width:9rem;}
 .mobile-nav{display:none;position:relative;}
 .mobile-nav summary{list-style:none;}
@@ -62,6 +85,23 @@ const switcher = model.languageSwitch;
 .mobile-nav nav{position:absolute;z-index:2;right:0;top:calc(100% + .6rem);width:min(18rem, calc(100vw - 2rem));padding:.6rem;background:white;border:1px solid #dcebe9;border-radius:16px;box-shadow:0 12px 30px rgba(13,148,136,.14);}
 .mobile-nav nav a{display:block;padding:.65rem .7rem;border-radius:8px;}
 .mobile-nav nav a:not([data-whatsapp-inquiry]):hover{background:#f2f9f8;}
-@media(max-width:68rem){.desktop-nav,.desktop-search{display:none;}.mobile-nav{display:block;}}
-@media(max-width:30rem){.shell{width:calc(100% - 1.25rem);min-height:62px;gap:.45rem;}.identity{font-size:.88rem;gap:.4rem;}.mark{width:32px;height:32px;}.actions .contact{display:none;}.language{padding:.4rem .5rem;font-size:.74rem;}}
+@media(max-width:68rem){.desktop-nav,.desktop-search,.desktop-language{display:none;}.mobile-nav,.language-picker{display:block;}.actions{position:relative;}}
+@media(max-width:30rem){.shell{width:calc(100% - 1.25rem);min-height:62px;gap:.45rem;}.identity{font-size:.88rem;gap:.4rem;}.mark{width:32px;height:32px;}.actions .contact{display:none;}.language{padding:.4rem .5rem;font-size:.83rem;}}
 </style>
+
+<script>
+  const picker = document.querySelector<HTMLDetailsElement>('[data-mobile-language]');
+  if (picker) {
+    const navigation = document.querySelector<HTMLDetailsElement>('.mobile-nav[data-nav-disclosure]');
+    picker.addEventListener('toggle', () => { if (picker.open && navigation) navigation.open = false; });
+    navigation?.addEventListener('toggle', () => { if (navigation.open) picker.open = false; });
+    document.addEventListener('click', event => {
+      if (event.target instanceof Node && !picker.contains(event.target)) picker.open = false;
+    });
+    document.addEventListener('keydown', event => {
+      if (event.key !== 'Escape' || !picker.open) return;
+      if (picker.contains(document.activeElement)) picker.querySelector('summary')?.focus();
+      picker.open = false;
+    });
+  }
+</script>

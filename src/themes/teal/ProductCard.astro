@@ -6,14 +6,14 @@ const { card, headingLevel: Heading = 'h2', locale } = Astro.props;
 const zh = locale === 'zh-CN';
 ---
 <li class="card group">
-  <a href={card.href} class="block h-full">
+  <a href={card.href} class="card-link">
     <div class="relative overflow-hidden bg-surface">
       <StoreImage image={card.image} fade class="aspect-square w-full object-cover motion-safe:transition-transform motion-safe:group-hover:scale-105" />
       {!card.inStock && <span class="absolute top-2 left-2 rounded-full bg-white px-2 py-1 text-xs text-muted">{zh ? '暂时缺货' : 'Out of stock'}</span>}
     </div>
-    <div class="space-y-2 p-4">
+    <div class="card-content">
       <Heading class="font-bold leading-snug break-words">{card.name}</Heading>
-      <div class="flex flex-wrap items-center justify-between gap-x-2 gap-y-1 text-xs sm:text-sm">
+      <div class="card-meta flex flex-wrap items-center justify-between gap-x-2 gap-y-1 text-xs sm:text-sm">
         <span class="font-semibold tabular-nums text-brand">{card.formattedPrice}</span>
         <span class="text-muted">{zh ? '查看详情' : 'View details'} <span aria-hidden="true">→</span></span>
       </div>
@@ -23,5 +23,8 @@ const zh = locale === 'zh-CN';
 <style>
 .card{min-width:0;overflow:hidden;border-radius:20px;background:white;box-shadow:0 12px 30px rgba(13,148,136,.10);border:1px solid #e6f1ef;}
 .card:hover,.card:focus-within{border-color:#90c8c3;box-shadow:0 16px 34px rgba(13,148,136,.16);}
-@media(max-width:28rem){.card{border-radius:14px;}}
+.card-link{display:flex;flex-direction:column;height:100%;}
+.card-content{display:flex;flex:1;flex-direction:column;gap:.5rem;padding:1rem;}
+.card-meta{margin-top:auto;}
+@media(max-width:47rem){.card{border-radius:14px;box-shadow:0 5px 16px rgba(13,148,136,.09);}.card-content{padding:.65rem;font-size:.9rem;}.card-meta{align-items:flex-start;flex-direction:column;}}
 </style>

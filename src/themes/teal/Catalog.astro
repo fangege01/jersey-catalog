@@ -54,5 +54,13 @@ const zh = model.locale === 'zh-CN';
 .chips a[aria-current=page]{background:#0f766e;color:white;border-color:#0f766e;}
 .product-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:1.25rem;}
 @media(max-width:64rem){.product-grid{grid-template-columns:repeat(3,minmax(0,1fr));}}
-@media(max-width:47rem){.frame{width:calc(100% - 2rem);}.catalog-banner{padding-block:2.25rem;border-radius:0 0 24px 24px;}.product-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:.75rem;}}
+@media(max-width:47rem){
+  .frame{width:calc(100% - 1.5rem);}
+  .catalog-banner{padding-block:2.25rem;border-radius:0 0 24px 24px;}
+  .results{padding-top:1rem;}
+  .filter-row{gap:.65rem;margin-bottom:1rem;}
+  .chips{width:100%;flex-wrap:nowrap;gap:.4rem;overflow-x:auto;scrollbar-width:thin;padding:.2rem .15rem .45rem;}
+  .chips a{flex:none;display:flex;align-items:center;min-height:44px;white-space:nowrap;}
+  .product-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:.7rem;}
+}
 </style>
