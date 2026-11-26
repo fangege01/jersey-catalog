@@ -5,7 +5,7 @@ import { formatPrice, getConfig } from '../../../config';
 import { listAllProducts, countAllProducts } from '../../../features/products/db';
 import ProductImage from '../../../features/products/ProductImage.astro';
 import { orderByClause } from '../../../features/products/sort';
-import { paginate, queryHref } from '../../../pagination';
+import { paginate, queryHref, requestedPage } from '../../../pagination';
 import Pagination from '../../../components/Pagination.astro';
 import { menuReferencesFor } from '../../../features/navigation/admin';
 import FilterBar from '../../../components/FilterBar.astro';
@@ -38,13 +38,16 @@ const filterClause = productFilterClause(filters);
 const filtered = hasProductFilters(filters);
 
 const PAGE_SIZE = 30;
-const matchCount = await countAllProducts(env.DB, filterClause);
+const [matchCount, firstProducts] = await Promise.all([
+  countAllProducts(env.DB, filterClause),
+  requestedPage(Astro.url.searchParams) === 1 ? listAllProducts(env.DB, PAGE_SIZE, 0, order, filterClause) : null,
+]);
 const { page, offset, totalPages } = paginate(
   Astro.url.searchParams,
   matchCount,
   PAGE_SIZE,
 );
-const products = await listAllProducts(env.DB, PAGE_SIZE, offset, order, filterClause);
+const products = firstProducts ?? await listAllProducts(env.DB, PAGE_SIZE, offset, order, filterClause);
 // Bounded to this page of rows, so the nav warning costs one query, not one
 // per product.
 const menuRefs = await menuReferencesFor(env.DB, 'product', products.map((p) => p.id));

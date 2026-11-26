@@ -2,7 +2,7 @@ import type { D1Database } from '@cloudflare/workers-types';
 import { listProducts, countProducts } from '../products/db';
 import { listCategories, childrenOf } from '../categories/db';
 import { orderByClause, parseStoreSortQuery, STORE_SORTS } from '../products/sort';
-import { MAX_PUBLIC_PAGE, paginate, queryHref } from '../../pagination';
+import { MAX_PUBLIC_PAGE, paginate, queryHref, requestedPage } from '../../pagination';
 import { addCacheTags, productCacheTags } from '../cache/tags';
 import type { ImageDelivery } from '../products/image';
 import { localizedProduct, translations } from '../i18n/db';
@@ -134,14 +134,19 @@ export async function loadCatalogPage(
   const order = orderByClause(sort, dir);
 
   const pageSize = options.landing ? 8 : PAGE_SIZE;
-  const [total, categories] = await Promise.all([options.landing ? 0 : countProducts(db), listCategories(db)]);
+  const firstPage = !!options.landing || requestedPage(options.searchParams, MAX_PUBLIC_PAGE) === 1;
+  const [total, categories, firstProducts] = await Promise.all([
+    options.landing ? 0 : countProducts(db),
+    listCategories(db),
+    firstPage ? listProducts(db, pageSize, 0, order) : null,
+  ]);
   const { page, offset, totalPages } = paginate(
     options.searchParams,
     total,
     pageSize,
     MAX_PUBLIC_PAGE,
   );
-  const products = await listProducts(db, pageSize, offset, order);
+  const products = firstProducts ?? await listProducts(db, pageSize, offset, order);
   const [productText, categoryText] = await Promise.all([
     translations(db, options.locale, 'product', products.map((p) => p.public_id)),
     translations(db, options.locale, 'category', categories.map((c) => c.public_id)),

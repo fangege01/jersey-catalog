@@ -7,7 +7,6 @@ import { localizedHref } from '../features/i18n/locale';
 import { readSiteCopy, siteImageKey } from '../features/site-content/copy';
 import Showcase from '../features/site-content/Showcase.astro';
 import Testimonials from '../features/testimonials/Testimonials.astro';
-import { loadHomeMetrics } from '../features/site-content/homeMetrics';
 import { buildStorefrontImage } from '../features/storefront/productCard';
 import { whatsappInquiryUrl } from '../features/storefront/catalogMode';
 import { getConfig } from '../config';
@@ -27,13 +26,6 @@ if (landing && ['page', 'sort', 'dir'].some(key => searchParams.has(key))) {
   return Astro.redirect(localizedHref('/products' + search, locale), 301);
 }
 const settings = Astro.locals.settings;
-const configuredMetrics = landing ? await loadHomeMetrics(env.DB, settings?.homeMetrics) : null;
-const metrics = configuredMetrics?.enabled ? configuredMetrics.items
-  .filter(item => locale === 'zh-CN' || item.label.trim()).map(item => ({
-  value: item.value,
-  label: locale === 'zh-CN' ? item.sourceLabel : item.label,
-  suffix: locale === 'zh-CN' ? item.sourceSuffix : item.suffix,
-})) : [];
 const copy = readSiteCopy(settings?.siteContent, 'home', locale);
 const imageKey = settings?.siteImages?.[siteImageKey('home')];
 const heroSizes = '(max-width: 752px) min(calc(100vw - 50px), 494px), (max-width: 1250px) 45vw, 530px';
@@ -48,7 +40,7 @@ const image = imageKey ? buildStorefrontImage(imageKey, copy.heroAlt, {
 
 <Layout title={landing ? copy.seoTitle : undefined} exactTitle={landing} description={landing ? copy.seoDescription : undefined}
   image={landing ? image.src : undefined} imageAlt={landing ? image.alt : undefined} hasInlineCases={landing}>
-  <ProductList landing={landing ? { copy, image, metrics, whatsappHref: whatsappInquiryUrl(settings?.whatsappNumber) } : undefined}>
+  <ProductList landing={landing ? { copy, image, whatsappHref: whatsappInquiryUrl(settings?.whatsappNumber) } : undefined}>
     <Fragment slot="homepage-cases">
       {landing && <>
         <Showcase section="cases" />

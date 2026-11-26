@@ -100,7 +100,10 @@ export interface AdminCredential {
 }
 
 export async function adminCredential(db: D1Database): Promise<AdminCredential> {
-  const hash = await getSetting(db, HASH_KEY);
+  return adminCredentialFromHash(await adminPasswordHash(db));
+}
+
+export function adminCredentialFromHash(hash: string | null): AdminCredential {
   if (hash) {
     return { enabled: true, tagSource: hash, verify: (t) => verifyPassword(t, hash) };
   }

@@ -78,6 +78,9 @@ export interface StoreSettings {
   seoControls?: string;
   testimonials?: string;
   homeMetrics?: string;
+  showcaseCasesEnabled?: boolean;
+  showcaseCasesOptions?: string;
+  showcaseFactoryEnabled?: boolean;
   footerOptions?: string;
   siteContent?: SiteContentSettings;
   siteImages?: SiteImages;
@@ -210,6 +213,9 @@ export function parseStoreSettings(
     seoControls: map.get('seo_controls'),
     testimonials: map.get('testimonials'),
     homeMetrics: map.get('home_metrics'),
+    showcaseCasesEnabled: map.get('showcase_cases_enabled') !== '0',
+    showcaseCasesOptions: map.get('showcase_cases_options'),
+    showcaseFactoryEnabled: map.get('showcase_factory_enabled') !== '0',
     footerOptions: map.get('footer_options'),
     siteContent: Object.fromEntries([...map].filter(([key]) => key.startsWith('site_content:'))),
     siteImages: Object.fromEntries([...map].filter(([key]) => key.startsWith('site_image:'))),

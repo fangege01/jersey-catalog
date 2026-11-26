@@ -24,9 +24,17 @@ const orderWorkflow = focus === 'process-copy';
 const bottomInquiry = focus === 'bottom-inquiry';
 const canEditMetrics = section === 'home' && !focus;
 const imageSlots = orderWorkflow ? [] : imageSections.filter(item => siteImageEditor(item) === section);
-const images = await Promise.all(imageSlots.map(async slot => ({
-  slot, label: siteImageLabel(slot), image: await getSetting(env.DB, siteImageKey(slot)),
-})));
+const settings = Astro.request.method === 'GET' ? Astro.locals.settings : undefined;
+const [current, storedMetrics, ...imageKeys] = settings ? [
+  settings.siteContent?.[key],
+  settings.homeMetrics,
+  ...imageSlots.map(slot => settings.siteImages?.[siteImageKey(slot)]),
+] : await Promise.all([
+  getSetting(env.DB, key),
+  canEditMetrics ? getSetting(env.DB, homeMetricsKey) : null,
+  ...imageSlots.map(slot => getSetting(env.DB, siteImageKey(slot))),
+]);
+const images = imageSlots.map((slot, index) => ({ slot, label: siteImageLabel(slot), image: imageKeys[index] }));
 const focusQuery = orderWorkflow ? '&focus=process-copy' : bottomInquiry ? '&focus=bottom-inquiry' : '';
 const formUrl = '/admin/site-content?section=' + section + focusQuery;
 const anchor = bottomInquiry ? '#bottom-inquiry' : '';
@@ -34,11 +42,9 @@ const path = sectionInfo.url + (orderWorkflow ? '#how-to-order' : bottomInquiry 
 const workflowFields = /^(process|step)/;
 const fields = Object.entries(sectionInfo.fields)
   .filter(([name]) => orderWorkflow ? workflowFields.test(name) : section !== 'contact' || !/^(body|panelTitle|point)/.test(name));
-const current = await getSetting(env.DB, key);
 const previous = readSiteCopy({ [key]: current ?? undefined }, section, locale);
 let draft: Record<string, string> = previous;
 let error = '';
-const storedMetrics = canEditMetrics ? await getSetting(env.DB, homeMetricsKey) : null;
 const priorMetrics = canEditMetrics ? await loadHomeMetrics(env.DB, storedMetrics) : null;
 let metricsDraft = priorMetrics;
 

@@ -4,7 +4,7 @@ import { env } from 'cloudflare:workers';
 import { verifyAccessJwt } from './features/auth/access';
 import { accessGateDecision } from './features/auth/accessGate';
 import { verifySession } from './features/auth/session';
-import { adminCredential } from './features/auth/admin';
+import { adminCredential, adminCredentialFromHash, type AdminCredential } from './features/auth/admin';
 import {
   getStoreSettings,
   parseStoreSettings,
@@ -76,6 +76,8 @@ async function gate(context: APIContext, next: MiddlewareNext): Promise<Response
     !path.startsWith('/api/') &&
     !path.startsWith('/_') &&
     !path.startsWith('/partials/');
+  const protectedRoute = isProtected(path);
+  let pageCredential: AdminCredential | undefined;
   if (isDocument) {
     // Storefront documents also need the header/footer menus. Both reads go in
     // ONE batch so /cart, /checkout, /account, /order, and /pay — which are never
@@ -94,6 +96,11 @@ async function gate(context: APIContext, next: MiddlewareNext): Promise<Response
           (menus.results ?? []) as unknown as MenuItemRow[],
           context.locals.settings.homePage,
         );
+      } else if (protectedRoute && !import.meta.env.DEV) {
+        const { results } = await env.DB.prepare(STORE_SETTINGS_SQL).all<{ key: string; value: string }>();
+        const hash = results.find(row => row.key === 'admin_password_hash')?.value ?? null;
+        context.locals.settings = parseStoreSettings(results.filter(row => row.key !== 'admin_password_hash'));
+        pageCredential = adminCredentialFromHash(hash);
       } else {
         context.locals.settings = await getStoreSettings(env.DB);
       }
@@ -158,7 +165,7 @@ async function gate(context: APIContext, next: MiddlewareNext): Promise<Response
     }
   }
 
-  if (!isProtected(context.url.pathname)) return next();
+  if (!protectedRoute) return next();
 
   // 1. Localhost dev has no Access edge — don't lock yourself out.
   if (import.meta.env.DEV) return next();
@@ -166,7 +173,7 @@ async function gate(context: APIContext, next: MiddlewareNext): Promise<Response
   // 2. Steady state: an admin password is set (via the setup wizard) → require a
   //    valid signed session. Checked before the Access header so it can't be
   //    bypassed by forging it.
-  const cred = await adminCredential(env.DB);
+  const cred = pageCredential ?? await adminCredential(env.DB);
   if (cred.enabled) {
     // Entry points for signing in or proving possession of a recovery code.
     if (path === '/admin/login' || path === '/admin/reset-password') return next();
