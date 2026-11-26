@@ -227,8 +227,10 @@ const shell = {
       <slot />
     </main>
 
-    {!hasInlineCases && basePath === '/' && <Showcase section="cases" />}
-    {basePath === '/' && <Testimonials locale={locale} settings={Astro.locals.settings?.testimonials} />}
+    {!hasInlineCases && basePath === '/' && <>
+      <Showcase section="cases" />
+      <Testimonials {locale} settings={Astro.locals.settings?.testimonials} />
+    </>}
     {teal && features.catalogOnly && basePath === '/' && (
       <InquiryBand copy={readSiteCopy(Astro.locals.settings?.siteContent, 'home', locale)} {locale} {whatsappHref} />
     )}

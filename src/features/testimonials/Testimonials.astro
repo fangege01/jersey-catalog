@@ -16,26 +16,28 @@ const data = options.enabled ? await publicTestimonials(env.DB).catch((error) =>
 const baseUrl = getConfig().images.baseUrl;
 ---
 {data && data.entries.length > 0 && (
-  <section class="mx-auto max-w-6xl px-6 pb-12 pt-4" aria-labelledby="customer-reviews">
-    <header class="mb-6 border-t border-line pt-7">
-      <h2 id="customer-reviews" class="font-serif text-3xl">{display(locale, options.title, options.sourceTitle)}</h2>
-      {intro && <p class="mt-2 max-w-prose text-muted">{intro}</p>}
+  <section class="reviews" aria-labelledby="customer-reviews">
+    <header class="reviews-heading">
+      <div>
+        <h2 id="customer-reviews">{display(locale, options.title, options.sourceTitle)}</h2>
+        {intro && <p class="reviews-intro">{intro}</p>}
+      </div>
       {data.summary.average !== null && (
-        <p class="mt-2 text-sm font-medium">{data.summary.average.toFixed(1)} / 5 · {data.summary.count} {display(locale, data.summary.count === 1 ? 'review' : 'reviews', '条评价')}</p>
+        <p class="reviews-summary">{data.summary.average.toFixed(1)} / 5 · {data.summary.count} {display(locale, data.summary.count === 1 ? 'review' : 'reviews', '条评价')}</p>
       )}
     </header>
-    <ul class="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+    <ul class="reviews-grid" role="list">
       {data.entries.map((review) => (
-        <li class="flex flex-col rounded-xl border border-line bg-surface p-5">
-          {review.rating !== null && <p class="text-sm font-semibold text-brand">
+        <li class="review-card">
+          {review.rating !== null && <p class="review-rating">
             <span aria-hidden="true">★ </span>{review.rating.toFixed(1)} / 5
           </p>}
-          <blockquote class="my-4 flex-1 whitespace-pre-line break-words text-sm leading-relaxed text-ink">{display(locale, review.quote, review.sourceQuote ?? review.quote)}</blockquote>
-          <div class="flex items-center gap-3 border-t border-line pt-3">
-            {review.avatarKey && <img src={mediaUrl(review.avatarKey, baseUrl)} alt="" loading="lazy" width="40" height="40" class="h-10 w-10 rounded-full object-cover" />}
+          <blockquote>{display(locale, review.quote, review.sourceQuote ?? review.quote)}</blockquote>
+          <div class="review-person">
+            {review.avatarKey && <img src={mediaUrl(review.avatarKey, baseUrl)} alt="" loading="lazy" decoding="async" width="44" height="44" />}
             <div>
-              <p class="text-sm font-semibold">{review.name}</p>
-              {review.attribution && <p class="text-xs text-muted">{display(locale, review.attribution, review.sourceAttribution ?? review.attribution)}</p>}
+              <p class="review-name">{review.name}</p>
+              {review.attribution && <p class="review-role">{display(locale, review.attribution, review.sourceAttribution ?? review.attribution)}</p>}
             </div>
           </div>
         </li>
@@ -43,3 +45,22 @@ const baseUrl = getConfig().images.baseUrl;
     </ul>
   </section>
 )}
+
+<style>
+  .reviews { width: min(calc(100% - 3rem), 75rem); margin-inline: auto; padding-block-end: clamp(1.5rem, 3vw, 2.25rem); }
+  .reviews-heading { display: flex; align-items: flex-start; flex-wrap: wrap; justify-content: space-between; gap: .8rem 1.25rem; margin-bottom: 1.3rem; }
+  .reviews-heading h2 { margin: 0; font-size: clamp(1.8rem, 3.2vw, 2.65rem); font-weight: 750; color: var(--color-ink); line-height: 1.2; }
+  .reviews-intro { max-width: 40rem; margin-top: .75rem; color: var(--color-muted); line-height: 1.65; white-space: pre-wrap; }
+  .reviews-summary { margin: 0; padding: .45rem .75rem; border: 1px solid var(--color-line); border-radius: 999px; background: var(--color-surface); color: var(--color-brand); font-size: .85rem; font-weight: 700; }
+  .reviews-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1rem; margin: 0; padding: 0; list-style: none; }
+  .review-card { display: flex; min-width: 0; flex-direction: column; gap: .9rem; padding: clamp(1rem, 2.2vw, 1.5rem); border: 1px solid var(--color-line); border-radius: 1.25rem; background: linear-gradient(145deg, var(--color-surface), var(--color-paper)); box-shadow: 0 8px 22px rgb(15 118 110 / 6%); overflow-wrap: anywhere; }
+  .review-rating { margin: 0; color: var(--color-brand); font-size: .85rem; font-weight: 750; }
+  blockquote { flex: 1; margin: 0; color: var(--color-ink); font-size: .95rem; line-height: 1.7; white-space: pre-line; }
+  .review-person { display: flex; align-items: center; gap: .7rem; padding-top: .85rem; border-top: 1px solid var(--color-line); }
+  .review-person img { flex: none; width: 44px; height: 44px; border-radius: 50%; object-fit: cover; }
+  .review-name { margin: 0; color: var(--color-ink); font-size: .9rem; font-weight: 750; }
+  .review-role { margin: .15rem 0 0; color: var(--color-muted); font-size: .8rem; line-height: 1.35; }
+  @media (max-width: 65rem) { .reviews-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+  @media (max-width: 47rem) { .reviews { width: calc(100% - 2rem); } }
+  @media (max-width: 38rem) { .reviews-grid { grid-template-columns: 1fr; gap: .75rem; } }
+</style>
