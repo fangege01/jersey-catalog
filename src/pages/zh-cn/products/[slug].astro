@@ -1,0 +1,8 @@
+---
+const slug = Astro.params.slug;
+if (!slug || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug) || slug.length > 75) {
+  return new Response('该商品暂无可用的简体中文版本。', { status: 404 });
+}
+Astro.locals.storeLocale = 'zh-CN';
+return Astro.rewrite('/products/' + slug + Astro.url.search);
+---

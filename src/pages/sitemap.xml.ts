@@ -4,7 +4,6 @@ import { env } from 'cloudflare:workers';
 import { listCategories } from '../features/categories/db';
 import { listPublishedPages } from '../features/pages/db';
 import { catalogPath } from '../features/settings/home';
-import { translatedPath } from '../features/i18n/locale';
 import { informationPages, siteSections } from '../features/site-content/copy';
 import { getConfig } from '../config';
 import { productImageUrl } from '../features/products/image';
@@ -44,7 +43,7 @@ export function sitemapLocs(
 }
 
 function xmlUrl(url: string): string {
-  return url.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
+  return url.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;');
 }
 
 // Gallery entries come only from active products, in one query for the sitemap.
@@ -70,23 +69,9 @@ export const GET: APIRoute = async ({ url, locals }) => {
   const informationPaths = informationPages.map(section => siteSections[section].url);
   const locs = sitemapLocs(origin, home, { categories, products, pages }, separateCatalog);
   locs.push(...informationPaths.map(path => origin + path));
-  const { results: localized } = await env.DB.prepare(`
-    SELECT '/products/' || p.slug AS path FROM storefront_translations t JOIN products p ON p.public_id = t.public_id
-      WHERE t.locale = 'zh-CN' AND t.entity = 'product' AND p.active = 1
-    UNION ALL
-    SELECT '/categories/' || c.slug AS path FROM storefront_translations t JOIN categories c ON c.public_id = t.public_id
-      WHERE t.locale = 'zh-CN' AND t.entity = 'category'
-    UNION ALL
-    SELECT '/pages/' || p.slug AS path FROM storefront_translations t JOIN pages p ON p.public_id = t.public_id
-      WHERE t.locale = 'zh-CN' AND t.entity = 'page' AND p.published = 1
-  `).all<{ path: string }>();
-  const localesPaths = separateCatalog ? [...(!home ? ['/'] : []), '/products'] : [catalogPath(home)];
-  locs.push(...[...localesPaths, ...informationPaths, ...localized.map((entry) => entry.path)]
-    .map((path) => origin + translatedPath(path, 'zh-CN')));
-
   const imageBase = getConfig().images.baseUrl;
   const entries = locs.map((loc) => {
-    const slug = new URL(loc).pathname.match(/^\/(?:zh\/)?products\/([^/]+)$/)?.[1];
+    const slug = new URL(loc).pathname.match(/^\/products\/([^/]+)$/)?.[1];
     const keys = slug ? images.get(slug) : undefined;
     const imageTags = [...(keys ?? [])].slice(0, 1000).map((key) => {
       const image = new URL(productImageUrl(key, imageBase), origin).href;

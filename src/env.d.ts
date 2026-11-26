@@ -45,6 +45,7 @@ declare namespace App {
 declare namespace Cloudflare {
   interface Env {
     PRODUCT_IMPORT_TOKEN?: string;
+    PRODUCT_TRANSLATION_TOKEN?: string;
     ADMIN_SETUP_TOKEN?: string;
     DB: import('@cloudflare/workers-types').D1Database;
     BUCKET: import('@cloudflare/workers-types').R2Bucket;

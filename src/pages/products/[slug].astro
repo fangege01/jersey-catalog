@@ -4,12 +4,34 @@ import Layout from '../../layouts/Layout.astro';
 import ProductDetail from '#theme/ProductDetail.astro';
 import { loadProductDetail } from '../../features/storefront/productDetail';
 import { getConfig } from '../../config';
-import { translatedPath } from '../../features/i18n/locale';
+import { isIndexableStorefrontLocale, translatedPath } from '../../features/i18n/locale';
 import { publicOrigin } from '../../features/http/origin';
 import { addCacheTags, productCacheTags } from '../../features/cache/tags';
+import { localizedImages, pilotLocale, pilotPrefix, productPaths, publishedProductTranslation, redirectedProductTranslation, type ProductTranslationCopy } from '../../features/i18n/productPublication';
 
+const slug = Astro.params.slug ?? '';
+const localized = Astro.originPathname.startsWith(pilotPrefix + '/products/');
+const legacyLocalized = Astro.originPathname.startsWith('/zh/products/');
+const translation = slug ? await publishedProductTranslation(env.DB, slug, localized ? 'localized' : 'english') : null;
+const redirectTo = (path: string) => new Response(null, { status: 301, headers: {
+  location: path + Astro.url.search, 'cache-control': 'no-store',
+} });
+if (localized && !translation) {
+  const previous = await redirectedProductTranslation(env.DB, slug);
+  return previous ? redirectTo(productPaths(previous.english_slug, previous.slug)[pilotLocale]!) :
+    new Response('该商品暂无可用的简体中文版本。', { status: 404 });
+}
+if (legacyLocalized && translation) return redirectTo(productPaths(translation.english_slug, translation.slug)[pilotLocale]!);
+if (legacyLocalized) return new Response(null, { status: 302, headers: {
+  location: '/products/' + encodeURIComponent(slug) + Astro.url.search, 'cache-control': 'no-store',
+} });
+const paths = productPaths(translation?.english_slug ?? slug, translation?.slug);
+const reviewed = localized && translation ? JSON.parse(translation.publication_json).copy as ProductTranslationCopy : undefined;
+const sku = translation?.sku ?? (await env.DB.prepare(`
+  SELECT f.sku_key FROM product_publications f JOIN products p ON p.id=f.product_id WHERE p.slug=?
+`).bind(slug).first<{ sku_key: string }>())?.sku_key;
 const loaded = await loadProductDetail(env.DB, {
-  slug: Astro.params.slug,
+  slug: translation?.english_slug ?? slug,
   locale: Astro.locals.storeLocale,
   catalogOnly: getConfig().features.catalogOnly,
   separateCatalog: import.meta.env.MINSHOP_THEME === 'teal',
@@ -20,6 +42,10 @@ const loaded = await loadProductDetail(env.DB, {
   currency: getConfig().currency,
   origin: publicOrigin(Astro.url.origin, env.CANONICAL_ORIGIN),
   pathname: Astro.url.pathname,
+  canonicalPath: localized ? paths[pilotLocale] : undefined,
+  sku,
+  reviewedCopy: reviewed,
+  reviewedImages: localized && translation ? await localizedImages(env.DB, translation.public_id) : undefined,
 });
 
 // Status, metadata, JSON-LD, and cache tagging stay with the route: none of
@@ -42,10 +68,11 @@ if (loaded.backfillRelated) {
 }
 ---
 
-<Layout title={seo.title} description={seo.description ?? undefined} image={seo.imagePath} imageAlt={seo.imageAlt} ogTitle={seo.ogTitle} ogDescription={seo.ogDescription}>
+<Layout title={seo.title} description={seo.description ?? undefined} image={seo.imagePath} imageAlt={seo.imageAlt} ogTitle={seo.ogTitle} ogDescription={seo.ogDescription}
+  productLanguagePaths={paths}>
   <ProductDetail model={model} purchase={purchase} />
 
-  <script is:inline type="application/ld+json" set:html={seo.jsonLd} />
+  {isIndexableStorefrontLocale(Astro.locals.storeLocale ?? 'en') && <script is:inline type="application/ld+json" set:html={seo.jsonLd} />}
 
   {/* Live price + hero image: reflect the chosen variant + checked add-ons. No-JS
       still works — the server computes the real price in cart/checkout, and the

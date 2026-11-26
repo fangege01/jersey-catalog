@@ -16,6 +16,7 @@ export function sourceCopyStatement(db: D1Database, entity: LocaleEntity, public
     INSERT INTO storefront_translations (locale, entity, public_id, title, body)
     SELECT 'zh-CN', ?, public_id, ?, ? FROM ${table} WHERE public_id = ?
     ON CONFLICT(locale, entity, public_id) DO UPDATE SET title = excluded.title, body = excluded.body
+      WHERE storefront_translations.revision = 0
   `).bind(entity, source.title, source.body, publicId);
 }
 

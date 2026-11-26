@@ -6,7 +6,7 @@ import { normalizeSearchQuery } from '../features/search/query';
 import { EMPTY_MENUS, visibleItems } from '../features/navigation/db';
 import { getEmailProvider } from '../features/email';
 import { isPurchasePath, managedWhatsAppHref, whatsappInquiryUrl } from '../features/storefront/catalogMode';
-import { display, languages, originalStorefrontPath, translatedPath } from '../features/i18n/locale';
+import { display, isIndexableStorefrontLocale, languages, originalStorefrontPath, translatedPath } from '../features/i18n/locale';
 import { isTrafficPath } from '../features/analytics/events';
 import ContactPopup from '../features/popup/ContactPopup.astro';
 import { seoControls, verificationKeys, verificationTags } from '../features/seo/controls';
@@ -18,6 +18,7 @@ import Tracking from '../features/analytics/Tracking.astro';
 import { readSiteCopy, siteSections } from '../features/site-content/copy';
 import { validContactEmail } from '../features/site-content/inquiry';
 import { buildShellModel } from '../features/storefront/shell';
+import type { StorefrontShellModel } from '../features/storefront/models';
 import StoreHeader from '#theme/Header.astro';
 import StoreFooter from '#theme/Footer.astro';
 import '../styles/global.css';
@@ -35,20 +36,23 @@ interface Props {
   /** Override the canonical URL. Used where two routes render the same content
    *  — the catalog is at both / and /products — so only one is indexable. */
   canonical?: string;
+  productLanguagePaths?: Partial<Record<keyof typeof languages, string>>;
 }
 
-const { title, description, image, imageAlt, ogTitle, ogDescription, exactTitle, hasInlineCases, canonical: canonicalOverride } = Astro.props;
+const { title, description, image, imageAlt, ogTitle, ogDescription, exactTitle, hasInlineCases, productLanguagePaths, canonical: canonicalOverride } = Astro.props;
 const config = getConfig();
 const locale = Astro.locals.storeLocale ?? (Astro.url.pathname.startsWith('/admin/') ? 'zh-CN' : 'en');
+const indexable = Astro.locals.storeLocale === undefined || isIndexableStorefrontLocale(locale);
 const t = (english: string, chinese: string) => display(locale, english, chinese);
 const basePath = originalStorefrontPath(Astro.originPathname);
 const showLanguages = isTrafficPath(basePath);
 const otherLocale = locale === 'en' ? 'zh-CN' : 'en';
 const teal = import.meta.env.MINSHOP_THEME === 'teal';
-const languageSwitch: { locale: keyof typeof languages; label: string; href: string } | undefined = showLanguages ? {
+const switchPath = productLanguagePaths ? productLanguagePaths[otherLocale] : translatedPath(basePath, otherLocale);
+const languageSwitch: StorefrontShellModel['languageSwitch'] = showLanguages ? {
   locale: otherLocale,
-  label: languages[otherLocale],
-  href: translatedPath(basePath, otherLocale) + Astro.url.search,
+  label: switchPath ? languages[otherLocale] : t('简体中文暂不可用', '英文暂不可用'),
+  href: switchPath ? switchPath + Astro.url.search : undefined,
 } : undefined;
 const { features } = config;
 const verification = seoControls(Astro.locals.settings?.seoControls).verification;
@@ -106,7 +110,11 @@ const query =
 const desc = (description ?? `Shop ${storeName}.`).slice(0, 160);
 const origin = publicOrigin(Astro.url.origin, env.CANONICAL_ORIGIN);
 const canonicalBase = canonicalOverride ? new URL(canonicalOverride) : new URL(Astro.url.pathname, origin);
-const canonical = new URL(translatedPath(canonicalBase.pathname, locale) + canonicalBase.search, canonicalBase.origin).href;
+const canonical = new URL((productLanguagePaths?.[locale] ?? translatedPath(canonicalBase.pathname, locale)) + canonicalBase.search, canonicalBase.origin).href;
+const alternates: Record<string, string | undefined> = productLanguagePaths
+  ? { ...productLanguagePaths, 'x-default': productLanguagePaths.en }
+  : Object.fromEntries([...Object.keys(languages).map(code => [code, translatedPath(canonicalBase.pathname, code === 'zh-CN' ? 'zh-CN' : 'en')]),
+    ['x-default', canonicalBase.pathname]]);
 const ogImage = image ? new URL(image, origin).href : undefined;
 
 // The header and footer are store-owned, so they receive a model rather than
@@ -158,7 +166,7 @@ const shell = {
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    {verificationKeys.map((key) => verification[key] && <meta name={verificationTags[key].meta} content={verification[key]} />)}
+    {indexable && verificationKeys.map((key) => verification[key] && <meta name={verificationTags[key].meta} content={verification[key]} />)}
     <link rel="icon" href="/favicon.ico" sizes="16x16 32x32 48x48" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     {/* Declared so Safari stops probing the site root for it. Those probes are
@@ -168,26 +176,27 @@ const shell = {
         answers the agents that probe regardless without invoking the Worker. */}
     <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
     <title>{pageTitle}</title>
-    <meta name="description" content={desc} />
-    <link rel="canonical" href={canonical} />
-    {showLanguages && Object.keys(languages).map((code) => (
-      <link rel="alternate" hreflang={code} href={new URL(translatedPath(canonicalBase.pathname, code === 'zh-CN' ? 'zh-CN' : 'en'), origin).href} />
-    ))}
-    {showLanguages && <link rel="alternate" hreflang="x-default" href={new URL(canonicalBase.pathname, origin).href} />}
+    {indexable ? <>
+      <meta name="description" content={desc} />
+      <link rel="canonical" href={canonical} />
+      {showLanguages && Object.entries(alternates).map(([code, path]) => path && isIndexableStorefrontLocale(code) && (
+        <link rel="alternate" hreflang={code} href={new URL(path, origin).href} />
+      ))}
 
-    <meta property="og:type" content="website" />
-    <meta property="og:site_name" content={storeName} />
-    <meta property="og:title" content={ogTitle || pageTitle} />
-    <meta property="og:description" content={ogDescription || desc} />
-    <meta property="og:url" content={canonical} />
-    {ogImage && <meta property="og:image" content={ogImage} />}
-    {ogImage && imageAlt && <meta property="og:image:alt" content={imageAlt} />}
+      <meta property="og:type" content="website" />
+      <meta property="og:site_name" content={storeName} />
+      <meta property="og:title" content={ogTitle || pageTitle} />
+      <meta property="og:description" content={ogDescription || desc} />
+      <meta property="og:url" content={canonical} />
+      {ogImage && <meta property="og:image" content={ogImage} />}
+      {ogImage && imageAlt && <meta property="og:image:alt" content={imageAlt} />}
 
-    <meta name="twitter:card" content={ogImage ? 'summary_large_image' : 'summary'} />
-    <meta name="twitter:title" content={pageTitle} />
-    <meta name="twitter:description" content={desc} />
-    {ogImage && <meta name="twitter:image" content={ogImage} />}
-    {ogImage && imageAlt && <meta name="twitter:image:alt" content={imageAlt} />}
+      <meta name="twitter:card" content={ogImage ? 'summary_large_image' : 'summary'} />
+      <meta name="twitter:title" content={pageTitle} />
+      <meta name="twitter:description" content={desc} />
+      {ogImage && <meta name="twitter:image" content={ogImage} />}
+      {ogImage && imageAlt && <meta name="twitter:image:alt" content={imageAlt} />}
+    </> : <meta name="robots" content="noindex" />}
 
     {/* Progressive image reveal, site-wide. The marker class is added in <head>,
         before any image markup is parsed, so incomplete images start on their
@@ -208,9 +217,10 @@ const shell = {
   </head>
   <body class="flex min-h-screen flex-col bg-paper text-ink antialiased">
     <StoreHeader model={shell} />
-    {!teal && showLanguages && <nav class="mx-auto flex w-full max-w-6xl justify-end px-6 pt-3 text-sm" aria-label={t('Language', '语言')}>
-      <a data-language-switch lang={otherLocale} hreflang={otherLocale}
-        class="underline" href={translatedPath(basePath, otherLocale) + Astro.url.search}>{languages[otherLocale]}</a>
+    {!teal && languageSwitch && <nav class="mx-auto flex w-full max-w-6xl justify-end px-6 pt-3 text-sm" aria-label={t('Language', '语言')}>
+      {languageSwitch.href
+        ? <a data-language-switch lang={otherLocale} hreflang={otherLocale} class="underline" href={languageSwitch.href}>{languageSwitch.label}</a>
+        : <span>{languageSwitch.label}</span>}
     </nav>}
 
     <main class="page-shell">
@@ -378,3 +388,11 @@ const shell = {
     </script>
   </body>
 </html>
+
+<script>
+  for (const link of document.querySelectorAll<HTMLAnchorElement>('a[data-language-switch]')) {
+    link.addEventListener('click', () => {
+      try { localStorage.setItem('fxf-language', link.hreflang); } catch { /* storage is optional */ }
+    });
+  }
+</script>

@@ -15,6 +15,7 @@ export function isPublicStorefrontPath(pathname: string): boolean {
     pathname.startsWith('/product/') ||
     pathname === '/search' ||
     pathname.startsWith('/products/') ||
+    /^\/zh-cn\/products\/[a-z0-9-]+\/?$/.test(pathname) ||
     pathname.startsWith('/category/') ||
     pathname.startsWith('/categories/') ||
     pathname.startsWith('/pages/') ||

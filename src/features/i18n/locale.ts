@@ -4,6 +4,11 @@ export const languages = { en: 'English', 'zh-CN': '简体中文' } as const;
 export type StoreLocale = keyof typeof languages;
 export type LocaleEntity = 'product' | 'category' | 'page';
 
+/** Simplified Chinese is a transitional storefront language. */
+export function isIndexableStorefrontLocale(locale: string): boolean {
+  return locale !== 'zh-CN';
+}
+
 export function translatedPath(path: string, locale: StoreLocale): string {
   return locale === 'zh-CN' && isTrafficPath(path) ? '/zh' + (path === '/' ? '' : path) : path;
 }
@@ -15,11 +20,11 @@ export function localizedHref(href: string, locale: StoreLocale): string {
 }
 
 export function storefrontLanguage(path: string): StoreLocale {
-  return path === '/zh' || path.startsWith('/zh/') ? 'zh-CN' : 'en';
+  return /^\/zh(?:-cn)?(?:\/|$)/.test(path) ? 'zh-CN' : 'en';
 }
 
 export function originalStorefrontPath(path: string): string {
-  return storefrontLanguage(path) === 'zh-CN' ? path.slice(3) || '/' : path;
+  return storefrontLanguage(path) === 'zh-CN' ? path.replace(/^\/zh(?:-cn)?/, '') || '/' : path;
 }
 
 export function display(locale: StoreLocale | undefined, english: string, chinese: string): string {

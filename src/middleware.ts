@@ -27,7 +27,7 @@ import {
 import { addCacheTags, responseCacheTags } from './features/cache/tags';
 import { normalizeSearchQuery } from './features/search/query';
 import { getConfig } from './config';
-import { localizedHref } from './features/i18n/locale';
+import { isIndexableStorefrontLocale, localizedHref, storefrontLanguage } from './features/i18n/locale';
 import { isPurchasePath } from './features/storefront/catalogMode';
 import { isForbiddenFormOrigin } from './features/auth/formOrigin';
 
@@ -229,7 +229,7 @@ async function route(context: APIContext, next: MiddlewareNext): Promise<Respons
   if (getConfig().features.catalogOnly && isPurchasePath(path)) {
     return new Response('Not found', { status: 404, headers: { 'cache-control': 'no-store' } });
   }
-  const productError = path.startsWith('/products/') && context.url.searchParams.has('error');
+  const productError = /^\/(?:zh-cn\/)?products\//.test(path) && context.url.searchParams.has('error');
 
   let response = isForbiddenFormOrigin(context.request, context.url)
     ? new Response(isProtected(path)
@@ -289,9 +289,10 @@ const SECURITY_HEADERS: Record<string, string> = {
 
 /** Add the security headers, rebuilding when the response's headers are immutable
  *  (e.g. a Response.redirect to a payment provider, or a Cache API hit). */
-function withSecurityHeaders(res: Response): Response {
+function withSecurityHeaders(res: Response, noindex: boolean): Response {
   try {
     for (const [k, v] of Object.entries(SECURITY_HEADERS)) res.headers.set(k, v);
+    if (noindex) res.headers.set('X-Robots-Tag', 'noindex');
     return res;
   } catch {
     const rebuilt = new Response(res.body, {
@@ -300,6 +301,7 @@ function withSecurityHeaders(res: Response): Response {
       headers: new Headers(res.headers),
     });
     for (const [k, v] of Object.entries(SECURITY_HEADERS)) rebuilt.headers.set(k, v);
+    if (noindex) rebuilt.headers.set('X-Robots-Tag', 'noindex');
     return rebuilt;
   }
 }
@@ -318,6 +320,7 @@ export const onRequest = defineMiddleware(async (context, next) => {
       ? Response.json({ error: message }, options)
       : new Response(message, options);
   }
+  const noindex = !isIndexableStorefrontLocale(storefrontLanguage(context.originPathname));
   if (context.originPathname.startsWith('/zh') && context.locals.storeLocale === 'zh-CN' &&
       context.url.pathname.startsWith('/zh') && response.headers.get('content-type')?.includes('text/html')) {
     return withSecurityHeaders(new HTMLRewriter()
@@ -329,7 +332,7 @@ export const onRequest = defineMiddleware(async (context, next) => {
         const action = element.getAttribute('action');
         if (action) element.setAttribute('action', localizedHref(action, 'zh-CN'));
       } })
-      .transform(response));
+      .transform(response), noindex);
   }
-  return withSecurityHeaders(response);
+  return withSecurityHeaders(response, noindex);
 });

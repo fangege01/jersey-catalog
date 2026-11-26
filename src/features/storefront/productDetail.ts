@@ -20,6 +20,7 @@ import { validContactEmail } from '../site-content/inquiry';
 import { readWholesalePrices, wholesaleRanges } from '../products/wholesale';
 import { detailSectionLines, readProductDetailSections } from '../products/detailSections';
 import { releaseYearFromTitle } from '../products/releaseYear';
+import type { ProductTranslationCopy } from '../i18n/productPublication';
 import type {
   ProductDetailModel,
   ProductPurchaseModel,
@@ -73,6 +74,10 @@ export interface ProductDetailOptions {
   catalogOnly?: boolean;
   separateCatalog?: boolean;
   locale?: StoreLocale;
+  canonicalPath?: string;
+  sku?: string | null;
+  reviewedCopy?: ProductTranslationCopy;
+  reviewedImages?: ReadonlyMap<number, { alt_text: string }>;
 }
 
 function heroImage(
@@ -154,6 +159,7 @@ export async function loadProductDetail(
   const firstInStockIndex = variants.findIndex((v) => v.stock > 0);
 
   const images: StorefrontGalleryImage[] = gallery.map((image, index) => {
+    const approved = options.reviewedImages?.get(image.id);
     const hero = productImageSources(image.image_key, {
       baseUrl: options.imageBaseUrl,
       delivery: options.delivery,
@@ -171,7 +177,9 @@ export async function loadProductDetail(
       // The first frame is what a shopper sees before scrolling, so it is the
       // page's LCP candidate. Saying so on the model keeps the rendered
       // attributes and the fade decision from drifting apart.
-      hero: { ...hero, alt: image.alt?.trim() ?? product.name, priority: index === 0 },
+      hero: { ...hero, alt: options.reviewedCopy
+        ? approved?.alt_text ?? options.reviewedCopy.name
+        : image.alt?.trim() ?? product.name, priority: index === 0 },
       thumbnail: { ...thumbnail, alt: '', priority: false },
     };
   });
@@ -181,7 +189,8 @@ export async function loadProductDetail(
   const cartEnabled = options.settings?.cartEnabled ?? true;
   const buyNowEnabled = options.settings?.buyNowEnabled ?? true;
 
-  const inquiryProduct = { name: product.name, url: new URL(translatedPath(options.pathname, options.locale ?? 'en'), options.origin).href };
+  const inquiryProduct = { name: options.reviewedCopy?.name ?? product.name,
+    url: new URL(options.canonicalPath ?? translatedPath(options.pathname, options.locale ?? 'en'), options.origin).href };
   const inquiryNumber = options.settings?.whatsappNumber;
   const inquiryHref = options.catalogOnly ? whatsappInquiryUrl(inquiryNumber, inquiryProduct, undefined, options.locale) : null;
   const email = options.catalogOnly ? readSiteCopy(options.settings?.siteContent, 'contact', 'en').contactEmail.trim() : '';
@@ -193,7 +202,7 @@ export async function loadProductDetail(
     : null;
   const wholesalePrices = [product.price_cents, ...readWholesalePrices(product.wholesale_prices)];
   const details = readProductDetailSections(product.detail_sections);
-  const detailCopy = zh ? details.source : details.english;
+  const detailCopy = options.reviewedCopy ?? (zh ? details.source : details.english);
   const detailSections = [
     { title: zh ? '产品规格' : 'Product specifications', items: detailSectionLines(detailCopy.specifications) },
     { title: zh ? '运输及付款' : 'Shipping and payment', items: detailSectionLines(detailCopy.shippingPayment) },
@@ -202,17 +211,19 @@ export async function loadProductDetail(
   const imageKeys = [...new Set([...(product.image_key ? [product.image_key] : []), ...galleryByKey.keys()])];
   const imageUrls = imageKeys.map((key) => new URL(productImageUrl(key, options.imageBaseUrl), options.origin).href);
   const imagePath = imageUrls[0];
-  const imageAlt = imageKeys[0] ? galleryByKey.get(imageKeys[0])?.alt?.trim() || product.name : undefined;
+  const imageAlt = imageKeys[0] ? images.find((_, index) => gallery[index].image_key === imageKeys[0])?.hero.alt || inquiryProduct.name : undefined;
   const importedSeo = (() => {
     if (options.locale === 'zh-CN' || !product.import_seo_json) return null;
     try { return JSON.parse(product.import_seo_json) as { title: string; metaDescription: string; h1: string; intro: string; description: string; ogTitle?: string; ogDescription?: string }; }
     catch { return null; }
   })();
-  const detailDescription = [importedSeo?.intro, importedSeo?.description].filter(Boolean).join('\n\n') || product.description;
+  const visibleCopy = options.reviewedCopy ?? importedSeo;
+  const detailDescription = [visibleCopy?.intro, visibleCopy?.description].filter(Boolean).join('\n\n') || product.description;
   const jsonLd = {
     '@context': 'https://schema.org',
     '@type': 'Product',
-    name: product.name,
+    name: inquiryProduct.name,
+    ...(options.sku && { sku: options.sku }),
     // Structured data wants prose, not Markdown syntax characters.
     ...(detailDescription ? { description: markdownExcerpt(detailDescription, 5000) } : {}),
     url: inquiryProduct.url,
@@ -241,7 +252,7 @@ export async function loadProductDetail(
     seo: {
       ogTitle: importedSeo?.ogTitle,
       ogDescription: importedSeo?.ogDescription,
-      title: importedSeo?.title || product.name,
+      title: options.reviewedCopy?.name || importedSeo?.title || product.name,
       // Meta/og description: plain text, truncated on a word boundary.
       description: importedSeo?.metaDescription || (detailDescription ? markdownExcerpt(detailDescription, 160) : null),
       imagePath,
@@ -252,7 +263,7 @@ export async function loadProductDetail(
     model: {
       ...(options.locale === 'zh-CN' && { locale: options.locale }),
       id: requirePublicId(product.public_id, product.id, 'product'),
-      name: importedSeo?.h1 || product.name,
+      name: visibleCopy?.h1 || product.name,
       description: detailDescription,
       descriptionHtml: detailDescription
         ? renderMarkdown(detailDescription, {
