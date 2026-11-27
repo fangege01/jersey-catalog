@@ -4,6 +4,8 @@ import { sourceCopyStatement, type SourceCopy } from '../i18n/db.ts';
 
 export interface Product {
   import_seo_json?: string | null;
+  seo_title?: string | null;
+  meta_description?: string | null;
   wholesale_prices?: string | null;
   detail_sections?: string | null;
   release_year?: number | null;
@@ -52,6 +54,8 @@ export interface ProductFields {
 export interface ProductInput extends ProductFields {
   image_key: string | null;
   slug: string;
+  seo_title?: string | null;
+  meta_description?: string | null;
 }
 
 /** A page of active products for the storefront, newest first. */
@@ -238,6 +242,9 @@ export interface ProductImageRow {
   image_key: string;
   position: number;
   alt: string | null;
+  title?: string | null;
+  caption?: string | null;
+  seo_alias?: string | null;
   public_id: string | null;
 }
 
@@ -402,12 +409,13 @@ export async function createProduct(db: D1Database, p: ProductInput, source?: So
   return withPublicId('product', async (publicId) => {
     const insert = db
       .prepare(
-        `INSERT INTO products (name, slug, description, price_cents, currency, image_key, stock, active, weight_grams, requires_shipping, public_id, wholesale_prices, detail_sections, release_year)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `INSERT INTO products (name, slug, description, price_cents, currency, image_key, stock, active, weight_grams, requires_shipping, public_id, wholesale_prices, detail_sections, release_year, seo_title, meta_description)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          RETURNING id`,
       )
       .bind(p.name, p.slug, p.description, p.price_cents, p.currency, p.image_key, p.stock, p.active,
-        p.weight_grams, p.requires_shipping, publicId, p.wholesale_prices ?? null, p.detail_sections ?? null, p.release_year ?? null);
+        p.weight_grams, p.requires_shipping, publicId, p.wholesale_prices ?? null, p.detail_sections ?? null,
+        p.release_year ?? null, p.seo_title ?? null, p.meta_description ?? null);
     const row = source ? (await db.batch<{ id: number }>([insert, sourceCopyStatement(db, 'product', publicId, source)]))[0].results[0]
       : await insert.first<{ id: number }>();
     return row!.id;
@@ -421,12 +429,16 @@ export async function updateProduct(db: D1Database, id: number, p: ProductInput,
          SET name = ?, slug = ?, description = ?, price_cents = ?, currency = ?, image_key = ?, stock = ?, active = ?,
              weight_grams = ?, requires_shipping = ?, wholesale_prices = COALESCE(?, wholesale_prices),
              detail_sections = COALESCE(?, detail_sections),
-             release_year = CASE WHEN ? THEN ? ELSE release_year END
+             release_year = CASE WHEN ? THEN ? ELSE release_year END,
+             seo_title = CASE WHEN ? THEN ? ELSE seo_title END,
+             meta_description = CASE WHEN ? THEN ? ELSE meta_description END
        WHERE id = ?`,
     )
     .bind(p.name, p.slug, p.description, p.price_cents, p.currency, p.image_key, p.stock, p.active,
       p.weight_grams, p.requires_shipping, p.wholesale_prices ?? null, p.detail_sections ?? null,
-      p.release_year === undefined ? 0 : 1, p.release_year ?? null, id);
+      p.release_year === undefined ? 0 : 1, p.release_year ?? null,
+      p.seo_title === undefined ? 0 : 1, p.seo_title ?? null,
+      p.meta_description === undefined ? 0 : 1, p.meta_description ?? null, id);
   if (copy) await db.batch([update, sourceCopyStatement(db, 'product', copy.publicId, copy.source)]);
   else await update.run();
 }

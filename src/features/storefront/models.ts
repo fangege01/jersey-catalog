@@ -28,6 +28,8 @@ export interface StorefrontImage {
   /** Browser sizing hint paired with `srcset`. */
   sizes?: string;
   alt: string;
+  title?: string;
+  caption?: string;
   /**
    * Marks the page's likely LCP image. Upstream decides this, because it
    * selects both the wider fallback candidate and the eager/high-priority

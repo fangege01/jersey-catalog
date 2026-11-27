@@ -45,20 +45,24 @@ const zh = navigation === 'zh-CN';
           class="no-scrollbar relative flex snap-x snap-mandatory overflow-x-auto scroll-smooth rounded-lg bg-surface"
         >
           {images.map((image) => (
+            <figure class="m-0 w-full shrink-0 snap-center">
             <img
               id={`pi-${image.anchor}`}
               src={image.hero.src}
               srcset={image.hero.srcset}
               sizes={image.hero.sizes}
               alt={image.hero.alt}
+              title={image.hero.title}
               width="800"
               height="800"
               loading={image.hero.priority ? 'eager' : 'lazy'}
               fetchpriority={image.hero.priority ? 'high' : 'auto'}
               decoding="async"
               {...(image.hero.priority ? {} : { 'data-image-fade': '' })}
-              class:list={['aspect-square w-full shrink-0 snap-center bg-surface', navigation ? 'object-contain' : 'object-cover', soldOut && 'opacity-60']}
+              class:list={['aspect-square w-full bg-surface', navigation ? 'object-contain' : 'object-cover', soldOut && 'opacity-60']}
             />
+            {image.hero.caption && <figcaption class="px-3 py-2 text-sm text-muted">{image.hero.caption}</figcaption>}
+            </figure>
           ))}
           {soldOut && (
             <span class="absolute left-4 top-4 rounded-full bg-surface/90 px-3 py-1 text-xs uppercase tracking-widest text-muted ring-1 ring-line">
@@ -105,6 +109,7 @@ const zh = navigation === 'zh-CN';
         fade
         class={`aspect-square w-full bg-surface ${navigation ? 'object-contain' : 'object-cover'}${soldOut ? ' opacity-60' : ''}`}
       />
+      {hero.caption && <p class="px-3 py-2 text-sm text-muted">{hero.caption}</p>}
       {soldOut && (
         <span class="absolute left-4 top-4 rounded-full bg-surface/90 px-3 py-1 text-xs uppercase tracking-widest text-muted ring-1 ring-line">
           {soldOutLabel}

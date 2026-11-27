@@ -32,6 +32,8 @@ interface Props {
   imageAlt?: string;
   ogTitle?: string;
   ogDescription?: string;
+  ogType?: 'website' | 'product';
+  exactDescription?: boolean;
   exactTitle?: boolean;
   hasInlineCases?: boolean;
   /** Override the canonical URL. Used where two routes render the same content
@@ -40,7 +42,7 @@ interface Props {
   productLanguagePaths?: Partial<Record<keyof typeof languages, string>>;
 }
 
-const { title, description, image, imageAlt, ogTitle, ogDescription, exactTitle, hasInlineCases, productLanguagePaths, canonical: canonicalOverride } = Astro.props;
+const { title, description, image, imageAlt, ogTitle, ogDescription, ogType = 'website', exactTitle, exactDescription, hasInlineCases, productLanguagePaths, canonical: canonicalOverride } = Astro.props;
 const config = getConfig();
 const locale = Astro.locals.storeLocale ?? (Astro.url.pathname.startsWith('/admin/') ? 'zh-CN' : 'en');
 const indexable = Astro.locals.storeLocale === undefined || isIndexableStorefrontLocale(locale);
@@ -108,7 +110,8 @@ const query =
     ? normalizeSearchQuery(Astro.url.searchParams.get('q') ?? '')
     : '';
 
-const desc = (description ?? `Shop ${storeName}.`).slice(0, 160);
+const descriptionText = description ?? `Shop ${storeName}.`;
+const desc = exactDescription ? descriptionText : descriptionText.slice(0, 160);
 const origin = publicOrigin(Astro.url.origin, env.CANONICAL_ORIGIN);
 const canonicalBase = canonicalOverride ? new URL(canonicalOverride) : new URL(Astro.url.pathname, origin);
 const canonical = new URL((productLanguagePaths?.[locale] ?? translatedPath(canonicalBase.pathname, locale)) + canonicalBase.search, canonicalBase.origin).href;
@@ -190,7 +193,7 @@ const shell = {
         <link rel="alternate" hreflang={code} href={new URL(path, origin).href} />
       ))}
 
-      <meta property="og:type" content="website" />
+      <meta property="og:type" content={ogType} />
       <meta property="og:site_name" content={storeName} />
       <meta property="og:title" content={ogTitle || pageTitle} />
       <meta property="og:description" content={ogDescription || desc} />

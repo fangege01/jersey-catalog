@@ -8,6 +8,7 @@ import { informationPages, siteSections } from '../features/site-content/copy';
 import { getConfig } from '../config';
 import { productImageUrl } from '../features/products/image';
 import { publicOrigin } from '../features/http/origin';
+import { imageAliasPath } from '../features/products/imageSeo';
 
 export const prerender = false;
 
@@ -36,7 +37,7 @@ export function sitemapLocs(
     ...(separateCatalog && !homePage ? [origin + '/'] : []),
     `${origin}${separateCatalog ? '/products' : catalogPath(homePage)}`,
     ...data.categories.map((c) => `${origin}/categories/${c.slug}`),
-    ...data.products.map((p) => `${origin}/products/${p.slug}`),
+    ...data.products.filter((p) => p.slug).map((p) => `${origin}/products/${encodeURIComponent(p.slug)}`),
     // Published pages only — drafts must not be discoverable.
     ...data.pages.map((p) => `${origin}/pages/${p.slug}`),
   ];
@@ -55,14 +56,14 @@ export const GET: APIRoute = async ({ url, locals }) => {
     listCategories(env.DB),
     listPublishedPages(env.DB),
     env.DB.prepare(`
-      SELECT p.slug, i.image_key FROM product_images i JOIN products p ON p.id = i.product_id
+      SELECT p.slug, i.image_key, i.seo_alias FROM product_images i JOIN products p ON p.id = i.product_id
       WHERE p.active = 1 ORDER BY p.id, i.position, i.id
-    `).all<{ slug: string; image_key: string }>(),
+    `).all<{ slug: string; image_key: string; seo_alias: string | null }>(),
   ]);
-  const images = new Map<string, Set<string>>(products.map((product) => [
-    product.slug, new Set(product.image_key ? [product.image_key] : []),
+  const images = new Map<string, Map<string, string | null>>(products.map((product) => [
+    product.slug, new Map(product.image_key ? [[product.image_key, null]] : []),
   ]));
-  for (const image of gallery) images.get(image.slug)?.add(image.image_key);
+  for (const image of gallery) images.get(image.slug)?.set(image.image_key, image.seo_alias);
 
   const home = locals.settings?.homePage;
   const separateCatalog = import.meta.env.MINSHOP_THEME === 'teal';
@@ -72,9 +73,9 @@ export const GET: APIRoute = async ({ url, locals }) => {
   const imageBase = getConfig().images.baseUrl;
   const entries = locs.map((loc) => {
     const slug = new URL(loc).pathname.match(/^\/products\/([^/]+)$/)?.[1];
-    const keys = slug ? images.get(slug) : undefined;
-    const imageTags = [...(keys ?? [])].slice(0, 1000).map((key) => {
-      const image = new URL(productImageUrl(key, imageBase), origin).href;
+    const keys = slug ? images.get(decodeURIComponent(slug)) : undefined;
+    const imageTags = [...(keys ?? [])].slice(0, 1000).map(([key, alias]) => {
+      const image = new URL(alias ? imageAliasPath(alias) : productImageUrl(key, imageBase), origin).href;
       return `<image:image><image:loc>${xmlUrl(image)}</image:loc></image:image>`;
     });
     return `  <url><loc>${xmlUrl(loc)}</loc>${imageTags.join('')}</url>`;

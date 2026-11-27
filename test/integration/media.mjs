@@ -148,6 +148,8 @@ try {
 
   const showcaseMigration = await readFile(new URL('../../migrations/0045_storefront_showcases.sql', import.meta.url), 'utf8');
   for (const sql of showcaseMigration.split(';').map(sql => sql.trim()).filter(Boolean)) await db.prepare(sql).run();
+  const imageAliasMigration = await readFile(new URL('../../migrations/0058_product_image_filename.sql', import.meta.url), 'utf8');
+  for (const sql of imageAliasMigration.split(';').map(sql => sql.trim()).filter(Boolean)) await db.prepare(sql).run();
 
   const newMedia = async (key, name = key) =>
     createMediaRecord(db, {
@@ -398,15 +400,17 @@ try {
     const replacement = await newMedia('media/replace-to.png');
     await db.prepare("INSERT INTO products (id, name) VALUES (910, 'Replaceable')").run();
     await attachMediaToProduct(db, 910, original.id);
+    await db.prepare("UPDATE product_images SET seo_alias = 'seo/old-photo.png' WHERE product_id = 910").run();
 
     assert.equal(
       await replaceProductImageFromMedia(db, 910, original.image_key, replacement.id),
       true,
     );
     const row = await db
-      .prepare('SELECT image_key FROM product_images WHERE product_id = 910')
+      .prepare('SELECT image_key, seo_alias FROM product_images WHERE product_id = 910')
       .first();
     assert.equal(row.image_key, replacement.image_key);
+    assert.equal(row.seo_alias, null, 'a renamed source stayed associated with the replacement');
 
     // Media deleted before the replacement lands: refuse, leave the gallery alone.
     const doomed = await newMedia('media/replace-doomed.png');

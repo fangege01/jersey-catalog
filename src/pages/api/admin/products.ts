@@ -5,6 +5,7 @@ import {
   createProduct,
   deleteProduct,
   getProduct,
+  listProductImages,
   syncPrimaryImage,
   setProductFile,
 } from '../../../features/products/db';
@@ -15,7 +16,9 @@ import { parseProductForm } from '../../../features/products/form';
 import { parseProductDetailSections, prepareProductDetailSections } from '../../../features/products/detailSections';
 import { zonesRequireWeight } from '../../../features/shipping/calculator';
 import { shippingFor } from '../../../features/shipping/effective';
-import { uniqueSlug } from '../../../features/products/slug';
+import { adminProductSlug } from '../../../features/products/slug';
+import { isProductSlugConflict, productSeoFields } from '../../../features/products/seo';
+import { parseImageSeo, saveImageSeo } from '../../../features/products/imageSeo';
 import { validateImage } from '../../../features/products/image';
 import { optimizeUpload } from '../../../features/products/imageOptimize';
 import { uploadMedia } from '../../../features/media/upload';
@@ -48,11 +51,15 @@ export const POST: APIRoute = async ({ request, redirect, locals }) => {
   const sections = parseProductDetailSections(form);
   if ('error' in sections) return redirect(fail(sections.error), 303);
   const copy = await saveCopyInEnglish(env.DB, env.AI, 'product', { title: parsed.data.name, body: parsed.data.description });
+  const url = await adminProductSlug(env.DB, String(form.get('slug') ?? ''), copy.title);
+  if ('error' in url) return redirect(fail(url.error), 303);
   const details = prepareProductDetailSections(env.DB, env.AI, sections.source);
 
   let mediaId: number | null = null;
   const file = form.get('image');
+  const imageSeo = parseImageSeo(form);
   if (file instanceof File && file.size > 0) {
+    if ('error' in imageSeo) return redirect(fail(imageSeo.error), 303);
     const imgErr = validateImage(file);
     if (imgErr) return redirect(fail(imgErr), 303);
     // Every upload becomes a library item, whichever screen it came from.
@@ -66,15 +73,18 @@ export const POST: APIRoute = async ({ request, redirect, locals }) => {
     if (fileError) return redirect(fail(fileError), 303);
   }
 
-  // Slug from the optional slug field, else the name; made unique.
-  const slugBase = String(form.get('slug') ?? '').trim() || copy.title;
-  const slug = await uniqueSlug(env.DB, slugBase);
-
   // image_key starts null and is derived from the gallery by syncPrimaryImage.
   // Writing the uploaded key here directly would be an UNGUARDED reference: the
   // media row is unreferenced until the attach lands, so a concurrent library
   // delete could leave the product pointing at an object that no longer exists.
-  const productId = await createProduct(env.DB, { ...parsed.data, name: copy.title, description: copy.body, image_key: null, slug, detail_sections: details?.value }, copy.source);
+  let productId: number;
+  try {
+    productId = await createProduct(env.DB, { ...parsed.data, ...productSeoFields(form), name: copy.title,
+      description: copy.body, image_key: null, slug: url.slug, detail_sections: details?.value }, copy.source);
+  } catch (error) {
+    if (isProductSlugConflict(error)) return redirect(fail('此商品网址已使用，请换一个网址或留空重试。'), 303);
+    throw error;
+  }
   if (deliverable instanceof File && deliverable.size > 0) {
     await setProductFile(env.DB, productId, await uploadDigitalFile(getFileStorage(), deliverable));
   }
@@ -86,6 +96,14 @@ export const POST: APIRoute = async ({ request, redirect, locals }) => {
       // behind for the merchant to trip over on the next attempt.
       await deleteProduct(env.DB, productId);
       return redirect(fail(attached.error), 303);
+    }
+    if (!('error' in imageSeo) && (imageSeo.filename || imageSeo.alt || imageSeo.title || imageSeo.caption)) {
+      const [image] = await listProductImages(env.DB, productId);
+      const seoError = image ? await saveImageSeo(env.DB, image, { ...imageSeo, alt: imageSeo.alt ?? copy.title }) : '未找到上传的图片。';
+      if (seoError) {
+        await deleteProduct(env.DB, productId);
+        return redirect(fail(seoError), 303);
+      }
     }
     await syncPrimaryImage(env.DB, productId); // promotes it to products.image_key
   }

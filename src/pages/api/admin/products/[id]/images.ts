@@ -19,6 +19,7 @@ import { getStorage } from '../../../../../features/storage';
 import { parsePublicId } from '../../../../../features/ids/publicId';
 import { CACHE_TAG } from '../../../../../features/cache/tags';
 import { purgeCacheTags } from '../../../../../features/cache/purge';
+import { parseImageSeo, saveImageSeo } from '../../../../../features/products/imageSeo';
 
 export const prerender = false;
 
@@ -104,6 +105,15 @@ export const POST: APIRoute = async ({ request, params, redirect }) => {
   const img = imagePublicId ? byPublicId.get(imagePublicId) : undefined;
   if (!img) return back('未找到图片。');
   const imageId = img.id;
+
+  if (action === 'seo') {
+    const seo = parseImageSeo(form);
+    if ('error' in seo) return back(seo.error);
+    const error = await saveImageSeo(env.DB, img, seo);
+    if (error) return back(error);
+    await purgeProduct();
+    return back();
+  }
 
   if (action === 'alt') {
     await setProductImageAlt(env.DB, imageId, String(form.get('alt') ?? ''));

@@ -6,6 +6,8 @@ import { categoriesForProduct, relatedProducts } from '../categories/db';
 import { getRelatedStored, storeRelatedIds } from '../search';
 import { enabledMethods } from '../payments';
 import { markdownExcerpt, renderMarkdown } from '../pages/markdown.ts';
+import { defaultProductMeta, importedProductSeo } from '../products/seo.ts';
+import { imageAliasPath } from '../products/imageSeo.ts';
 import { productImageSources, productImageUrl, type ImageDelivery } from '../products/image';
 import { stockState } from '../products/stock';
 import { catalogPath } from '../settings/home';
@@ -177,9 +179,16 @@ export async function loadProductDetail(
       // The first frame is what a shopper sees before scrolling, so it is the
       // page's LCP candidate. Saying so on the model keeps the rendered
       // attributes and the fade decision from drifting apart.
-      hero: { ...hero, alt: options.reviewedCopy
-        ? approved?.alt_text ?? options.reviewedCopy.name
-        : image.alt?.trim() ?? product.name, priority: index === 0 },
+      hero: {
+        ...hero,
+        ...(image.seo_alias && { src: imageAliasPath(image.seo_alias) }),
+        alt: options.reviewedCopy
+          ? approved?.alt_text ?? options.reviewedCopy.name
+          : image.alt?.trim() || product.name,
+        title: options.locale === 'zh-CN' ? undefined : image.title || undefined,
+        caption: options.locale === 'zh-CN' ? undefined : image.caption || undefined,
+        priority: index === 0,
+      },
       thumbnail: { ...thumbnail, alt: '', priority: false },
     };
   });
@@ -209,20 +218,24 @@ export async function loadProductDetail(
   ].filter(section => section.items.length > 0);
   const galleryByKey = new Map(gallery.map((image) => [image.image_key, image]));
   const imageKeys = [...new Set([...(product.image_key ? [product.image_key] : []), ...galleryByKey.keys()])];
-  const imageUrls = imageKeys.map((key) => new URL(productImageUrl(key, options.imageBaseUrl), options.origin).href);
+  const imageUrls = imageKeys.map((key) => {
+    const alias = galleryByKey.get(key)?.seo_alias;
+    return new URL(alias ? imageAliasPath(alias) : productImageUrl(key, options.imageBaseUrl), options.origin).href;
+  });
   const imagePath = imageUrls[0];
   const imageAlt = imageKeys[0] ? images.find((_, index) => gallery[index].image_key === imageKeys[0])?.hero.alt || inquiryProduct.name : undefined;
-  const importedSeo = (() => {
-    if (options.locale === 'zh-CN' || !product.import_seo_json) return null;
-    try { return JSON.parse(product.import_seo_json) as { title: string; metaDescription: string; h1: string; intro: string; description: string; ogTitle?: string; ogDescription?: string }; }
-    catch { return null; }
-  })();
+  const importedSeo = zh ? null : importedProductSeo(product);
   const visibleCopy = options.reviewedCopy ?? importedSeo;
   const detailDescription = [visibleCopy?.intro, visibleCopy?.description].filter(Boolean).join('\n\n') || product.description;
+  const visibleName = visibleCopy?.h1 || product.name;
+  const manualTitle = zh ? undefined : product.seo_title?.trim();
+  const manualDescription = zh ? undefined : product.meta_description?.trim();
+  const title = manualTitle || options.reviewedCopy?.name || importedSeo?.title || product.name;
+  const description = manualDescription || importedSeo?.metaDescription || defaultProductMeta(detailDescription);
   const jsonLd = {
     '@context': 'https://schema.org',
     '@type': 'Product',
-    name: inquiryProduct.name,
+    name: visibleName,
     ...(options.sku && { sku: options.sku }),
     // Structured data wants prose, not Markdown syntax characters.
     ...(detailDescription ? { description: markdownExcerpt(detailDescription, 5000) } : {}),
@@ -250,11 +263,10 @@ export async function loadProductDetail(
     backfillRelated:
       storedRelated === null ? () => storeRelatedIds(product.id, RELATED_TARGET) : null,
     seo: {
-      ogTitle: importedSeo?.ogTitle,
-      ogDescription: importedSeo?.ogDescription,
-      title: options.reviewedCopy?.name || importedSeo?.title || product.name,
-      // Meta/og description: plain text, truncated on a word boundary.
-      description: importedSeo?.metaDescription || (detailDescription ? markdownExcerpt(detailDescription, 160) : null),
+      ogTitle: manualTitle || importedSeo?.ogTitle,
+      ogDescription: manualDescription || importedSeo?.ogDescription,
+      title,
+      description,
       imagePath,
       imageAlt,
       // Escape "<" so a product name can't break out of the <script> tag.
@@ -263,7 +275,7 @@ export async function loadProductDetail(
     model: {
       ...(options.locale === 'zh-CN' && { locale: options.locale }),
       id: requirePublicId(product.public_id, product.id, 'product'),
-      name: visibleCopy?.h1 || product.name,
+      name: visibleName,
       description: detailDescription,
       descriptionHtml: detailDescription
         ? renderMarkdown(detailDescription, {

@@ -1,5 +1,7 @@
 import type { APIRoute } from 'astro';
+import { env } from 'cloudflare:workers';
 import { getStorage } from '../../features/storage';
+import { imageAliasPattern } from '../../features/products/imageSeo';
 
 export const prerender = false;
 
@@ -25,7 +27,11 @@ export const GET: APIRoute = async ({ params, request, locals }) => {
     if (hit) return hit;
   }
 
-  const obj = await getStorage().get(key);
+  const original = key.startsWith('seo/') && key.length <= 180 && imageAliasPattern.test(key)
+    ? (await env.DB.prepare('SELECT image_key FROM product_image_url_aliases WHERE alias_key=?')
+      .bind(key).first<{ image_key: string }>())?.image_key
+    : key;
+  const obj = original ? await getStorage().get(original) : null;
   if (!obj) return new Response('Not found', { status: 404 });
 
   const response = new Response(obj.body, {

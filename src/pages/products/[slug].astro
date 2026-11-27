@@ -4,7 +4,7 @@ import Layout from '../../layouts/Layout.astro';
 import ProductDetail from '#theme/ProductDetail.astro';
 import { loadProductDetail } from '../../features/storefront/productDetail';
 import { getConfig } from '../../config';
-import { isIndexableStorefrontLocale, translatedPath } from '../../features/i18n/locale';
+import { isIndexableStorefrontLocale } from '../../features/i18n/locale';
 import { publicOrigin } from '../../features/http/origin';
 import { addCacheTags, productCacheTags } from '../../features/cache/tags';
 import { localizedImages, pilotLocale, pilotPrefix, productPaths, publishedProductTranslation, redirectedProductTranslation, type ProductTranslationCopy } from '../../features/i18n/productPublication';
@@ -28,8 +28,10 @@ if (legacyLocalized) return new Response(null, { status: 302, headers: {
 const paths = productPaths(translation?.english_slug ?? slug, translation?.slug);
 const reviewed = localized && translation ? JSON.parse(translation.publication_json).copy as ProductTranslationCopy : undefined;
 const sku = translation?.sku ?? (await env.DB.prepare(`
-  SELECT f.sku_key FROM product_publications f JOIN products p ON p.id=f.product_id WHERE p.slug=?
-`).bind(slug).first<{ sku_key: string }>())?.sku_key;
+  SELECT COALESCE(NULLIF(trim(s.source_sku), ''), f.sku_key) AS sku
+  FROM products p LEFT JOIN product_publications f ON p.id=f.product_id
+  LEFT JOIN product_import_sources s ON p.id=s.product_id WHERE p.slug=?
+`).bind(slug).first<{ sku: string | null }>())?.sku ?? undefined;
 const loaded = await loadProductDetail(env.DB, {
   slug: translation?.english_slug ?? slug,
   locale: Astro.locals.storeLocale,
@@ -53,10 +55,7 @@ const loaded = await loadProductDetail(env.DB, {
 if (loaded.status === 'not_found') {
   const redirect = await env.DB.prepare('SELECT p.slug FROM product_slug_redirects r JOIN products p ON p.id = r.product_id WHERE r.old_slug = ? AND p.active = 1 AND p.slug <> r.old_slug')
     .bind(Astro.params.slug ?? '').first<{ slug: string }>().catch(() => null);
-  if (redirect) return new Response(null, { status: 301, headers: {
-    location: translatedPath('/products/' + encodeURIComponent(redirect.slug), Astro.locals.storeLocale ?? 'en'),
-    'cache-control': 'no-store',
-  } });
+  if (redirect) return redirectTo('/products/' + encodeURIComponent(redirect.slug));
   return new Response('Not found', { status: 404 });
 }
 
@@ -69,7 +68,7 @@ if (loaded.backfillRelated) {
 ---
 
 <Layout title={seo.title} description={seo.description ?? undefined} image={seo.imagePath} imageAlt={seo.imageAlt} ogTitle={seo.ogTitle} ogDescription={seo.ogDescription}
-  productLanguagePaths={paths}>
+  exactTitle exactDescription ogType="product" productLanguagePaths={paths}>
   <ProductDetail model={model} purchase={purchase} />
 
   {isIndexableStorefrontLocale(Astro.locals.storeLocale ?? 'en') && <script is:inline type="application/ld+json" set:html={seo.jsonLd} />}

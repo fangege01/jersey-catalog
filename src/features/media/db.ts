@@ -305,7 +305,8 @@ export async function replaceProductImageFromMedia(
     .prepare(
       `UPDATE product_images
           SET image_key = (SELECT image_key FROM media WHERE id = ?3),
-              alt = COALESCE(alt, ?4)
+              alt = COALESCE(alt, ?4),
+              seo_alias = NULL
         WHERE product_id = ?1
           AND image_key = ?2
           AND EXISTS (SELECT 1 FROM media WHERE id = ?3)`,

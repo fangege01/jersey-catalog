@@ -4,15 +4,31 @@ const DIACRITICS = /[̀-ͯ]/g;
 
 /** Turn arbitrary text into a URL-safe slug. */
 export function slugify(input: string): string {
-  const base = input
+  return normalizeSlug(input) || 'product';
+}
+
+function normalizeSlug(input: string): string {
+  return input
     .normalize('NFKD')
     .replace(DIACRITICS, '')
     .toLowerCase()
     .replace(/['’`]/g, '') // drop apostrophes so "mom's" → "moms", not "mom-s"
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '')
-    .slice(0, 80);
-  return base || 'product';
+    .slice(0, 80)
+    .replace(/-+$/g, '');
+}
+
+export async function adminProductSlug(
+  db: D1Database, requested: string, title: string, existing?: { id: number; slug: string },
+): Promise<{ slug: string } | { error: string }> {
+  const raw = requested.trim();
+  if (existing?.slug && (!raw || raw === existing.slug)) return { slug: existing.slug };
+  if (!raw) return { slug: await uniqueSlug(db, title, existing?.id) };
+  const slug = normalizeSlug(raw);
+  if (!slug) return { error: '商品网址需包含英文字母或数字。' };
+  if (await uniqueSlug(db, slug, existing?.id) !== slug) return { error: '此商品网址已使用或已保留，请换一个网址。' };
+  return { slug };
 }
 
 /**

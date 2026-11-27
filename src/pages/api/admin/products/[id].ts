@@ -14,7 +14,8 @@ import { parseProductForm } from '../../../../features/products/form';
 import { parseProductDetailSections, prepareProductDetailSections } from '../../../../features/products/detailSections';
 import { zonesRequireWeight } from '../../../../features/shipping/calculator';
 import { shippingFor } from '../../../../features/shipping/effective';
-import { uniqueSlug } from '../../../../features/products/slug';
+import { adminProductSlug } from '../../../../features/products/slug';
+import { isProductSlugConflict, productSeoFields } from '../../../../features/products/seo';
 import {
   setProductCategories,
   getCategoriesByPublicIds,
@@ -156,6 +157,8 @@ export const POST: APIRoute = async ({ request, params, redirect, locals }) => {
   if (badReference) return fail(badReference);
   const copy = await saveCopyInEnglish(env.DB, env.AI, 'product', { title: parsed.data.name, body: parsed.data.description },
       { title: existing.name, body: existing.description, publicId });
+  const url = await adminProductSlug(env.DB, String(form.get('slug') ?? ''), copy.title, existing);
+  if ('error' in url) return fail(url.error);
   const details = prepareProductDetailSections(env.DB, env.AI, sections.source, existing.detail_sections);
 
   // The uploaded key is NOT written to products.image_key here: that reference
@@ -178,12 +181,6 @@ export const POST: APIRoute = async ({ request, params, redirect, locals }) => {
     if (fileError) return fail(fileError);
   }
 
-  // Keep the existing URL exactly as stored unless an explicit change is requested.
-  const requestedSlug = String(form.get('slug') ?? '').trim();
-  const slug = existing.slug && (!requestedSlug || requestedSlug === existing.slug)
-    ? existing.slug
-    : await uniqueSlug(env.DB, requestedSlug || copy.title, id);
-
   // Claim the image BEFORE committing anything else. A failed claim then aborts
   // with nothing written; doing it afterwards reported an image error while the
   // name, price, and stock edits had already been saved.
@@ -202,8 +199,14 @@ export const POST: APIRoute = async ({ request, params, redirect, locals }) => {
     }
   }
 
-  await updateProduct(env.DB, id, { ...parsed.data, name: copy.title, description: copy.body, image_key, slug, detail_sections: details?.value },
-    copy.source && { publicId, source: copy.source });
+  try {
+    await updateProduct(env.DB, id, { ...parsed.data, ...productSeoFields(form), name: copy.title,
+      description: copy.body, image_key, slug: url.slug, detail_sections: details?.value },
+      copy.source && { publicId, source: copy.source });
+  } catch (error) {
+    if (isProductSlugConflict(error)) return fail('此商品网址已使用，请换一个网址。');
+    throw error;
+  }
   if (deliverable instanceof File && deliverable.size > 0) {
     await setProductFile(env.DB, id, await uploadDigitalFile(getFileStorage(), deliverable));
   } else if (attachmentsEnabled && form.get('remove_deliverable') != null) {

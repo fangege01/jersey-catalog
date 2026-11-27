@@ -3,6 +3,7 @@ import { env } from 'cloudflare:workers';
 import AdminLayout from '../../../../layouts/AdminLayout.astro';
 import MediaPicker from '../../../../features/media/MediaPicker.astro';
 import ProductForm from '../../../../features/products/ProductForm.astro';
+import ImageSeoFields from '../../../../features/products/ImageSeoFields.astro';
 import { getProductByPublicId, listProductImages } from '../../../../features/products/db';
 import { parsePublicId } from '../../../../features/ids/publicId';
 import { listVariants, listExtras } from '../../../../features/products/variants';
@@ -138,7 +139,7 @@ const weightRequired = zonesRequireWeight(shippingFor(Astro.locals.settings).con
       images.length > 0 && (
         <ul data-gallery data-action={`/api/admin/products/${product.public_id}/images`} class="mb-6">
           {imageViews.map((img) => (
-            <li data-image-id={img.public_id} class="flex items-center gap-4 py-3">
+            <li data-image-id={img.public_id} class="flex flex-wrap items-center gap-3 py-3">
               {/* Drag handle — the grip icon + grab cursor signal the row is draggable. */}
               <span
                 data-handle
@@ -195,31 +196,7 @@ const weightRequired = zonesRequireWeight(shippingFor(Astro.locals.settings).con
                 </span>
               </div>
 
-              <form
-                data-js-action="alt"
-                method="POST"
-                action={`/api/admin/products/${product.public_id}/images`}
-                class="flex flex-1 items-center gap-2"
-              >
-                <input type="hidden" name="_action" value="alt" />
-                <input type="hidden" name="image_id" value={img.public_id} />
-                <input
-                  type="text"
-                  name="alt"
-                  value={img.alt ?? ''}
-                  draggable="false"
-                  placeholder="替代文本，用于描述图片"
-                  class="w-full border-b border-line bg-transparent py-1 text-sm focus:border-brand focus:outline-none"
-                />
-                <button
-                  type="submit"
-                  class="shrink-0 text-xs uppercase tracking-widest text-gray-400 hover:text-brand"
-                >
-                  保存
-                </button>
-              </form>
-
-              <div class="flex shrink-0 items-center gap-3 text-xs uppercase tracking-widest">
+              <div class="ml-auto flex shrink-0 items-center gap-3 text-xs uppercase tracking-widest">
                 <form data-js-action="primary" method="POST" action={`/api/admin/products/${product.public_id}/images`}>
                   <input type="hidden" name="_action" value="primary" />
                   <input type="hidden" name="image_id" value={img.public_id} />
@@ -235,6 +212,15 @@ const weightRequired = zonesRequireWeight(shippingFor(Astro.locals.settings).con
                   </button>
                 </form>
               </div>
+              <details class="w-full rounded-md border border-line px-3 py-2">
+                <summary class="cursor-pointer text-sm font-medium">图片 SEO 设置</summary>
+                <form method="POST" action={`/api/admin/products/${product.public_id}/images`} class="mt-3 space-y-3">
+                  <input type="hidden" name="_action" value="seo" />
+                  <input type="hidden" name="image_id" value={img.public_id} />
+                  <ImageSeoFields image={img} productName={product.name} />
+                  <button type="submit" class="rounded-md bg-brand px-3 py-2 text-xs font-medium text-on-brand">保存图片 SEO</button>
+                </form>
+              </details>
             </li>
           ))}
         </ul>
@@ -573,18 +559,6 @@ const weightRequired = zonesRequireWeight(shippingFor(Astro.locals.settings).con
           if (!confirm('确定删除这张图片？')) return;
           await send({ _action: 'delete', image_id: li.dataset.imageId });
           li.remove();
-        } else if (type === 'alt') {
-          await send(new FormData(form));
-          const btn = form.querySelector('button[type="submit"]');
-          if (btn) {
-            const publication = await env.DB.prepare('SELECT published_at, image_count FROM product_publications WHERE product_id = ?')
-  .bind(product.id).first<{ published_at: string; image_count: number }>().catch(() => null);
-const original = btn.textContent;
-            btn.textContent = 'Saved';
-            setTimeout(() => {
-              btn.textContent = original;
-            }, 1200);
-          }
         }
       });
     }
