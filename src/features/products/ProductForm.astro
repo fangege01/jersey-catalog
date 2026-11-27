@@ -79,7 +79,7 @@ const inputClass =
   }
 
   <div>
-    <label class="block text-sm font-medium" for="name">名称</label>
+    <label class="block text-sm font-medium" for="name">{product ? '标题' : '名称'}</label>
     <input id="name" name="name" type="text" required value={product?.name ?? ''} class={inputClass} />
   </div>
 
