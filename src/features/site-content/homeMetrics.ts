@@ -1,5 +1,6 @@
 import type { D1Database } from '@cloudflare/workers-types';
 import { prepareEnglishSave } from '../i18n/english';
+import type { StoreLocale } from '../i18n/locale';
 
 export const homeMetricsKey = 'home_metrics';
 export const homeMetricSlots = 4;
@@ -17,6 +18,19 @@ interface Metric {
 export interface HomeMetrics { enabled: boolean; items: Metric[] }
 
 export class HomeMetricInputError extends Error {}
+
+export function displayHomeMetrics(items: Metric[], locale: StoreLocale) {
+  if (locale === 'zh-CN') {
+    return items.map(({ value, sourceLabel: label, sourceSuffix: suffix }) => ({ value, label, suffix }));
+  }
+  return items.filter(item => item.label.trim()).map(({ value, label, suffix, sourceSuffix }) => {
+    const factor = sourceSuffix === '万' ? 10_000 : sourceSuffix === '亿' ? 100_000_000 : 1;
+    if (factor !== 1) return { value: String(Math.round(Number(value) * factor)), label, suffix: '' };
+    if (sourceSuffix === '年') suffix = Number(value) === 1 ? 'yr' : 'yrs';
+    if (sourceSuffix === '单') suffix = Number(value) === 1 ? 'order' : 'orders';
+    return { value, label, suffix };
+  });
+}
 
 export async function loadHomeMetrics(db: D1Database, stored?: string | null): Promise<HomeMetrics> {
   if (stored != null) {

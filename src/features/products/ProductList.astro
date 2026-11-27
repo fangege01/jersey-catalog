@@ -4,7 +4,7 @@ import Catalog from '#theme/Catalog.astro';
 import { loadCatalogPage } from '../storefront/catalog';
 import { display } from '../i18n/locale';
 import { getConfig } from '../../config';
-import { loadHomeMetrics } from '../site-content/homeMetrics';
+import { displayHomeMetrics, loadHomeMetrics } from '../site-content/homeMetrics';
 
 /**
  * The catalog list. Mounted at `/` and at `/products` — the store needs a URL
@@ -48,11 +48,7 @@ const [model, configuredMetrics] = await Promise.all([
 if (model.landing && configuredMetrics?.enabled) {
   model.landing = {
     ...model.landing,
-    metrics: configuredMetrics.items.filter(item => locale === 'zh-CN' || item.label.trim()).map(item => ({
-      value: item.value,
-      label: locale === 'zh-CN' ? item.sourceLabel : item.label,
-      suffix: locale === 'zh-CN' ? item.sourceSuffix : item.suffix,
-    })),
+    metrics: displayHomeMetrics(configuredMetrics.items, locale ?? 'en'),
   };
 }
 ---

@@ -52,9 +52,13 @@ const steps = [
       </ul>
       {shownMetrics.length > 0 && <ul class="hero-stats" aria-label={t('Catalog at a glance', '网站数字指标')} role="list">
         {shownMetrics.map(({ value, displayValue, label, suffix }) => <li>
-          <strong aria-hidden="true"><span data-hero-count={value}>{displayValue}</span>{suffix && <small>{suffix}</small>}</strong>
-          <span class="sr-only">{displayValue}{suffix ? ' ' + suffix : ''}</span>
           <span class="hero-stat-label">{label}</span>
+          <div class="hero-stat-value" aria-hidden="true">
+            <strong style={`--number-width: ${displayValue.length * .65 + suffix.length * (zh ? .49 : .29) + .2};`}>
+              <span data-hero-count={value}>{displayValue}</span>{suffix && <small>{suffix}</small>}
+            </strong>
+          </div>
+          <span class="sr-only">{displayValue}{suffix ? ' ' + suffix : ''}</span>
         </li>)}
       </ul>}
     </div>
@@ -197,7 +201,7 @@ const steps = [
   align-items: center;
   padding-block: clamp(3rem, 7vw, 6rem);
 }
-.hero-copy { min-width: 0; }
+.hero-copy { min-width: 0; container: hero-copy / inline-size; }
 .hero .eyebrow { font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: #a9e8fc; font-size: .8rem; }
 .hero h1 { margin: .85rem 0 1.05rem; font-size: clamp(2.15rem, 4vw, 3.25rem); line-height: 1.1; font-weight: 760; letter-spacing: -.042em; overflow-wrap: anywhere; }
 .hero-title, .hero-accent { display: block; text-wrap: balance; }
@@ -217,11 +221,41 @@ const steps = [
 .hero-options li { display: flex; align-items: baseline; gap: .45rem; }
 .hero-options li::before { content: ''; flex: none; width: .32rem; height: .32rem; align-self: center; border-radius: 50%; background: #7dd3fc; }
 .hero-options:has(+ .hero-stats) { border-top: 0; padding-top: 0; margin-top: 1.15rem; }
-.hero-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1.25rem .95rem; margin: 1.45rem 0 0; padding: 1.25rem 0 0; border-top: 1px solid #ffffff45; }
-.hero-stats li { min-width: 0; overflow-wrap: anywhere; }
-.hero-stats strong { display: block; color: white; font-size: clamp(1.45rem, 2.65vw, 2.125rem); font-weight: 800; font-variant-numeric: tabular-nums; line-height: 1.08; }
-.hero-stats small { margin-inline-start: .18em; color: #a9e8fc; font-size: .45em; }
-.hero-stat-label { display: block; margin-top: .35rem; color: #e0f5f2; font-size: .85rem; line-height: 1.4; }
+.hero-stats {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem .8rem;
+  margin: 1.45rem 0 0;
+  padding: 1.15rem 0 0;
+  border-top: 1px solid #ffffff45;
+}
+@container hero-copy (min-width: 31rem) {
+  .hero-stats { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
+.hero-stats li {
+  display: grid;
+  grid-row: span 2;
+  grid-template-rows: subgrid;
+  row-gap: .4rem;
+  min-width: 0;
+  padding-inline-start: .75rem;
+  border-inline-start: 2px solid #a9e8fc55;
+}
+.hero-stat-label { color: #e0f5f2; font-size: .85rem; line-height: 1.35; overflow-wrap: anywhere; }
+.hero-stat-value { min-width: 0; container-type: inline-size; }
+.hero-stat-value strong {
+  display: flex;
+  align-items: baseline;
+  align-self: start;
+  gap: .18em;
+  color: white;
+  font-size: clamp(1rem, min(24cqi, calc(100cqi / var(--number-width))), 2rem);
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+}
+.hero-stat-value span { flex: none; white-space: nowrap; }
+.hero-stat-value small { min-width: 0; color: #a9e8fc; font-size: .48em; overflow-wrap: anywhere; }
 .hero-visual {
   min-width: 0;
   overflow: hidden;
