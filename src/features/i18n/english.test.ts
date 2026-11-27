@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { Ai } from '@cloudflare/workers-types';
-import { completeEnglishSave, englishCopy, prepareEnglishSave } from './english';
+import { completeEnglishFields, completeEnglishSave, englishCopy, prepareEnglishSave } from './english';
 
 describe('single-source storefront editing', () => {
   const limits = { title: 100, body: 500 };
@@ -25,6 +25,15 @@ describe('single-source storefront editing', () => {
     run.mockRejectedValueOnce(new Error('Provider unavailable'))
       .mockResolvedValueOnce({ translated_text: 'Choose from 25 jerseys.' });
     await expect(completeEnglishSave(ai, { body: '有26款球衣可选。' }, limits)).rejects.toThrow('数字或链接');
+  });
+
+  it('publishes valid fields when another field fails both providers', async () => {
+    const run = vi.fn().mockResolvedValueOnce({ response: { title: 'New jerseys', body: '25 jerseys' } })
+      .mockResolvedValueOnce({ translated_text: '24 jerseys' });
+    await expect(completeEnglishFields({ run } as unknown as Ai, { title: '新球衣', body: '26款球衣' }, limits))
+      .resolves.toEqual({ title: 'New jerseys' });
+    expect(run).toHaveBeenCalledTimes(2);
+    expect(run.mock.calls[1][1].text).toBe('26款球衣');
   });
 
   it('preserves submitted English exactly without requiring a provider', async () => {

@@ -6,6 +6,7 @@ const { model, landing } = Astro.props;
 const { copy, image, metrics = [], whatsappHref: contact } = landing;
 const zh = model.locale === 'zh-CN';
 const t = (en: string, cn: string) => zh ? cn : en;
+const accentSegments = copy.heroAccent.split(/\s*[·•]\s*/u);
 const slides = landing.slides?.length ? landing.slides : [image];
 const shownMetrics = metrics.map(metric => {
   const decimals = metric.value.split('.')[1]?.length ?? 0;
@@ -27,11 +28,20 @@ const steps = [
   [copy.step4Title, copy.step4Text],
 ];
 ---
-<section class="hero" data-wide-catalog>
+<section class:list={['hero', zh && 'hero-zh']} data-wide-catalog>
   <div class="frame hero-layout">
     <div class="hero-copy">
       <p class="eyebrow">{copy.eyebrow}</p>
-      <h1>{copy.heroTitle}{zh ? '' : ' '}<br /><em>{copy.heroAccent}</em></h1>
+      <h1>
+        <span class="hero-title">{copy.heroTitle}</span>
+        <span class="hero-accent">
+          {accentSegments.length > 1
+            ? accentSegments.map((segment, index) => <span class="hero-accent-item">
+                {index > 0 && <span class="hero-accent-dot" aria-hidden="true">·</span>}{segment}
+              </span>)
+            : copy.heroAccent}
+        </span>
+      </h1>
       <p>{copy.heroIntro}</p>
       <div class="buttons">
         <a class="button bright" href="/products">{copy.browseCta}</a>
@@ -188,11 +198,17 @@ const steps = [
   padding-block: clamp(3rem, 7vw, 6rem);
 }
 .hero-copy { min-width: 0; }
-.eyebrow{font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:#a9e8fc;font-size:.8rem;}
-.hero h1{margin:1rem 0 1.2rem;font-size:clamp(2.6rem,5.15vw,4.75rem);line-height:1.03;font-weight:850;letter-spacing:-.055em;overflow-wrap:anywhere;}
-.hero h1 em{color:#7dd3fc;font-style:normal;}
-.hero-copy>p:not(.eyebrow){max-width:34rem;line-height:1.65;color:#e0f5f2;font-size:clamp(1rem,1.45vw,1.12rem);}
-.buttons{display:flex;flex-wrap:wrap;gap:.7rem;margin-top:1.55rem;}
+.hero .eyebrow { font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: #a9e8fc; font-size: .8rem; }
+.hero h1 { margin: .85rem 0 1.05rem; font-size: clamp(2.15rem, 4vw, 3.25rem); line-height: 1.1; font-weight: 760; letter-spacing: -.042em; overflow-wrap: anywhere; }
+.hero-title, .hero-accent { display: block; text-wrap: balance; }
+.hero-accent { margin-block-start: .28em; color: #a9e8fc; font-weight: 680; font-size: .72em; line-height: 1.18; }
+.hero-accent-item { display: inline-block; max-inline-size: 100%; }
+.hero-accent-dot { margin-inline: .32em; color: #7dd3fc; font-weight: 550; }
+.hero-zh .eyebrow { letter-spacing: .08em; }
+.hero-zh h1 { font-size: clamp(1.95rem, 3.45vw, 3.05rem); line-height: 1.18; letter-spacing: -.025em; font-weight: 770; }
+.hero-zh .hero-accent { font-size: .76em; letter-spacing: .015em; }
+.hero-copy>p:not(.eyebrow) { max-width: 34rem; line-height: 1.7; color: #e0f5f2; font-size: clamp(1rem,1.32vw,1.1rem); }
+.buttons{display:flex;flex-wrap:wrap;gap:.65rem;margin-top:1.35rem;}
 .button{display:inline-flex;min-height:46px;align-items:center;justify-content:center;border-radius:12px;padding:.65rem 1.1rem;font-weight:750;font-size:.95rem;}
 .bright{background:#7dd3fc;color:#082e39;}.bright:hover{background:#bae6fd;}
 .outline{border:1px solid rgba(255,255,255,.65);color:white;}.outline:hover{background:#ffffff15;}

@@ -1,5 +1,5 @@
 import type { D1Database } from '@cloudflare/workers-types';
-import type { SiteContentSettings, SiteCopyKey, SiteImageKey, SiteImages } from '../site-content/copy';
+import type { SiteContentSettings, SiteCopyKey, SiteImageKey, SiteImages, SiteSection } from '../site-content/copy';
 import { normalizeTimeZone } from './timeZone';
 import { homeSlideImageKeys } from '../site-content/homeSlides.ts';
 import {
@@ -27,6 +27,7 @@ export type SettingKey =
   | 'showcase_cases_options'
   | 'showcase_factory_enabled'
   | SiteCopyKey
+  | `site_content_sync:${SiteSection}`
   | SiteImageKey
   | 'whatsapp_number'
   | 'store_name' // overrides config.storeName

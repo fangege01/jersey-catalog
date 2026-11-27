@@ -10,6 +10,7 @@ import { getConfig } from '../../config';
 import { validContactEmail } from '../../features/site-content/inquiry';
 import { prepareEnglishSave } from '../../features/i18n/english';
 import { refreshStorefront, syncEnglishSetting } from '../../features/i18n/englishSettings';
+import { readEnglishSync, saveSiteCopy } from '../../features/site-content/englishSync';
 import { homeMetricSlots, homeMetricsForm, homeMetricsKey, HomeMetricInputError, loadHomeMetrics, prepareHomeMetrics } from '../../features/site-content/homeMetrics';
 
 const sectionQuery = Astro.url.searchParams.get('section') ?? 'home';
@@ -19,6 +20,13 @@ const locale = 'zh-CN';
 const sectionInfo = siteSections[section];
 const key = siteCopyKey(section, locale);
 const englishKey = siteCopyKey(section, 'en');
+const syncKey = `site_content_sync:${section}` as const;
+const sync = readEnglishSync(await getSetting(env.DB, syncKey));
+if (Astro.request.method === 'GET' && Astro.url.searchParams.has('english-sync')) {
+  return Response.json({ phase: sync?.phase, count: sync?.remaining.length }, {
+    headers: { 'Cache-Control': 'no-store' },
+  });
+}
 const focus = section === 'home' ? Astro.url.searchParams.get('focus') : null;
 const orderWorkflow = focus === 'process-copy';
 const bottomInquiry = focus === 'bottom-inquiry';
@@ -42,7 +50,7 @@ const path = sectionInfo.url + (orderWorkflow ? '#how-to-order' : bottomInquiry 
 const workflowFields = /^(process|step)/;
 const fields = Object.entries(sectionInfo.fields)
   .filter(([name]) => orderWorkflow ? workflowFields.test(name) : section !== 'contact' || !/^(body|panelTitle|point)/.test(name));
-const previous = readSiteCopy({ [key]: current ?? undefined }, section, locale);
+const previous: Record<string, string> = readSiteCopy({ [key]: current ?? undefined }, section, locale);
 let draft: Record<string, string> = previous;
 let error = '';
 const priorMetrics = canEditMetrics ? await loadHomeMetrics(env.DB, storedMetrics) : null;
@@ -55,9 +63,9 @@ if (Astro.request.method === 'POST') {
     const action = form.get('_action');
     if (!validSection) {
       error = '页面无效。';
-    } else if (action === 'copy') {
+    } else if (action === 'copy' || action === 'retry-english') {
       const values: Record<string, string> = {};
-      for (const [name, field] of fields) {
+      for (const [name, field] of action === 'copy' ? fields : []) {
         const raw = form.get(name);
         const value = typeof raw === 'string' ? raw.trim() : '';
         if ((!value && !('optional' in field && field.optional)) || value.length > field.max) {
@@ -69,19 +77,15 @@ if (Astro.request.method === 'POST') {
       draft = { ...previous, ...values };
       if (!error) {
         const priorEnglish = readSiteCopy({ [englishKey]: (await getSetting(env.DB, englishKey)) ?? undefined }, section, 'en');
-        const limits = Object.fromEntries(fields.map(([name, field]) => [name, field.max]));
-        const { fallback, pending } = prepareEnglishSave(values,
-          { source: previous, english: priorEnglish }, Object.keys(values));
-        const sourceValue = JSON.stringify(draft);
-        const immediateEnglish = { ...priorEnglish, ...fallback };
-        const englishValue = JSON.stringify(immediateEnglish);
-        const statement = 'INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = datetime(\'now\')';
-        await env.DB.batch([
-          env.DB.prepare(statement).bind(key, sourceValue),
-          env.DB.prepare(statement).bind(englishKey, englishValue),
-        ]);
-        syncEnglishSetting(Astro.locals.cfContext, env.AI, env.DB, pending, limits, englishKey,
-          englishValue, translated => JSON.stringify({ ...immediateEnglish, ...translated }), { key, expected: sourceValue });
+        const limits = Object.fromEntries(Object.entries(sectionInfo.fields).map(([name, field]) => [name, field.max]));
+        const defaults: Record<string, string> = readSiteCopy(undefined, section, locale);
+        const retry = (sync?.remaining ?? Object.keys(limits).filter(name => previous[name] !== defaults[name]))
+          .filter(name => Object.hasOwn(limits, name));
+        const candidates = Object.fromEntries([...new Set([...Object.keys(values), ...retry])]
+          .map(name => [name, draft[name]]));
+        const { fallback, pending } = prepareEnglishSave(candidates, { source: previous, english: priorEnglish }, retry);
+        await saveSiteCopy(Astro.locals.cfContext, env.AI, env.DB, { source: key, english: englishKey, sync: syncKey },
+          draft, { ...priorEnglish, ...fallback }, pending, limits);
         persisted = true;
       }
     } else if (action === 'metrics' && priorMetrics) {
@@ -189,7 +193,17 @@ const descriptions: Record<SiteSection, string> = {
     {section === 'global' && <a class="block text-sm underline" href="/admin/settings">修改站点名称和 Logo</a>}
     {section === 'contact' && <a class="block text-sm underline" href="/admin/whatsapp">修改全站 WhatsApp 号码</a>}
     {error ? <p role="alert" class="text-sm font-medium text-red-700">{error}</p> :
-      Astro.url.searchParams.get('saved') === '1' && <p role="status" class="text-sm font-medium text-green-700">内容已保存。英文文案自动同步。</p>}
+      Astro.url.searchParams.get('saved') === '1' && <p role="status" class="text-sm font-medium text-green-700">内容已保存。</p>}
+    <form method="POST" action={formUrl} class="flex flex-wrap items-center gap-3 text-sm">
+      <input type="hidden" name="_action" value="retry-english" />
+      <p role="status" data-copy-sync={sync?.phase} data-status-url={formUrl + '&english-sync=1'}>
+        {sync?.phase === 'pending' ? '英文文案正在同步。' : sync?.phase === 'failed' ?
+          `还有 ${sync.remaining.length} 项英文文案待同步，可重新同步。` : sync?.phase === 'ready' ?
+          '本页英文文案已同步。' : '已有文案可补同步到英文页面。'}
+      </p>
+      <button class="rounded-md border border-line px-3 py-2"
+        data-copy-sync-retry hidden={sync?.phase === 'pending' || sync?.phase === 'ready'}>重新同步英文</button>
+    </form>
     {metricsDraft && <form id="home-metrics" method="POST" action={formUrl} class="space-y-4 rounded-xl border border-line bg-surface p-5">
       <input type="hidden" name="_action" value="metrics" />
       <h2 class="font-semibold">首页数字指标</h2>
@@ -246,6 +260,31 @@ const descriptions: Record<SiteSection, string> = {
 </AdminLayout>
 
 <script>
+  const status = document.querySelector<HTMLElement>('[data-copy-sync="pending"]');
+  if (status) {
+    const retry = status.parentElement?.querySelector<HTMLButtonElement>('[data-copy-sync-retry]');
+    const poll = async (attempt = 1) => {
+      try {
+        const response = await fetch(status.dataset.statusUrl!, { cache: 'no-store' });
+        if (!response.ok) throw new Error('Unable to read sync status');
+        const { phase, count } = await response.json() as { phase?: string; count?: number };
+        if (phase === 'ready' || phase === 'failed') {
+          status.textContent = phase === 'ready' ? '本页英文文案已同步。' : `还有 ${count} 项英文文案待同步，可重新同步。`;
+          if (retry) retry.hidden = phase !== 'failed';
+          return;
+        }
+      } catch {
+        // Retry a temporary connection failure without disturbing the editor.
+      }
+      if (attempt < 19) window.setTimeout(() => void poll(attempt + 1), 2000);
+      else {
+        status.textContent = '同步状态暂不可用，可刷新查看或重新同步。';
+        if (retry) retry.hidden = false;
+      }
+    };
+    window.setTimeout(() => void poll(), 2000);
+  }
+
   for (const form of document.querySelectorAll('[data-site-image-form]')) {
     const picker = form.querySelector('dialog');
     const input = form.querySelector<HTMLInputElement>('input[name="image"]');
