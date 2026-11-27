@@ -17,14 +17,26 @@ const reviews = published.filter(review => display(locale, review.quote, review.
 const baseUrl = getConfig().images.baseUrl;
 ---
 {reviews.length > 0 && (
-  <section class="reviews" aria-labelledby="customer-reviews">
+  <section class="reviews" aria-labelledby="customer-reviews" data-review-carousel>
     <header class="reviews-heading">
-      <h2 id="customer-reviews">{display(locale, options.title, options.sourceTitle)}</h2>
-      {intro && <p class="reviews-intro">{intro}</p>}
+      <div>
+        <h2 id="customer-reviews">{display(locale, options.title, options.sourceTitle)}</h2>
+        {intro && <p class="reviews-intro">{intro}</p>}
+      </div>
+      <div class="review-controls" data-review-controls hidden>
+        <button type="button" data-review-prev aria-controls="review-track"
+          aria-label={display(locale, 'Previous review', '上一条评价')}><span aria-hidden="true">←</span></button>
+        <button type="button" data-review-next aria-controls="review-track"
+          aria-label={display(locale, 'Next review', '下一条评价')}><span aria-hidden="true">→</span></button>
+        <button type="button" data-review-toggle aria-controls="review-track"
+          aria-label={display(locale, 'Pause review carousel', '暂停评价轮播')}
+          data-pause-label={display(locale, 'Pause review carousel', '暂停评价轮播')}
+          data-play-label={display(locale, 'Play review carousel', '播放评价轮播')}><span aria-hidden="true">Ⅱ</span></button>
+      </div>
     </header>
-    <ul class="reviews-grid" role="list">
+    <ul id="review-track" class="review-track" role="list" data-review-track>
       {reviews.map((review) => (
-        <li class="review-card">
+        <li class="review-card" data-review-card>
           {review.rating !== null && <p class="review-rating">
             <span class="review-stars" aria-hidden="true">
               {Array.from({ length: 5 }, (_, index) => {
@@ -36,7 +48,12 @@ const baseUrl = getConfig().images.baseUrl;
             <span class="sr-only">{display(locale, 'Rating', '评分')}</span>
             <span class="review-score">{review.rating.toFixed(1)}</span>
           </p>}
-          <blockquote>{display(locale, review.quote, review.sourceQuote ?? review.quote)}</blockquote>
+          <div class="review-body">
+            <blockquote>{display(locale, review.quote, review.sourceQuote ?? review.quote)}</blockquote>
+            <button type="button" class="review-more" data-review-more hidden aria-haspopup="dialog">
+              {display(locale, 'Read full review', '查看完整评价')}<span class="sr-only"> · {review.name}</span>
+            </button>
+          </div>
           <div class="review-person">
             {review.avatarKey && <img src={mediaUrl(review.avatarKey, baseUrl)} alt="" loading="lazy" decoding="async" width="44" height="44" />}
             <div>
@@ -47,16 +64,130 @@ const baseUrl = getConfig().images.baseUrl;
         </li>
       ))}
     </ul>
+    <dialog class="review-dialog" aria-labelledby="review-dialog-title" data-review-dialog>
+      <div class="review-dialog-heading">
+        <h3 id="review-dialog-title"></h3>
+        <form method="dialog">
+          <button type="submit" aria-label={display(locale, 'Close review', '关闭评价')} autofocus>×</button>
+        </form>
+      </div>
+      <blockquote></blockquote>
+    </dialog>
   </section>
 )}
 
+<script>
+  for (const section of document.querySelectorAll<HTMLElement>('[data-review-carousel]')) {
+    const track = section.querySelector<HTMLElement>('[data-review-track]')!;
+    const controls = section.querySelector<HTMLElement>('[data-review-controls]')!;
+    const toggle = section.querySelector<HTMLButtonElement>('[data-review-toggle]')!;
+    const dialog = section.querySelector<HTMLDialogElement>('[data-review-dialog]')!;
+    const cards = [...track.querySelectorAll<HTMLElement>('[data-review-card]')];
+    const motion = matchMedia('(prefers-reduced-motion: reduce)');
+    let paused = motion.matches;
+    let visible = false;
+    let step = 0;
+    let clones: HTMLElement[] = [];
+    let settle: ReturnType<typeof setTimeout> | undefined;
+
+    function updatePlayback() {
+      toggle.setAttribute('aria-label', (paused ? toggle.dataset.playLabel : toggle.dataset.pauseLabel)!);
+      toggle.firstElementChild!.textContent = paused ? '▶' : 'Ⅱ';
+    }
+
+    function copies() {
+      const fragment = document.createDocumentFragment();
+      for (const card of cards) {
+        const copy = card.cloneNode(true) as HTMLElement;
+        copy.removeAttribute('data-review-card');
+        copy.setAttribute('aria-hidden', 'true');
+        copy.inert = true;
+        clones.push(copy);
+        fragment.appendChild(copy);
+      }
+      return fragment;
+    }
+
+    function measure() {
+      const index = step ? Math.round(track.scrollLeft / step) % cards.length : 0;
+      const first = cards[0].getBoundingClientRect();
+      const nextStep = cards[1]?.getBoundingClientRect().left - first.left;
+      const shouldLoop = !!nextStep && nextStep * (cards.length - 1) + first.width > track.clientWidth + 1;
+      for (const card of cards) {
+        const quote = card.querySelector('blockquote')!;
+        card.querySelector<HTMLButtonElement>('[data-review-more]')!.hidden = quote.scrollHeight <= quote.clientHeight + 1;
+      }
+      if (shouldLoop === !!clones.length && nextStep === step && clones.length) return;
+      if (clones.length) {
+        clones.forEach(copy => copy.remove());
+        clones = [];
+      }
+      step = shouldLoop ? nextStep : 0;
+      controls.hidden = !shouldLoop;
+      if (!shouldLoop) { track.removeAttribute('tabindex'); return; }
+      track.tabIndex = 0;
+      track.insertBefore(copies(), track.firstChild);
+      track.appendChild(copies());
+      track.scrollTo({ left: (cards.length + index) * step, behavior: 'instant' });
+    }
+
+    function move(direction: number) {
+      if (step) track.scrollTo({ left: (Math.round(track.scrollLeft / step) + direction) * step,
+        behavior: motion.matches ? 'instant' : 'smooth' });
+    }
+
+    track.addEventListener('scroll', () => {
+      clearTimeout(settle);
+      settle = setTimeout(() => {
+        settle = undefined;
+        if (!step) return;
+        const index = Math.round(track.scrollLeft / step);
+        if (index < cards.length || index >= cards.length * 2) {
+          track.scrollTo({ left: (cards.length + index % cards.length) * step, behavior: 'instant' });
+        }
+      }, 140);
+    }, { passive: true });
+    track.addEventListener('keydown', event => {
+      if (event.target !== track || !['ArrowLeft', 'ArrowRight'].includes(event.key)) return;
+      event.preventDefault();
+      move(event.key === 'ArrowLeft' ? -1 : 1);
+    });
+    section.querySelector('[data-review-prev]')!.addEventListener('click', () => move(-1));
+    section.querySelector('[data-review-next]')!.addEventListener('click', () => move(1));
+    toggle.addEventListener('click', () => { paused = !paused; updatePlayback(); });
+    motion.addEventListener('change', () => { paused = motion.matches; updatePlayback(); });
+    for (const card of cards) {
+      card.querySelector('[data-review-more]')!.addEventListener('click', () => {
+        dialog.querySelector('h3')!.textContent = card.querySelector('.review-name')!.textContent;
+        dialog.querySelector('blockquote')!.textContent = card.querySelector('blockquote')!.textContent;
+        dialog.showModal();
+      });
+    }
+    section.dataset.enhanced = '';
+    measure();
+    updatePlayback();
+    new ResizeObserver(measure).observe(track);
+    new IntersectionObserver(([entry]) => { visible = entry.isIntersecting; }, { threshold: .25 }).observe(track);
+    setInterval(() => {
+      const focus = document.activeElement;
+      if (!paused && visible && !settle && !document.hidden && !dialog.open &&
+          !track.matches(':hover') && (!section.contains(focus) || focus === toggle)) move(1);
+    }, 4800);
+  }
+</script>
+
 <style>
   .reviews { width: min(calc(100% - 3rem), 75rem); margin-inline: auto; padding-block-end: clamp(1.5rem, 3vw, 2.25rem); }
-  .reviews-heading { margin-bottom: 1.3rem; }
+  .reviews-heading { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: end; gap: .75rem; margin-bottom: 1.05rem; }
   .reviews-heading h2 { margin: 0; font-size: clamp(1.8rem, 3.2vw, 2.65rem); font-weight: 750; color: var(--color-ink); line-height: 1.2; }
   .reviews-intro { max-width: 40rem; margin-top: .75rem; color: var(--color-muted); line-height: 1.65; white-space: pre-wrap; }
-  .reviews-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1rem; margin: 0; padding: 0; list-style: none; }
-  .review-card { display: flex; min-width: 0; flex-direction: column; gap: .9rem; padding: clamp(1rem, 2.2vw, 1.5rem); border: 1px solid var(--color-line); border-radius: 1.25rem; background: linear-gradient(145deg, var(--color-surface), var(--color-paper)); box-shadow: 0 8px 22px rgb(15 118 110 / 6%); overflow-wrap: anywhere; }
+  .review-controls:not([hidden]) { display: flex; gap: .4rem; }
+  .review-controls button, .review-dialog button { display: grid; place-items: center; width: 2.5rem; height: 2.5rem; border: 1px solid var(--color-line); border-radius: 50%; background: var(--color-paper); color: var(--color-brand); cursor: pointer; }
+  .review-controls button:hover, .review-dialog button:hover { background: var(--color-surface); border-color: var(--color-brand); }
+  .review-track { --review-gap: 1rem; position: relative; display: flex; gap: var(--review-gap); margin: 0; padding: .15rem 0 .65rem; list-style: none; overflow-x: auto; overscroll-behavior-x: contain; scroll-snap-type: x mandatory; }
+  .reviews[data-enhanced] .review-track { scrollbar-width: none; }
+  .review-card { display: flex; min-width: 0; flex: 0 0 calc((100% - 2 * var(--review-gap)) / 3); scroll-snap-align: start; flex-direction: column; gap: .8rem; padding: clamp(1rem, 2vw, 1.375rem); border: 1px solid var(--color-line); border-radius: 1.15rem; background: linear-gradient(145deg, var(--color-surface), var(--color-paper)); box-shadow: 0 5px 15px rgb(15 118 110 / 6%); overflow-wrap: anywhere; }
+  .review-card:only-child { flex-basis: min(100%, 32rem); }
   .review-rating { display: flex; align-items: center; gap: .65rem; margin: 0; }
   .review-stars { display: inline-flex; align-items: center; gap: .23rem; }
   .review-score { color: var(--color-ink); font-size: 1rem; font-weight: 750; font-variant-numeric: tabular-nums; line-height: 1; }
@@ -99,12 +230,20 @@ const baseUrl = getConfig().images.baseUrl;
     .review-star::before { background: CanvasText; }
     .review-star::after { background: Canvas; }
   }
-  blockquote { flex: 1; margin: 0; color: var(--color-ink); font-size: .95rem; line-height: 1.7; white-space: pre-line; }
-  .review-person { display: flex; align-items: center; gap: .7rem; padding-top: .85rem; border-top: 1px solid var(--color-line); }
-  .review-person img { flex: none; width: 44px; height: 44px; border-radius: 50%; object-fit: cover; }
+  .review-body { flex: 1; }
+  blockquote { margin: 0; color: var(--color-ink); font-size: .95rem; line-height: 1.6; white-space: pre-line; overflow-wrap: anywhere; }
+  .reviews[data-enhanced] .review-body blockquote { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 4; overflow: hidden; }
+  .review-more { margin-top: .45rem; color: var(--color-brand); font-size: .83rem; text-decoration: underline; text-underline-offset: .18em; cursor: pointer; }
+  .review-dialog { position: fixed; inset: 0; width: min(calc(100% - 2rem), 34rem); max-height: calc(100% - 2rem); margin: auto; padding: clamp(1rem, 4vw, 1.75rem); border: 1px solid var(--color-line); border-radius: 1.15rem; background: var(--color-paper); color: var(--color-ink); }
+  .review-dialog::backdrop { background: rgb(9 29 36 / 62%); }
+  .review-dialog-heading { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-bottom: .9rem; }
+  .review-dialog-heading h3 { font-size: 1.15rem; font-weight: 750; overflow-wrap: anywhere; }
+  .review-dialog-heading button { font-size: 1.35rem; }
+  .review-person { display: flex; align-items: center; gap: .65rem; padding-top: .75rem; border-top: 1px solid var(--color-line); }
+  .review-person img { flex: none; width: 40px; height: 40px; border-radius: 50%; object-fit: cover; }
   .review-name { margin: 0; color: var(--color-ink); font-size: .9rem; font-weight: 750; }
   .review-role { margin: .15rem 0 0; color: var(--color-muted); font-size: .8rem; line-height: 1.35; }
-  @media (max-width: 65rem) { .reviews-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+  @media (max-width: 65rem) { .review-card:not(:only-child) { flex-basis: calc((100% - var(--review-gap)) / 2); } }
   @media (max-width: 47rem) { .reviews { width: calc(100% - 2rem); } }
-  @media (max-width: 38rem) { .reviews-grid { grid-template-columns: 1fr; gap: .75rem; } }
+  @media (max-width: 38rem) { .review-track { --review-gap: .75rem; } .review-card:not(:only-child) { flex-basis: 100%; } }
 </style>
