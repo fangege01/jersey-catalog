@@ -10,6 +10,8 @@ import {
 import { mediaUsageForIds, isUnused } from '../../../features/media/usage';
 import { mediaUrl } from '../../../features/media/url';
 import { libraryImageLabel } from '../../../features/media/seoName';
+import { assignMediaCategory, mediaCategoryId } from '../../../features/media/categories';
+import { mediaLibraryReturn } from '../../../features/media/libraryReturn';
 import { uploadMedia, validateUpload } from '../../../features/media/upload';
 import { optimizeUpload } from '../../../features/products/imageOptimize';
 import { prewarmImageTransforms } from '../../../features/products/image';
@@ -53,8 +55,8 @@ export interface MediaListItem {
  * `paginate()` can clamp an out-of-range `?page=` to the last real page rather
  * than rendering an empty grid.
  */
-export async function loadMediaPage(limit: number, offset: number) {
-  const items = await listMedia(env.DB, limit, offset);
+export async function loadMediaPage(limit: number, offset: number, category?: string | null) {
+  const items = await listMedia(env.DB, limit, offset, category);
   // One bulk resolve for the whole page — never one usage query per row.
   const usage = await mediaUsageForIds(
     env.DB,
@@ -114,9 +116,14 @@ export const POST: APIRoute = async ({ request, redirect, locals }) => {
           status,
           headers: { 'content-type': 'application/json', 'cache-control': 'private, no-store' },
         })
-      : redirect(`/admin/media?error=${encodeURIComponent(msg)}`, 303);
+      : redirect(mediaLibraryReturn(form, { error: msg }), 303);
 
   if (files.length === 0) return fail('请至少选择一张图片。');
+  const uploadCategory = String(form.get('upload_category') ?? '');
+  const categoryId = mediaCategoryId(uploadCategory);
+  if (uploadCategory && (!categoryId || !(await env.DB.prepare('SELECT 1 FROM media_categories WHERE id=?').bind(categoryId).first()))) {
+    return fail('请选择仍可用的图片分类。');
+  }
   const seoName = String(form.get('seo_name') ?? '').trim();
   if (seoName.length > 100 || (seoName && !libraryImageLabel('', seoName))) {
     return fail('请填写有描述性的英文图片名称，最多 100 字符。');
@@ -143,6 +150,13 @@ export const POST: APIRoute = async ({ request, redirect, locals }) => {
       originalName: media.original_name,
     });
   }
+  if (categoryId) {
+    const ids = uploaded.flatMap(item => item.id ? [item.id] : []);
+    // A category removed during an upload leaves the new images uncategorized.
+    for (let start = 0; start < ids.length; start += MEDIA_PAGE_SIZE) {
+      await assignMediaCategory(env.DB, ids.slice(start, start + MEDIA_PAGE_SIZE), categoryId);
+    }
+  }
 
   // Pre-generate each upload's responsive ladder behind the response, so the
   // first shopper hits warm cache instead of ~2.4s cold AVIF encodes. The
@@ -165,5 +179,5 @@ export const POST: APIRoute = async ({ request, redirect, locals }) => {
     ? new Response(JSON.stringify({ media: uploaded }), {
         headers: { 'content-type': 'application/json', 'cache-control': 'private, no-store' },
       })
-    : redirect('/admin/media', 303);
+    : redirect(mediaLibraryReturn(form, { success: `已上传 ${uploaded.length} 张图片。` }), 303);
 };

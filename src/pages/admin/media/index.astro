@@ -6,17 +6,27 @@ import { MEDIA_PAGE_SIZE, countMedia } from '../../../features/media/db';
 import { isUnused, usageLinks } from '../../../features/media/usage';
 import { mediaUrl } from '../../../features/media/url';
 import { storedSeoFilename } from '../../../features/media/seoName';
+import { listMediaCategories } from '../../../features/media/categories';
 import { loadMediaPage } from '../../api/admin/media';
 import { paginate, queryHref } from '../../../pagination';
 
 const error = Astro.url.searchParams.get('error');
+const success = Astro.url.searchParams.get('success');
+const categories = await listMediaCategories(env.DB);
+const categoryNames = new Map(categories.map(category => [category.id, category.name]));
+const filter = Astro.url.searchParams.get('category');
+const selectedCategory = filter === 'uncategorized' ? null : filter && categoryNames.has(filter) ? filter : undefined;
+const filterValue = selectedCategory === null ? 'uncategorized' : selectedCategory ?? '';
 
 // Count first so paginate() clamps an out-of-range ?page= to the last real page
 // instead of querying past the end and rendering an empty grid.
-const total = await countMedia(env.DB);
+const total = await countMedia(env.DB, selectedCategory);
 const { page, offset, totalPages } = paginate(Astro.url.searchParams, total, MEDIA_PAGE_SIZE);
-const { items, usage, baseUrl } = await loadMediaPage(MEDIA_PAGE_SIZE, offset);
-const hrefFor = (p: number) => queryHref('/admin/media', { page: p > 1 ? p : undefined });
+const { items, usage, baseUrl } = await loadMediaPage(MEDIA_PAGE_SIZE, offset, selectedCategory);
+const hrefFor = (p: number) => queryHref('/admin/media', { category: filterValue, page: p > 1 ? p : undefined });
+const manageRoute = '/api/admin/media/manage';
+const field = 'rounded-md border border-line bg-surface px-3 py-2 text-sm';
+const secondary = 'rounded-md border border-line bg-surface px-3 py-2 text-sm hover:border-brand';
 
 const dateFmt = new Intl.DateTimeFormat('en-US', { dateStyle: 'medium' });
 const formatDate = (iso: string) => dateFmt.format(new Date(`${iso.replace(' ', 'T')}Z`));
@@ -35,18 +45,54 @@ function formatSize(bytes: number | null): string | null {
     <div>
       <h1 class="font-serif text-3xl tracking-tight">素材库</h1>
       <p class="mt-1 text-sm text-gray-500">
-        共 {total} 个文件。只有解除所有引用后才能删除文件。
+        {filterValue ? '当前分类' : '全部素材'}共 {total} 个文件，每页 {MEDIA_PAGE_SIZE} 张。引用中的图片需先解除引用。
       </p>
     </div>
   </div>
 
   {
-    error && (
-      <p class="mb-6 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+    error ? (
+      <p role="alert" class="mb-6 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
         {error}
       </p>
-    )
+    ) : success && <p role="status" class="mb-6 rounded-md border border-teal-200 bg-teal-50 px-4 py-3 text-sm text-teal-800">{success}</p>
   }
+
+  <section class="mb-5 space-y-4 rounded-xl border border-line bg-surface px-4 py-3">
+    <div class="flex flex-wrap items-center justify-between gap-3">
+      <form method="get" action="/admin/media" class="flex flex-wrap items-center gap-2">
+        <label class="text-sm font-medium" for="media-category">素材分类</label>
+        <select class={field} id="media-category" name="category">
+          <option value="" selected={!filterValue}>全部素材</option>
+          <option value="uncategorized" selected={filterValue === 'uncategorized'}>未分类</option>
+          {categories.map(category => <option value={category.id} selected={filterValue === category.id}>{category.name}</option>)}
+        </select>
+        <button class={secondary} type="submit">查看分类</button>
+      </form>
+    </div>
+    <details>
+      <summary class="cursor-pointer text-sm font-semibold text-brand">管理素材分类</summary>
+      <div class="mt-4 space-y-3">
+        <form method="post" action={manageRoute} class="flex flex-wrap items-end gap-2">
+          <input type="hidden" name="filter_category" value={filterValue} />
+          <label class="grid gap-1 text-sm">新分类名称
+            <input class={field} name="name" placeholder="例如 首页轮播" maxlength="60" required />
+          </label>
+          <button class={secondary} name="action" value="create-category">新增分类</button>
+        </form>
+        {categories.map(category => (
+          <form method="post" action={manageRoute} class="flex flex-wrap items-center gap-2" data-media-confirm>
+            <input type="hidden" name="category_id" value={category.id} />
+            <input type="hidden" name="filter_category" value={filterValue} />
+            <input class={field} name="name" value={category.name} aria-label={`分类名称：${category.name}`} maxlength="60" required />
+            <button class={secondary} name="action" value="rename-category">重命名</button>
+            <button class="px-2 py-2 text-sm text-red-700" name="action" value="remove-category" formnovalidate>删除分类</button>
+          </form>
+        ))}
+        {categories.length > 0 && <p class="text-xs text-muted">删除分类会把其中的图片转为未分类。</p>}
+      </div>
+    </details>
+  </section>
 
   <form
     method="post"
@@ -54,6 +100,7 @@ function formatSize(bytes: number | null): string | null {
     enctype="multipart/form-data"
     class="mb-8 flex flex-wrap items-center gap-3 rounded-md border border-line p-4"
   >
+    <input type="hidden" name="filter_category" value={filterValue} />
     <input
       type="file"
       name="files"
@@ -72,13 +119,35 @@ function formatSize(bytes: number | null): string | null {
       <input type="text" name="seo_name" maxlength="100" placeholder="例如 Factory production line"
         class="mt-1 block w-full rounded-md border border-line bg-paper px-3 py-2 sm:w-72" />
     </label>
+    {categories.length > 0 && <label class="w-full text-sm sm:w-auto">上传到分类
+      <select class={field + ' mt-1 block'} name="upload_category">
+        <option value="" selected={!selectedCategory}>未分类</option>
+        {categories.map(category => <option value={category.id} selected={selectedCategory === category.id}>{category.name}</option>)}
+      </select>
+    </label>}
     <p class="w-full text-xs text-gray-500">默认从有描述的原文件名生成。原文件名类似 IMG_001 时，可填写图片用途。支持 JPEG、PNG、WebP 和 GIF，每张最多 5 MB。</p>
   </form>
+
+  {items.length > 0 && <form method="post" action={manageRoute} id="media-selection" data-media-confirm
+    class="mb-4 flex flex-wrap items-center gap-3 rounded-xl border border-line bg-surface px-4 py-3">
+    <input type="hidden" name="filter_category" value={filterValue} />
+    <input type="hidden" name="page" value={page} />
+    <label class="flex items-center gap-2 text-sm"><input type="checkbox" data-select-media /> 全选本页</label>
+    <span class="text-sm text-muted" data-selection-count aria-live="polite">已选 0 张</span>
+    <button class="rounded-md border border-red-200 px-3 py-2 text-sm text-red-700 disabled:opacity-50"
+      name="action" value="delete" data-selection-action>批量删除</button>
+    <select class={field} name="target_category" aria-label="要移入的分类">
+      <option value="">选择目标分类</option>
+      <option value="uncategorized">未分类</option>
+      {categories.map(category => <option value={category.id}>{category.name}</option>)}
+    </select>
+    <button class={secondary + ' disabled:opacity-50'} name="action" value="assign" data-selection-action>移入分类</button>
+  </form>}
 
   {
     items.length === 0 ? (
       <p class="py-12 text-center text-sm text-gray-500">
-        暂无素材。可在上方上传，也可以给商品添加图片，上传内容都会进入此素材库。
+        {filterValue ? '当前分类暂无素材。' : '暂无素材。可在上方上传，也可以给商品添加图片，上传内容都会进入此素材库。'}
       </p>
     ) : (
       <ul class="grid grid-cols-2 gap-3 sm:grid-cols-[repeat(auto-fill,minmax(9rem,1fr))]">
@@ -93,6 +162,13 @@ function formatSize(bytes: number | null): string | null {
           const seoFilename = storedSeoFilename(m.image_key);
           return (
             <li class="flex min-w-0 flex-col gap-1.5 rounded-xl border border-line bg-surface p-2.5">
+              <div class="flex items-center gap-2">
+                <input type="checkbox" form="media-selection" name="selected" value={m.public_id ?? ''}
+                  disabled={!m.public_id} aria-label={`选择 ${m.original_name}`} data-media-choice />
+                <span class="truncate text-xs text-muted" title={categoryNames.get(m.category_id ?? '') ?? '未分类'}>
+                  {categoryNames.get(m.category_id ?? '') ?? '未分类'}
+                </span>
+              </div>
               <a
                 href={url}
                 target="_blank"
@@ -147,14 +223,18 @@ function formatSize(bytes: number | null): string | null {
                 >
                   复制网址
                 </button>
-                {unused && (
-                  <form method="post" action={`/api/admin/media/${m.public_id}`}>
+                {m.public_id && (
+                  <form method="post" action={`/api/admin/media/${m.public_id}`} data-media-confirm data-single-delete>
                     <input type="hidden" name="_action" value="delete" />
+                    <input type="hidden" name="filter_category" value={filterValue} />
+                    <input type="hidden" name="page" value={page} />
                     <button
                       type="submit"
-                      class="text-xs uppercase tracking-widest text-red-600 hover:text-red-700"
+                      disabled={!unused}
+                      title={unused ? '删除图片' : '请先解除图片引用'}
+                      class="text-xs text-red-700 hover:underline disabled:text-gray-500 disabled:no-underline"
                     >
-                      删除
+                      {unused ? '删除' : '引用中'}
                     </button>
                   </form>
                 )}
@@ -166,10 +246,40 @@ function formatSize(bytes: number | null): string | null {
     )
   }
 
+  {total > 0 && <p class="mt-5 text-sm text-muted">第 {page} / {totalPages} 页</p>}
   <Pagination page={page} totalPages={totalPages} hrefFor={hrefFor} />
 </AdminLayout>
 
 <script>
+  const selectAll = document.querySelector<HTMLInputElement>('[data-select-media]');
+  const choices = [...document.querySelectorAll<HTMLInputElement>('[data-media-choice]:not(:disabled)')];
+  const selectedCount = document.querySelector<HTMLElement>('[data-selection-count]');
+  const selectionActions = document.querySelectorAll<HTMLButtonElement>('[data-selection-action]');
+  function updateSelection() {
+    const count = choices.filter(choice => choice.checked).length;
+    if (selectAll) {
+      selectAll.checked = count > 0 && count === choices.length;
+      selectAll.indeterminate = count > 0 && count < choices.length;
+    }
+    if (selectedCount) selectedCount.textContent = `已选 ${count} 张`;
+    selectionActions.forEach(button => { button.disabled = count === 0; });
+  }
+  selectAll?.addEventListener('change', () => {
+    choices.forEach(choice => { choice.checked = selectAll.checked; });
+    updateSelection();
+  });
+  choices.forEach(choice => choice.addEventListener('change', updateSelection));
+  updateSelection();
+  document.querySelectorAll<HTMLFormElement>('[data-media-confirm]').forEach(form => {
+    form.addEventListener('submit', event => {
+      const action = (event.submitter as HTMLButtonElement | null)?.value;
+      const prompt = form.hasAttribute('data-single-delete') ? '永久删除这张图片？'
+        : action === 'delete' ? '永久删除所选的未引用图片？引用中的图片会跳过。'
+        : action === 'remove-category' ? '删除这个分类并将其中的图片转为未分类？' : '';
+      if (prompt && !window.confirm(prompt)) event.preventDefault();
+    });
+  });
+
   // Copy-to-clipboard needs JS by nature; everything else on this page is plain
   // forms, so the grid still works with scripting off.
   document.addEventListener('click', async (event) => {

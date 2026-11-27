@@ -55,12 +55,13 @@ const steps = [
           loading={index === 0 ? 'eager' : 'lazy'} fetchpriority={index === 0 ? 'high' : 'low'}
           decoding="async" alt={slide.alt} aria-hidden={index > 0 ? 'true' : undefined} data-hero-slide />)}
       </div>
-      {slides.length > 1 && <div class="hero-slide-controls" aria-label={t('Homepage image controls', '首页轮播控制')} hidden>
-        <button type="button" data-hero-prev aria-label={t('Previous image', '上一张')}>‹</button>
-        <span data-hero-position aria-live="off">1 / {slides.length}</span>
-        <button type="button" data-hero-next aria-label={t('Next image', '下一张')}>›</button>
-        <button type="button" data-hero-play aria-label={t('Pause slideshow', '暂停轮播')}
-          data-pause={t('Pause slideshow', '暂停轮播')} data-play={t('Resume slideshow', '播放轮播')}>Ⅱ</button>
+      {slides.length > 1 && <div class="hero-slide-controls" role="group"
+        aria-label={t('Homepage image controls', '首页轮播控制')}
+        data-pause={t('Pause slideshow', '暂停轮播')} data-play={t('Resume slideshow', '继续轮播')} hidden>
+        {slides.map((_, index) => <button type="button" data-hero-dot
+          data-label={t(`Show image ${index + 1}`, `显示第 ${index + 1} 张图片`)}
+          aria-current={index === 0 ? 'true' : undefined}
+          aria-label={t(`Show image ${index + 1}`, `显示第 ${index + 1} 张图片`)} />)}
       </div>}
     </div>
   </div>
@@ -213,15 +214,18 @@ const steps = [
   background: linear-gradient(150deg, #5eead4ad, #0ea5e9ad);
   box-shadow: 0 24px 60px #020d135e;
 }
-.hero-visual img { display: block; width: 100%; height: auto; aspect-ratio: 1.06; object-fit: contain; border-radius: 1.25rem; background: #082e39; }
+.hero-visual img { display: block; width: 100%; height: auto; aspect-ratio: 1.06; object-fit: cover; border-radius: 1.25rem; background: #082e39; }
 .hero-visual { position: relative; }
 .hero-slide-stack { display: grid; }
 .hero-slide-stack img { grid-area: 1 / 1; opacity: 0; transition: opacity 380ms ease; }
 .hero-slide-stack img.current { opacity: 1; z-index: 1; }
-.hero-slide-controls { position: absolute; z-index: 2; inset-inline-start: 50%; bottom: 1.1rem; transform: translateX(-50%); display: flex; gap: .2rem; align-items: center; padding: .15rem .35rem; border: 1px solid #ffffff70; border-radius: 999px; color: white; background: #082e39e6; font-size: .8rem; white-space: nowrap; }
+.hero-slide-controls { position: absolute; z-index: 2; inset-inline-start: 50%; bottom: .95rem; transform: translateX(-50%); display: flex; align-items: center; padding: .1rem .25rem; border-radius: 999px; background: #082e39b3; }
 .hero-slide-controls[hidden] { display: none; }
-.hero-slide-controls button { width: 2.5rem; height: 2.5rem; border-radius: 999px; font-size: 1.15rem; }
-.hero-slide-controls button:hover { background: #ffffff20; }
+.hero-slide-controls button { display: grid; place-items: center; width: 1.65rem; height: 1.65rem; border-radius: 50%; }
+.hero-slide-controls button::before { content: ''; width: .45rem; height: .45rem; border: 1px solid #ffffffde; border-radius: 50%; }
+.hero-slide-controls button[aria-current='true']::before { background: #fff; border-color: #fff; }
+.hero-slide-controls[data-paused] button[aria-current='true']::before { background: #7dd3fc; }
+.hero-slide-controls button:hover { background: #ffffff25; }
 .hero-slide-controls button:focus-visible { outline: 2px solid #7dd3fc; outline-offset: -2px; }
 @media (prefers-reduced-motion: reduce) { .hero-slide-stack img { transition: none; } }
 .supply-feature-inner { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 1.35rem; padding: clamp(1.25rem, 4vw, 2.5rem); border: 1px solid #cde4e1; border-radius: 1.4rem; background: #fff; }
@@ -269,13 +273,23 @@ const steps = [
   for (const gallery of document.querySelectorAll<HTMLElement>('[data-hero-slides]')) {
     const images = [...gallery.querySelectorAll<HTMLImageElement>('[data-hero-slide]')];
     const controls = gallery.querySelector<HTMLElement>('.hero-slide-controls');
-    const position = gallery.querySelector<HTMLElement>('[data-hero-position]');
-    const play = gallery.querySelector<HTMLButtonElement>('[data-hero-play]');
-    if (!controls || !position || !play || images.length < 2) continue;
+    const dots = [...gallery.querySelectorAll<HTMLButtonElement>('[data-hero-dot]')];
+    if (!controls || images.length < 2 || dots.length !== images.length) continue;
     const motion = matchMedia('(prefers-reduced-motion: reduce)');
     let index = 0;
     let running = !motion.matches;
     let timer: number;
+
+    function updateDots() {
+      controls!.toggleAttribute('data-paused', !running);
+      dots.forEach((dot, i) => {
+        if (i === index) dot.setAttribute('aria-current', 'true');
+        else dot.removeAttribute('aria-current');
+        dot.setAttribute('aria-label', (i === index
+          ? running ? controls!.dataset.pause : controls!.dataset.play
+          : dot.dataset.label) ?? '');
+      });
+    }
 
     function show(next: number) {
       images[index].classList.remove('current');
@@ -283,32 +297,37 @@ const steps = [
       index = (next + images.length) % images.length;
       images[index].classList.add('current');
       images[index].removeAttribute('aria-hidden');
-      position!.textContent = `${index + 1} / ${images.length}`;
+      updateDots();
     }
 
     function schedule() {
       window.clearTimeout(timer);
-      if (!running || document.hidden || gallery.matches(':hover, :focus-within')) return;
+      if (!running || document.hidden || controls!.querySelector(':focus-visible')) return;
       timer = window.setTimeout(() => { show(index + 1); schedule(); }, 5000);
     }
 
-    function updatePlay() {
-      play!.textContent = running ? 'Ⅱ' : '▶';
-      play!.setAttribute('aria-label', (running ? play!.dataset.pause : play!.dataset.play) ?? '');
+    dots.forEach((dot, i) => dot.addEventListener('click', () => {
+      if (i === index) {
+        running = !running;
+        updateDots();
+      } else {
+        show(i);
+      }
       schedule();
-    }
-
-    gallery.querySelector('[data-hero-prev]')?.addEventListener('click', () => { show(index - 1); schedule(); });
-    gallery.querySelector('[data-hero-next]')?.addEventListener('click', () => { show(index + 1); schedule(); });
-    play.addEventListener('click', () => { running = !running; updatePlay(); });
-    gallery.addEventListener('pointerenter', schedule);
-    gallery.addEventListener('pointerleave', schedule);
-    gallery.addEventListener('focusin', schedule);
-    gallery.addEventListener('focusout', () => queueMicrotask(schedule));
+    }));
+    controls.addEventListener('focusin', schedule);
+    controls.addEventListener('focusout', () => queueMicrotask(schedule));
     document.addEventListener('visibilitychange', schedule);
-    motion.addEventListener('change', event => { if (event.matches) { running = false; updatePlay(); } });
+    motion.addEventListener('change', event => {
+      if (event.matches) {
+        running = false;
+        updateDots();
+        schedule();
+      }
+    });
     controls.hidden = false;
-    updatePlay();
+    updateDots();
+    schedule();
   }
 
   // The server renders the final number for no-JS and reduced-motion visitors.

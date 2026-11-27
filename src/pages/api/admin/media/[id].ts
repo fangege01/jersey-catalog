@@ -4,12 +4,12 @@ import { getMediaByPublicId, deleteMediaRecord } from '../../../../features/medi
 import { mediaUsage, describeUsage } from '../../../../features/media/usage';
 import { getStorage } from '../../../../features/storage';
 import { parsePublicId } from '../../../../features/ids/publicId';
+import { mediaLibraryReturn } from '../../../../features/media/libraryReturn';
 
 export const prerender = false;
 
 // POST /api/admin/media/:id — `_action=delete` removes a library item.
 // :id is the med_ public ID; numeric row ids are not accepted.
-// This is the ONLY place an object leaves storage.
 export const POST: APIRoute = async ({ request, params, redirect }) => {
   const publicId = parsePublicId(params.id, 'media');
   if (!publicId) return new Response('无效的记录 ID。', { status: 400 });
@@ -36,7 +36,7 @@ export const POST: APIRoute = async ({ request, params, redirect }) => {
           status: 409,
           headers: { 'content-type': 'application/json', 'cache-control': 'private, no-store' },
         })
-      : redirect(`/admin/media?error=${encodeURIComponent(message)}`, 303);
+      : redirect(mediaLibraryReturn(form, { error: message }), 303);
   }
 
   // Row first, object second. A failed object delete leaves an invisible orphan;
@@ -59,5 +59,5 @@ export const POST: APIRoute = async ({ request, params, redirect }) => {
     ? new Response(JSON.stringify({ deleted: publicId }), {
         headers: { 'content-type': 'application/json', 'cache-control': 'private, no-store' },
       })
-    : redirect('/admin/media', 303);
+    : redirect(mediaLibraryReturn(form, { success: '已删除 1 张图片。' }), 303);
 };

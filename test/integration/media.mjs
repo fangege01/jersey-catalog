@@ -4,6 +4,7 @@ import { Miniflare } from 'miniflare';
 import {
   createMediaRecord,
   deleteMediaRecord,
+  deleteMediaRecords,
   attachMediaToProduct,
   syncPageMedia,
   listMedia,
@@ -15,6 +16,7 @@ import {
 } from '../../src/features/media/db.ts';
 import { mediaUsage, mediaUsageForIds, isUnused } from '../../src/features/media/usage.ts';
 import { uploadMedia } from '../../src/features/media/upload.ts';
+import { assignMediaCategory, removeMediaCategory, saveMediaCategory } from '../../src/features/media/categories.ts';
 import { savePageBody } from '../../src/features/pages/save.ts';
 import { resolveHomePath, homeTargetIsValid } from '../../src/features/settings/home.ts';
 
@@ -639,6 +641,28 @@ try {
     assert.equal(first.length, 5);
     const overlap = first.filter((a) => second.some((b) => b.id === a.id));
     assert.equal(overlap.length, 0, 'pages overlapped');
+  });
+
+  console.log('\ncategorized media');
+  const categoryMigration = await readFile(new URL('../../migrations/0055_media_categories.sql', import.meta.url), 'utf8');
+  for (const statement of categoryMigration.split(';').map(value => value.trim()).filter(Boolean)) {
+    await db.prepare(statement).run();
+  }
+  await check('category removal uncategorizes images and bulk deletion preserves referenced media', async () => {
+    const unused = await newMedia('media/unused-bulk.png');
+    const referenced = await newMedia('media/home-slide-bulk.png');
+    await db.prepare("INSERT INTO settings (key,value) VALUES ('site_image:home-slide:000000001',?)").bind(referenced.image_key).run();
+    const category = await saveMediaCategory(db, 'Homepage');
+    assert.ok(category);
+    assert.equal(await assignMediaCategory(db, [unused.public_id, referenced.public_id], category), 2);
+    assert.equal(await countMedia(db, category), 2);
+    assert.equal((await listMedia(db, 1, 1, category))[0].id, unused.id);
+
+    assert.deepEqual(await deleteMediaRecords(db, [unused.public_id, referenced.public_id]), [unused.image_key]);
+    assert.equal(await removeMediaCategory(db, category), true);
+    assert.equal(await countMedia(db, category), 0);
+    assert.equal(await db.prepare('SELECT category_id FROM media WHERE id=?').bind(referenced.id).first('category_id'), null);
+    assert.equal(await removeMediaCategory(db, category), false);
   });
 } finally {
   await mf.dispose();

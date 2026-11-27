@@ -13,6 +13,7 @@ export interface Media {
   width: number | null;
   height: number | null;
   created_at: string;
+  category_id?: string | null;
 }
 
 /** Grid/picker page size. Bounds both the admin page and the JSON API. */
@@ -36,16 +37,20 @@ export async function listMedia(
   db: D1Database,
   limit: number,
   offset: number,
+  category?: string | null,
 ): Promise<Media[]> {
+  const filter = category === undefined ? '' : 'WHERE category_id IS ?';
   const { results } = await db
-    .prepare('SELECT * FROM media ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?')
-    .bind(limit, offset)
+    .prepare(`SELECT * FROM media ${filter} ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?`)
+    .bind(...(category === undefined ? [] : [category]), limit, offset)
     .all<Media>();
   return results ?? [];
 }
 
-export async function countMedia(db: D1Database): Promise<number> {
-  const row = await db.prepare('SELECT COUNT(*) AS c FROM media').first<{ c: number }>();
+export async function countMedia(db: D1Database, category?: string | null): Promise<number> {
+  const query = category === undefined ? db.prepare('SELECT COUNT(*) AS c FROM media')
+    : db.prepare('SELECT COUNT(*) AS c FROM media WHERE category_id IS ?').bind(category);
+  const row = await query.first<{ c: number }>();
   return row?.c ?? 0;
 }
 
@@ -117,15 +122,7 @@ export async function createMediaRecord(
  * Returns the deleted key, or null when the row was referenced or already gone —
  * the caller resolves which for the error message.
  */
-export async function deleteMediaRecord(
-  db: D1Database,
-  id: number,
-): Promise<string | null> {
-  const row = await db
-    .prepare(
-      `DELETE FROM media
-        WHERE id = ?1
-          AND NOT EXISTS (
+const UNREFERENCED_MEDIA = `NOT EXISTS (
             SELECT 1 FROM product_images WHERE product_images.image_key = media.image_key
           )
           AND NOT EXISTS (
@@ -153,12 +150,24 @@ export async function deleteMediaRecord(
             SELECT 1 FROM settings
              WHERE (settings.key = 'logo_image_key' OR settings.key GLOB 'site_image:*')
                AND settings.value = media.image_key
-          )
-        RETURNING image_key`,
-    )
+          )`;
+
+export async function deleteMediaRecord(
+  db: D1Database,
+  id: number,
+): Promise<string | null> {
+  const row = await db.prepare(`DELETE FROM media WHERE id=? AND ${UNREFERENCED_MEDIA} RETURNING image_key`)
     .bind(id)
     .first<{ image_key: string }>();
   return row?.image_key ?? null;
+}
+
+export async function deleteMediaRecords(db: D1Database, publicIds: string[]): Promise<string[]> {
+  if (!publicIds.length) return [];
+  const placeholders = publicIds.map(() => '?').join(',');
+  const { results } = await db.prepare(`DELETE FROM media WHERE public_id IN (${placeholders})
+    AND ${UNREFERENCED_MEDIA} RETURNING image_key`).bind(...publicIds).all<{ image_key: string }>();
+  return results.map(row => row.image_key);
 }
 
 export type AttachResult =
