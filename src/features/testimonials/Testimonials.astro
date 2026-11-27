@@ -29,7 +29,8 @@ const baseUrl = getConfig().images.baseUrl;
             <span class="review-stars" aria-hidden="true">
               {Array.from({ length: 5 }, (_, index) => {
                 const fill = Math.max(0, Math.min(10, Math.round(review.rating! * 10) - index * 10)) * 10;
-                return <span class="review-star" style={`--star-fill:${fill}%`}></span>;
+                return <span class:list={['review-star', fill > 0 && fill < 100 && 'review-star-partial']}
+                  style={`--star-fill:${fill}%`}></span>;
               })}
             </span>
             <span class="sr-only">{display(locale, 'Rating', '评分')}</span>
@@ -60,12 +61,25 @@ const baseUrl = getConfig().images.baseUrl;
   .review-stars { display: inline-flex; align-items: center; gap: .23rem; }
   .review-score { color: var(--color-ink); font-size: 1rem; font-weight: 750; font-variant-numeric: tabular-nums; line-height: 1; }
   .review-star {
+    --star-inner: polygon(50% 8%,60% 37%,90% 38%,65.5% 56%,75% 85%,50% 67%,25% 85%,34.5% 56%,10% 38%,40% 37%);
     position: relative;
     flex: none;
-    width: clamp(1.18rem, 1.7vw, 1.42rem);
+    width: clamp(1.38rem, 2vw, 1.65rem);
     aspect-ratio: 1;
     clip-path: polygon(50% 0%,61.8% 33.8%,97.6% 34.5%,69% 56.2%,79.4% 90.5%,50% 70%,20.6% 90.5%,31% 56.2%,2.4% 34.5%,38.2% 33.8%);
-    background: #ded7c8;
+    background: #45596a;
+  }
+  .review-star-partial::before {
+    clip-path: var(--star-inner);
+    mask-image: linear-gradient(to right, #000 var(--star-fill), transparent var(--star-fill));
+  }
+  .review-star::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    clip-path: var(--star-inner);
+    background: #f7fafc;
+    mask-image: linear-gradient(to right, transparent var(--star-fill), #000 var(--star-fill));
   }
   .review-star::before {
     content: '';
@@ -83,6 +97,7 @@ const baseUrl = getConfig().images.baseUrl;
   @media (forced-colors: active) {
     .review-star { forced-color-adjust: none; background: GrayText; }
     .review-star::before { background: CanvasText; }
+    .review-star::after { background: Canvas; }
   }
   blockquote { flex: 1; margin: 0; color: var(--color-ink); font-size: .95rem; line-height: 1.7; white-space: pre-line; }
   .review-person { display: flex; align-items: center; gap: .7rem; padding-top: .85rem; border-top: 1px solid var(--color-line); }
