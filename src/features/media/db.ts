@@ -188,16 +188,18 @@ export async function attachMediaToProduct(
   db: D1Database,
   productId: number,
   mediaId: number,
+  defaultAlt?: string,
 ): Promise<AttachResult> {
   const row = await withPublicId('productImage', (publicId) =>
     db
       .prepare(
-        `INSERT INTO product_images (product_id, image_key, position, public_id)
+        `INSERT INTO product_images (product_id, image_key, position, public_id, alt)
          SELECT ?1,
                 m.image_key,
                 (SELECT COALESCE(MAX(position), -1) + 1
                    FROM product_images WHERE product_id = ?1),
-                ?3
+                ?3,
+                ?4
            FROM media m
           WHERE m.id = ?2
             AND NOT EXISTS (
@@ -206,7 +208,7 @@ export async function attachMediaToProduct(
             )
          RETURNING image_key`,
       )
-      .bind(productId, mediaId, publicId)
+      .bind(productId, mediaId, publicId, defaultAlt?.trim() || null)
       .first<{ image_key: string }>(),
   );
 
@@ -297,16 +299,18 @@ export async function replaceProductImageFromMedia(
   productId: number,
   oldKey: string,
   mediaId: number,
+  defaultAlt?: string,
 ): Promise<boolean> {
   const result = await db
     .prepare(
       `UPDATE product_images
-          SET image_key = (SELECT image_key FROM media WHERE id = ?3)
+          SET image_key = (SELECT image_key FROM media WHERE id = ?3),
+              alt = COALESCE(alt, ?4)
         WHERE product_id = ?1
           AND image_key = ?2
           AND EXISTS (SELECT 1 FROM media WHERE id = ?3)`,
     )
-    .bind(productId, oldKey, mediaId)
+    .bind(productId, oldKey, mediaId, defaultAlt?.trim() || null)
     .run();
   return (result.meta?.changes ?? 0) > 0;
 }

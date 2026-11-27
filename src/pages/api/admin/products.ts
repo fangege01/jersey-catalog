@@ -79,7 +79,7 @@ export const POST: APIRoute = async ({ request, redirect, locals }) => {
     await setProductFile(env.DB, productId, await uploadDigitalFile(getFileStorage(), deliverable));
   }
   if (mediaId !== null) {
-    const attached = await attachMediaToProduct(env.DB, productId, mediaId);
+    const attached = await attachMediaToProduct(env.DB, productId, mediaId, copy.title);
     if (!attached.ok) {
       // The claim needs a product id, so the row has to exist first. Undo it
       // rather than reporting a failure while leaving a half-made product

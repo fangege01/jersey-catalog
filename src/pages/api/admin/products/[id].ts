@@ -192,12 +192,12 @@ export const POST: APIRoute = async ({ request, params, redirect, locals }) => {
     // existing. The replaced object is NOT deleted: it stays in the library,
     // where it may be reused or removed deliberately once nothing uses it.
     const claimed = image_key
-      ? await replaceProductImageFromMedia(env.DB, id, image_key, uploadedMediaId)
+      ? await replaceProductImageFromMedia(env.DB, id, image_key, uploadedMediaId, copy.title)
       : false;
     if (!claimed) {
       // Either the product had no gallery row to repoint, or it did and the
       // media vanished. Attaching distinguishes the two and reports properly.
-      const attached = await attachMediaToProduct(env.DB, id, uploadedMediaId);
+      const attached = await attachMediaToProduct(env.DB, id, uploadedMediaId, copy.title);
       if (!attached.ok) return fail(attached.error);
     }
   }

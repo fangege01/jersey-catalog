@@ -60,7 +60,7 @@ export const POST: APIRoute = async ({ request, params, redirect }) => {
     }
     for (const file of files) {
       const media = await uploadMedia(env.DB, storage, await optimizeUpload(file), file.name, product.name);
-      const attached = await attachMediaToProduct(env.DB, id, media.id);
+      const attached = await attachMediaToProduct(env.DB, id, media.id, product.name);
       if (!attached.ok) return back(attached.error);
     }
     await syncPrimaryImage(env.DB, id); // first image stays primary
@@ -75,7 +75,7 @@ export const POST: APIRoute = async ({ request, params, redirect }) => {
     const mediaPublicId = parsePublicId(form.get('media_id'), 'media');
     const media = mediaPublicId ? await getMediaByPublicId(env.DB, mediaPublicId) : null;
     if (!media) return back('请选择一张图片。');
-    const attached = await attachMediaToProduct(env.DB, id, media.id);
+    const attached = await attachMediaToProduct(env.DB, id, media.id, product.name);
     if (!attached.ok) return back(attached.error);
     await syncPrimaryImage(env.DB, id);
     await purgeProduct();
