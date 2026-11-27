@@ -2,6 +2,7 @@ import type { Ai, D1Database } from '@cloudflare/workers-types';
 import { completeEnglishFields } from '../i18n/english';
 import { CACHE_TAG } from '../cache/tags';
 import { purgeCacheTags } from '../cache/purge';
+import type { SettingKey } from '../settings/db';
 
 type Fields = Record<string, string>;
 type SyncState = {
@@ -24,6 +25,7 @@ export async function saveSiteCopy(
   context: { waitUntil(promise: Promise<unknown>): void } | undefined,
   ai: Ai | undefined, db: D1Database, keys: { source: string; english: string; sync: string },
   source: Fields, english: Fields, pending: Fields, limits: Record<string, number>,
+  additionalSetting?: { key: SettingKey; value: string },
 ) {
   const remaining = Object.keys(pending);
   const state: SyncState = {
@@ -39,6 +41,7 @@ export async function saveSiteCopy(
     db.prepare(statement).bind(keys.source, sourceValue),
     db.prepare(statement).bind(keys.english, englishValue),
     db.prepare(statement).bind(keys.sync, stateValue),
+    ...(additionalSetting ? [db.prepare(statement).bind(additionalSetting.key, additionalSetting.value)] : []),
   ]);
   if (!remaining.length) return;
 

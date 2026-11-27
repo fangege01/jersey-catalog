@@ -1,6 +1,8 @@
 ---
 import { env } from 'cloudflare:workers';
 import AdminLayout from '../../layouts/AdminLayout.astro';
+import MediaPicker from '../../features/media/MediaPicker.astro';
+import { setStoreImageFromMedia } from '../../features/media/db';
 import { getConfig } from '../../config';
 import { getStorage } from '../../features/storage';
 import { mediaUrl } from '../../features/media/url';
@@ -9,9 +11,12 @@ import { libraryImageLabel } from '../../features/media/seoName';
 import { optimizeUpload } from '../../features/products/imageOptimize';
 import { refreshStorefront } from '../../features/i18n/englishSettings';
 import { appendHomeSlides, HOME_SLIDE_LIMIT, listHomeSlides, moveHomeSlide, removeHomeSlide } from '../../features/site-content/homeSlides';
+import { getSetting, setSetting } from '../../features/settings/db';
+import { siteImageKey } from '../../features/site-content/copy';
 
 if (import.meta.env.MINSHOP_THEME !== 'teal') return new Response('未找到页面。', { status: 404 });
 const route = '/admin/home-slides';
+const fallbackKey = siteImageKey('home');
 let slides = await listHomeSlides(env.DB);
 let error = '';
 if (Astro.request.method === 'POST') {
@@ -45,6 +50,17 @@ if (Astro.request.method === 'POST') {
         return Astro.redirect(route + '?saved=1', 303);
       }
       error = '轮播列表已更新，请在最新列表中重试。';
+    } else if (action === 'fallback') {
+      const selection = form.get('image');
+      if (selection === '') await setSetting(env.DB, fallbackKey, null);
+      else if (typeof selection !== 'string' || selection.length > 512 ||
+          !await setStoreImageFromMedia(env.DB, fallbackKey, selection)) {
+        error = '请选择素材库中仍可用的图片。';
+      }
+      if (!error) {
+        refreshStorefront(Astro.locals.cfContext);
+        return Astro.redirect(route + '?saved=fallback#fallback-image', 303);
+      }
     } else {
       error = '无法识别此操作。';
     }
@@ -57,16 +73,20 @@ if (Astro.request.method === 'POST') {
   slides = await listHomeSlides(env.DB);
 }
 const base = getConfig().images.baseUrl;
+const fallback = await getSetting(env.DB, fallbackKey);
+const saved = Astro.url.searchParams.get('saved');
 const btn = 'rounded-md border border-line px-3 py-2 text-sm hover:bg-paper disabled:opacity-50';
 ---
-<AdminLayout title="首页轮播图" active="homeSlides">
+<AdminLayout title="首页首屏图" active="homeSlides">
   <div class="max-w-4xl space-y-5">
     <header>
-      <h1 class="text-3xl font-bold">首页轮播图</h1>
-      <p class="mt-2 text-sm text-muted">图片按下方顺序显示在首页首屏相框中。上传多张后每 5 秒切换一张。</p>
+      <h1 class="text-3xl font-bold">首页首屏图</h1>
+      <p class="mt-2 text-sm text-muted">中英文首页共用这一组图片。上传多张后，首屏按列表顺序每 5 秒切换一张。</p>
     </header>
     {error ? <p role="alert" class="rounded-md bg-red-50 p-3 text-sm text-red-700">{error}</p>
-      : Astro.url.searchParams.get('saved') === '1' && <p role="status" class="rounded-md bg-teal-50 p-3 text-sm text-teal-800">轮播图已更新。</p>}
+      : (saved === '1' || saved === 'fallback') && <p role="status" class="rounded-md bg-teal-50 p-3 text-sm text-teal-800">
+        {saved === 'fallback' ? '备用首屏图已更新。' : '首屏轮播图已更新。'}
+      </p>}
     <section class="space-y-4 rounded-xl border border-line bg-surface p-5">
       <div class="flex flex-wrap items-center justify-between gap-2">
         <h2 class="text-lg font-semibold">上传图片</h2>
@@ -99,8 +119,39 @@ const btn = 'rounded-md border border-line px-3 py-2 text-sm hover:bg-paper disa
             </form>
           </li>
         ))}
-      </ol> : <p class="text-sm text-muted">还没有上传轮播图。首页当前使用备用图。</p>}
+      </ol> : <p class="text-sm text-muted">还没有上传轮播图。首页会显示下方的备用图或主题默认图。</p>}
       <p class="text-sm text-muted">移出轮播的图片仍可在素材库中使用。</p>
     </section>
+    <form id="fallback-image" method="post" action={route} class="scroll-mt-4 space-y-3 rounded-xl border border-line bg-surface p-5">
+      <input type="hidden" name="action" value="fallback" />
+      <input type="hidden" name="image" value={fallback ?? ''} />
+      <h2 class="text-lg font-semibold">备用首屏图</h2>
+      <p class="text-sm text-muted">轮播列表为空时显示这张图。图片替代文字在「页面内容」的首页首屏设置里编辑。</p>
+      <img src={fallback ? mediaUrl(fallback, base) : undefined} alt="已选备用图预览"
+        data-fallback-preview hidden={!fallback} class="max-h-40 max-w-full rounded-md object-contain" />
+      <div class="flex flex-wrap gap-2">
+        <MediaPicker id="home-hero-fallback-picker" />
+        <button type="button" data-clear-fallback class={btn}>清除选图</button>
+        <button type="submit" class="rounded-md bg-brand px-4 py-2 text-sm font-semibold text-white">保存备用图</button>
+      </div>
+    </form>
   </div>
 </AdminLayout>
+
+<script>
+  const fallbackForm = document.querySelector('#fallback-image')!;
+  const picker = fallbackForm.querySelector('dialog');
+  const input = fallbackForm.querySelector<HTMLInputElement>('input[name="image"]')!;
+  const preview = fallbackForm.querySelector<HTMLImageElement>('[data-fallback-preview]')!;
+  picker?.addEventListener('media:selected', event => {
+    const { imageKey, url } = (event as CustomEvent<{ imageKey: string; url: string }>).detail;
+    input.value = imageKey;
+    preview.src = url;
+    preview.hidden = false;
+  });
+  fallbackForm.querySelector('[data-clear-fallback]')?.addEventListener('click', () => {
+    input.value = '';
+    preview.removeAttribute('src');
+    preview.hidden = true;
+  });
+</script>

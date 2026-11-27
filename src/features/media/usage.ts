@@ -176,13 +176,14 @@ export function usageLinks(usage: MediaUsage): UsageLink[] {
       kind: 'site-image' as const, title: '编辑展示项',
     })),
     ...(usage.siteImages ?? []).map(section => ({
-      href: '/admin/site-content?section=' + siteImageEditor(section),
+      href: section === 'home' && import.meta.env?.MINSHOP_THEME === 'teal'
+        ? '/admin/home-slides#fallback-image' : '/admin/site-content?section=' + siteImageEditor(section),
       label: siteImageLabel(section),
       kind: 'site-image' as const,
       title: '在网站内容中更换图片',
     })),
-    ...(usage.homeSlide ? [{ href: '/admin/home-slides', label: '首页轮播图',
-      kind: 'site-image' as const, title: '管理首页轮播图' }] : []),
+    ...(usage.homeSlide ? [{ href: '/admin/home-slides', label: '首页首屏图',
+      kind: 'site-image' as const, title: '管理首页首屏图' }] : []),
     // The logo is a setting, not a row, so it links to where it is chosen.
     ...(usage.logo
       ? [

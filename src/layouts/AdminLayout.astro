@@ -81,7 +81,7 @@ const groups: { label: string; links: Item[] }[] = [
   ] }] : []),
   { label: '网站内容', links: [
     { key: 'siteContent', label: '页面内容', href: '/admin/site-content' },
-    ...(import.meta.env.MINSHOP_THEME === 'teal' ? [{ key: 'homeSlides' as const, label: '首页轮播图', href: '/admin/home-slides' }] : []),
+    ...(import.meta.env.MINSHOP_THEME === 'teal' ? [{ key: 'homeSlides' as const, label: '首页首屏图', href: '/admin/home-slides' }] : []),
     ...(import.meta.env.MINSHOP_THEME === 'teal' ? [{ key: 'orderWorkflow' as const, label: '首页菜单', href: '/admin/site-content?section=home&focus=process-copy' }] : []),
     { key: 'customerCases', label: '客户案例', href: '/admin/showcase?section=cases' },
     { key: 'testimonials', label: '客户好评', href: '/admin/testimonials' },
