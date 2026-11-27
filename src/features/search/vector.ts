@@ -1,4 +1,4 @@
-import { markdownExcerpt } from '../pages/markdown.ts';
+import { productMarkdownExcerpt } from '../products/productMarkdown.ts';
 import type { Ai, D1Database, VectorizeIndex } from '@cloudflare/workers-types';
 import type { SearchProvider, SearchResult } from './provider';
 import { getProductsByIds, type Product } from '../products/db';
@@ -32,7 +32,7 @@ export function productEmbedText(
 ): string {
   const parts = [p.name];
   // Embed the prose, not the Markdown punctuation.
-  if (p.description) parts.push(markdownExcerpt(p.description, 5000));
+  if (p.description) parts.push(productMarkdownExcerpt(p.description, 5000));
   if (categoryNames.length > 0) parts.push(`Categories: ${categoryNames.join(', ')}`);
   return parts.join('\n');
 }

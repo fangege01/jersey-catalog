@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { Miniflare } from 'miniflare';
 import { unstable_splitSqlQuery } from 'wrangler';
 import { hashPassword } from '../../src/features/auth/password.ts';
+import { richProductValue } from '../../src/features/products/richFormat.ts';
 
 const site = 'https://www.fxfsource.com';
 const path = (name) => fileURLToPath(new URL('../../' + name, import.meta.url));
@@ -150,13 +151,15 @@ try {
   assert.equal((await db.prepare("SELECT COUNT(*) AS count FROM products WHERE name=?").bind(fields.name).first()).count, 1);
   const invalid = await post(api, form({ slug: '***' }), cookie);
   assert.match(invalid.headers.get('location'), /\/edit\?error=/);
-  const automatic = form({ name: 'Brazil Home Jersey', slug: '', seo_title: '', meta_description: '' });
+  const draftDescription = richProductValue('**Brazil newly created**');
+  const automatic = form({ name: 'Brazil Home Jersey', description: draftDescription, slug: '', seo_title: '', meta_description: '' });
   automatic.delete('active');
   saved(await post('/api/admin/products', automatic, cookie));
   assert.equal((await read('/products/brazil-home-jersey')).status, 404);
   assert.ok(!(await sitemap()).includes('/products/brazil-home-jersey'));
   assert.match((await post(api, form({ slug: 'brazil-home-jersey' }), cookie)).headers.get('location'), /\/edit\?error=/);
-  const draft = await db.prepare("SELECT public_id FROM products WHERE slug='brazil-home-jersey'").first();
+  const draft = await db.prepare("SELECT public_id, description FROM products WHERE slug='brazil-home-jersey'").first();
+  assert.equal(draft.description, draftDescription);
   saved(await post('/api/admin/products/' + draft.public_id, form({
     name: 'Brazil Home Jersey', slug: '', seo_title: '', meta_description: '',
   }), cookie));
@@ -183,6 +186,35 @@ try {
   const defaults = await (await read(renamed)).text();
   assert.ok(defaults.includes('<title>Argentina Home Jersey</title>'));
   assert.ok(defaults.includes('name="description" content="A sky-blue soccer jersey."'));
+  const richFields = {
+    description: richProductValue('## Training kit\n\n### Textile\n\n**Lightweight** fabric and ++care instructions++.\n\n[Contact us](/contact)'),
+    quoteNote: richProductValue('**Bulk orders**\n\n- First tier\n- Second tier'),
+    specifications: richProductValue('- [x] Adult XS–4XL\n- [x] Youth sizes 16–28'),
+    shippingPayment: richProductValue('1. PayPal\n2. Bank transfer'),
+  };
+  saved(await post(api, form({ slug: '', ...richFields }), cookie));
+  const richSaved = await db.prepare('SELECT description, detail_sections FROM products WHERE id=?').bind(row.id).first();
+  assert.equal(richSaved.description, richFields.description);
+  for (const key of ['quoteNote', 'specifications', 'shippingPayment']) {
+    assert.equal(JSON.parse(richSaved.detail_sections).source[key], richFields[key]);
+    assert.equal(JSON.parse(richSaved.detail_sections).english[key], richFields[key]);
+  }
+  const rendered = await (await read(renamed)).text();
+  assert.ok(rendered.includes('<h2>Training kit</h2>'));
+  assert.ok(rendered.includes('<h3>Textile</h3>'));
+  assert.ok(rendered.includes('<strong>Lightweight</strong>'));
+  assert.ok(rendered.includes('<u>care instructions</u>'));
+  assert.ok(rendered.includes('<a href="/contact">Contact us</a>'));
+  assert.ok(rendered.includes('<strong>Bulk orders</strong>'));
+  assert.match(rendered, /<ul class="fxf-checklist">\s*<li>Adult XS–4XL<\/li>/);
+  assert.match(rendered, /<ol>\s*<li>PayPal<\/li>/);
+  assert.ok(rendered.includes('<title>Argentina Home Jersey | FXF</title>'));
+  assert.ok(rendered.includes('$12.00'));
+  assert.ok(rendered.includes('Argentina home jersey back view'));
+  assert.ok(!rendered.includes('ProductRichEditor.astro'));
+  const reopened = await (await read('/admin/products/' + row.public_id + '/edit', { cookie })).text();
+  assert.match(reopened, /<template[^>]*>\s*<h2>Training kit<\/h2>/);
+  assert.match(reopened, /<template[^>]*>\s*<ul class="fxf-checklist">/);
   saved(await post(api, new URLSearchParams({ _action: 'delete' }), cookie));
   assert.equal((await read(renamed)).status, 404);
   assert.equal((await read(detail)).status, 404);

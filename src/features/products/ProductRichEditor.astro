@@ -1,0 +1,75 @@
+---
+import { renderProductDetailText, renderProductMarkdown } from './productMarkdown';
+interface Props {
+  field: string;
+  label: string;
+  value: string;
+  checklist?: boolean;
+  rows?: number;
+  limit?: number;
+}
+const { field, label, value, checklist = false, rows = 4, limit } = Astro.props;
+const initial = field === 'description' ? renderProductMarkdown(value) : renderProductDetailText(value, { checklist });
+const tools = [
+  ['paragraph', '正文', '普通段落'], ['h2', 'H2', '二级标题'], ['h3', 'H3', '三级标题'],
+  ['bold', 'B', '加粗'], ['italic', 'I', '斜体'], ['underline', 'U', '下划线'],
+  ['bullet', '• 列表', '无序列表'], ['ordered', '1. 列表', '有序列表'], ['checklist', '✓ 列表', '绿色对勾列表'],
+  ['link', '链接', '插入或修改链接'], ['undo', '↶', '撤销'], ['redo', '↷', '重做'], ['clear', '清除', '清除格式'],
+];
+---
+<div data-product-rich-editor data-rich-label={label}>
+  <label class="block text-sm font-medium" for={field}>{label}</label>
+  <textarea id={field} name={field} rows={rows} class="mt-1 w-full rounded-md border border-line px-3 py-2 focus:border-brand focus:outline-none">{value}</textarea>
+  <p data-rich-legacy hidden class="mt-1 text-xs text-muted">这段旧内容含表格，保留 Markdown 编辑模式以完整保存表格。</p>
+  <template set:html={initial} />
+  <div data-rich-shell hidden class="rich-shell mt-1 rounded-md border border-line">
+    <div role="group" aria-label={label + '格式工具'} class="rich-toolbar">
+      {tools.map(([action, text, title]) => (
+        <button type="button" data-rich-action={action} title={title} aria-label={title}>{text}</button>
+      ))}
+    </div>
+    <div data-rich-surface class="rich-surface" style={`--rich-min: ${rows * 1.35 + 1}rem`}></div>
+  </div>
+  {limit && <p class="mt-1 text-xs text-muted">最多 {limit} 个正文字符。点击「✓ 列表」可自动添加绿色对勾。</p>}
+  <dialog class="rich-link rounded-lg border border-line bg-paper p-4 text-ink">
+    <label class="block text-sm font-medium">链接网址
+      <input type="text" inputmode="url" placeholder="https://example.com" class="mt-1 w-full rounded border border-line px-3 py-2" />
+    </label>
+    <p class="mt-2 text-xs text-muted">清空并应用可移除当前链接。</p>
+    <p data-link-error hidden role="alert" class="mt-1 text-sm text-red-700">请输入安全的网址，例如 https://example.com。</p>
+    <div class="mt-3 flex justify-end gap-2">
+      <button type="button" data-link-cancel class="rounded border border-line px-3 py-2 text-sm">取消</button>
+      <button type="button" data-link-apply class="rounded bg-brand px-3 py-2 text-sm text-on-brand">应用</button>
+    </div>
+  </dialog>
+</div>
+<script>
+  import { installProductRichEditors } from './richEditor';
+  installProductRichEditors();
+</script>
+<style>
+  .rich-shell { background: var(--color-paper); }
+  .rich-shell:focus-within { border-color: var(--color-brand); }
+  .rich-toolbar { display: flex; flex-wrap: wrap; gap: .2rem; border-bottom: 1px solid var(--color-line); padding: .3rem; background: var(--color-surface); }
+  .rich-toolbar button { min-width: 2rem; min-height: 2rem; padding: .2rem .45rem; border-radius: .3rem; color: var(--color-ink); font-size: .8rem; }
+  .rich-toolbar button:hover, .rich-toolbar button[aria-pressed="true"] { background: var(--color-paper); color: var(--color-brand); }
+  .rich-toolbar button[aria-pressed="true"] { box-shadow: inset 0 0 0 1px var(--color-brand); }
+  .rich-toolbar button:disabled { opacity: .45; }
+  [data-rich-action="bold"] { font-weight: 750; }
+  [data-rich-action="italic"] { font-style: italic; }
+  [data-rich-action="underline"] { text-decoration: underline; }
+  [data-rich-action="checklist"] { color: #047857 !important; }
+  .rich-surface :global(.tiptap) { min-height: var(--rich-min); max-height: 24rem; overflow-y: auto; overflow-wrap: anywhere; padding: .65rem .8rem; outline: 0; line-height: 1.55; }
+  .rich-surface :global(.tiptap > * + *) { margin-top: .6rem; }
+  .rich-surface :global(h2) { font-size: 1.2rem; font-weight: 750; }
+  .rich-surface :global(h3) { font-size: 1.05rem; font-weight: 700; }
+  .rich-surface :global(ul), .rich-surface :global(ol) { padding-inline-start: 1.35rem; }
+  .rich-surface :global(ul) { list-style: disc; }
+  .rich-surface :global(ol) { list-style: decimal; }
+  .rich-surface :global(ul.fxf-checklist) { list-style: none; }
+  .rich-surface :global(.fxf-checklist > li::before) { content: "✓" / ""; float: inline-start; margin-inline-start: -1.35rem; color: #047857; font-weight: 750; }
+  .rich-surface :global(a) { color: var(--color-brand); text-decoration: underline; }
+  .rich-surface :global(img) { max-width: 100%; height: auto; }
+  .rich-link { width: min(calc(100% - 2rem), 26rem); margin: auto; }
+  .rich-link::backdrop { background: rgb(0 0 0 / 35%); }
+</style>

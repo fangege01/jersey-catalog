@@ -5,6 +5,8 @@ import { syncSiteEnglish } from './englishSettings';
 import { purgeCacheTags } from '../cache/purge';
 import { CACHE_TAG } from '../cache/tags';
 import type { LocaleEntity } from './locale';
+import { restoreProductTranslation } from '../products/productMarkdown';
+import { productMarkdownSource } from '../products/richFormat';
 
 export async function saveCopyInEnglish(
   db: D1Database, ai: Ai | undefined, entity: LocaleEntity, source: SourceCopy,
@@ -16,6 +18,7 @@ export async function saveCopyInEnglish(
   const { fallback, pending } = prepareEnglishSave(fields,
     current && { source: { title: prior?.title ?? current.title, body: prior?.body ?? current.body ?? '' },
       english: { title: current.title, body: current.body ?? '' } }, Object.keys(fields));
+  if (entity === 'product' && pending.body) pending.body = productMarkdownSource(pending.body);
   const title = fallback.title || ({ product: 'Football jersey', category: 'Product category', page: 'Page' }[entity]);
   const body = fallback.body || null;
   return {
@@ -30,11 +33,13 @@ export async function saveCopyInEnglish(
         }[entity];
         const bodyChange = bodyColumn ? `, ${bodyColumn}=?` : '';
         const bodyGuard = bodyColumn ? `AND ${bodyColumn} IS ?` : '';
+        const translatedBody = entity === 'product' && translated.body && source.body
+          ? restoreProductTranslation(source.body, translated.body) : translated.body;
         const result = await db.prepare(`UPDATE ${table} SET ${titleColumn}=?${bodyChange}
           WHERE id=? AND ${titleColumn} IS ? ${bodyGuard} AND EXISTS (
             SELECT 1 FROM storefront_translations s WHERE s.public_id=${table}.public_id AND s.entity=?
               AND s.locale='zh-CN' AND s.revision=0 AND s.title IS ? AND s.body IS ?
-          )`).bind(translated.title ?? title, ...(bodyColumn ? [translated.body ?? body ?? (entity === 'page' ? '' : null)] : []),
+          )`).bind(translated.title ?? title, ...(bodyColumn ? [translatedBody ?? body ?? (entity === 'page' ? '' : null)] : []),
             id, title, ...(bodyColumn ? [body ?? (entity === 'page' ? '' : null)] : []), entity, source.title, source.body).run();
         if (result.meta.changes) {
           const row = entity === 'product' ? await db.prepare("SELECT public_id FROM products WHERE id=?").bind(id).first<{ public_id: string }>() : null;

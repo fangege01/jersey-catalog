@@ -239,8 +239,8 @@ export interface ProductDetailModel {
   priceVaries: boolean;
   wholesale?: { currency: string; tiers: Array<{ range: string; price: string | null }> };
   catalogBadges?: { category: StorefrontLink | null; year: number | null };
-  quoteNote?: string;
-  detailSections?: Array<{ title: string; items: string[] }>;
+  quoteNoteHtml?: string;
+  detailSections?: Array<{ title: string; html: string }>;
   soldOut: boolean;
   /** Low-stock nudge, already gated: never set for a product with variants. */
   lowStock: boolean;

@@ -1,4 +1,4 @@
-import { markdownExcerpt } from '../pages/markdown.ts';
+import { productMarkdownExcerpt } from './productMarkdown.ts';
 import type { Product } from './db.ts';
 
 export function productSeoFields(form: FormData) {
@@ -28,5 +28,5 @@ export function importedProductSeo(product: Product): ImportedProductSeo | null 
 }
 
 export function defaultProductMeta(description: string | null): string | null {
-  return description ? markdownExcerpt(description, 160) || null : null;
+  return description ? productMarkdownExcerpt(description, 160) || null : null;
 }

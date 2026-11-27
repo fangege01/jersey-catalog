@@ -117,7 +117,7 @@ function installImageRule(
   };
 }
 
-export function renderMarkdown(markdown: string, options: RenderOptions = {}): string {
+export function renderMarkdown(markdown: string, options: RenderOptions = {}, configure?: (instance: MarkdownItInstance) => void): string {
   const baseUrl = options.baseUrl ?? '';
   const instance = new MarkdownIt({
     html: false,
@@ -125,6 +125,7 @@ export function renderMarkdown(markdown: string, options: RenderOptions = {}): s
     breaks: false,
     typographer: false,
   });
+  configure?.(instance);
   installImageRule(instance, baseUrl, options.dimensions);
   const resolveLink = options.resolveLink;
   if (resolveLink) {

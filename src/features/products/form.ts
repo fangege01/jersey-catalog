@@ -3,6 +3,7 @@ import { toMinorUnits } from '../../money';
 import { toGrams, type WeightUnit } from '../shipping/weight';
 import { parseWholesalePrices } from './wholesale';
 import { MIN_RELEASE_YEAR, MAX_RELEASE_YEAR } from './releaseYear';
+import { hasRichProductFormat, productMarkdownSource, richProductValue } from './richFormat';
 
 export interface ProductFormOptions {
   catalogOnly?: boolean;
@@ -63,7 +64,13 @@ export function parseProductForm(
       return { error: '商品年份须在 1900 至 2099 年之间。' };
     }
   }
-  const description = String(form.get('description') ?? '').trim() || null;
+  const originalDescription = String(form.get('description') ?? '').trim();
+  const description = hasRichProductFormat(originalDescription)
+    ? richProductValue(productMarkdownSource(originalDescription))
+    : originalDescription || null;
+  if (description && hasRichProductFormat(description) && description.length > 16000) {
+    return { error: '商品描述过长，请缩短文案后再保存。' };
+  }
   // Unchecked checkboxes submit nothing, so absence means inactive.
   const active = form.get('active') != null ? 1 : 0;
   let requires_shipping = options.existingDelivery?.requires_shipping ?? 1;

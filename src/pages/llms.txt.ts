@@ -1,4 +1,4 @@
-import { markdownExcerpt } from '../features/pages/markdown.ts';
+import { productMarkdownExcerpt } from '../features/products/productMarkdown.ts';
 import type { APIRoute } from 'astro';
 import { PUBLIC_CACHE_CONTROL } from '../features/cache/public';
 import { env } from 'cloudflare:workers';
@@ -33,7 +33,7 @@ export const GET: APIRoute = async ({ url, locals }) => {
   const pages = await listPublishedPages(env.DB);
 
   const productLines = products.map((p) => {
-    const desc = oneLine(p.description ? markdownExcerpt(p.description, 300) : null);
+    const desc = oneLine(p.description ? productMarkdownExcerpt(p.description, 300) : null);
     // This whole-catalog response carries coarse tags, so checkout-frequency
     // product-tag purges cannot keep stock honest here. Omit availability; the
     // catalog API and checkout resolve it through product-scoped/live reads.

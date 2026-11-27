@@ -5,7 +5,8 @@ import { listVariants, listExtras } from '../products/variants';
 import { categoriesForProduct, relatedProducts } from '../categories/db';
 import { getRelatedStored, storeRelatedIds } from '../search';
 import { enabledMethods } from '../payments';
-import { markdownExcerpt, renderMarkdown } from '../pages/markdown.ts';
+import { productMarkdownExcerpt, renderProductDetailText, renderProductMarkdown } from '../products/productMarkdown';
+import { hasRichProductFormat, productMarkdownSource } from '../products/richFormat';
 import { defaultProductMeta, importedProductSeo } from '../products/seo.ts';
 import { imageAliasPath } from '../products/imageSeo.ts';
 import { productImageSources, productImageUrl, type ImageDelivery } from '../products/image';
@@ -20,7 +21,7 @@ import { buildProductCard } from './productCard';
 import { readSiteCopy } from '../site-content/copy';
 import { validContactEmail } from '../site-content/inquiry';
 import { readWholesalePrices, wholesaleRanges } from '../products/wholesale';
-import { detailSectionLines, readProductDetailSections } from '../products/detailSections';
+import { readProductDetailSections } from '../products/detailSections';
 import { releaseYearFromTitle } from '../products/releaseYear';
 import type { ProductTranslationCopy } from '../i18n/productPublication';
 import type {
@@ -212,10 +213,15 @@ export async function loadProductDetail(
   const wholesalePrices = [product.price_cents, ...readWholesalePrices(product.wholesale_prices)];
   const details = readProductDetailSections(product.detail_sections);
   const detailCopy = options.reviewedCopy ?? (zh ? details.source : details.english);
+  const markdownOptions = {
+    baseUrl: options.imageBaseUrl,
+    resolveLink: options.catalogOnly ? (href: string) => managedWhatsAppHref(href, inquiryNumber ?? null) : undefined,
+  };
+  const quoteNoteHtml = renderProductDetailText(detailCopy.quoteNote, markdownOptions);
   const detailSections = [
-    { title: zh ? '产品规格' : 'Product specifications', items: detailSectionLines(detailCopy.specifications) },
-    { title: zh ? '运输及付款' : 'Shipping and payment', items: detailSectionLines(detailCopy.shippingPayment) },
-  ].filter(section => section.items.length > 0);
+    { title: zh ? '产品规格' : 'Product specifications', html: renderProductDetailText(detailCopy.specifications, { ...markdownOptions, checklist: true }) },
+    { title: zh ? '运输及付款' : 'Shipping and payment', html: renderProductDetailText(detailCopy.shippingPayment, { ...markdownOptions, checklist: true }) },
+  ].filter(section => section.html.trim());
   const galleryByKey = new Map(gallery.map((image) => [image.image_key, image]));
   const imageKeys = [...new Set([...(product.image_key ? [product.image_key] : []), ...galleryByKey.keys()])];
   const imageUrls = imageKeys.map((key) => {
@@ -226,7 +232,10 @@ export async function loadProductDetail(
   const imageAlt = imageKeys[0] ? images.find((_, index) => gallery[index].image_key === imageKeys[0])?.hero.alt || inquiryProduct.name : undefined;
   const importedSeo = zh ? null : importedProductSeo(product);
   const visibleCopy = options.reviewedCopy ?? importedSeo;
-  const detailDescription = [visibleCopy?.intro, visibleCopy?.description].filter(Boolean).join('\n\n') || product.description;
+  const detailDescription = !options.reviewedCopy && hasRichProductFormat(product.description)
+    ? product.description
+    : [visibleCopy?.intro, visibleCopy?.description].filter(Boolean).join('\n\n') || product.description;
+  const descriptionHtml = detailDescription ? renderProductMarkdown(detailDescription, markdownOptions) : null;
   const visibleName = visibleCopy?.h1 || product.name;
   const manualTitle = zh ? undefined : product.seo_title?.trim();
   const manualDescription = zh ? undefined : product.meta_description?.trim();
@@ -238,7 +247,7 @@ export async function loadProductDetail(
     name: visibleName,
     ...(options.sku && { sku: options.sku }),
     // Structured data wants prose, not Markdown syntax characters.
-    ...(detailDescription ? { description: markdownExcerpt(detailDescription, 5000) } : {}),
+    ...(detailDescription && productMarkdownSource(detailDescription) ? { description: productMarkdownExcerpt(detailDescription, 5000) } : {}),
     url: inquiryProduct.url,
     ...(imageUrls.length > 0 && { image: imageUrls }),
     ...(!options.catalogOnly && (!importedSeo || displayPriceCents > 0) && { offers: {
@@ -276,20 +285,15 @@ export async function loadProductDetail(
       ...(options.locale === 'zh-CN' && { locale: options.locale }),
       id: requirePublicId(product.public_id, product.id, 'product'),
       name: visibleName,
-      description: detailDescription,
-      descriptionHtml: detailDescription
-        ? renderMarkdown(detailDescription, {
-            baseUrl: options.imageBaseUrl,
-            resolveLink: options.catalogOnly ? (href) => managedWhatsAppHref(href, inquiryNumber ?? null) : undefined,
-          })
-        : null,
+      description: detailDescription ? productMarkdownSource(detailDescription) || null : null,
+      descriptionHtml: descriptionHtml?.trim() ? descriptionHtml : null,
       formattedPrice: formatMoney(displayPriceCents, options.currency),
       priceCents: product.price_cents,
       currency: options.currency,
       priceVaries,
       ...(options.catalogOnly && {
         catalogBadges: { category: badgeCategory ? categoryLink(badgeCategory) : null, year },
-        quoteNote: detailCopy.quoteNote,
+        quoteNoteHtml: quoteNoteHtml.trim() || undefined,
         detailSections,
         wholesale: {
           currency: product.currency.toUpperCase(),

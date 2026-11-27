@@ -9,6 +9,7 @@ import { DETAIL_SECTION_LIMIT, detailSectionFields, detailSectionKeys, readProdu
 import { MIN_RELEASE_YEAR, MAX_RELEASE_YEAR, releaseYearFromTitle } from './releaseYear';
 import { defaultProductMeta, importedProductSeo } from './seo';
 import ImageSeoFields from './ImageSeoFields.astro';
+import ProductRichEditor from './ProductRichEditor.astro';
 
 interface Props {
   action: string;
@@ -84,10 +85,7 @@ const inputClass =
   </div>
 
   <div>
-    <label class="block text-sm font-medium" for="description">描述</label>
-    <textarea id="description" name="description" rows={catalogOnly ? 8 : 3} class={inputClass}
-      placeholder={catalogOnly ? '## Specifications\n\n## Custom printing\n\n## Shipping' : undefined}
-      >{product?.description ?? ''}</textarea>
+    <ProductRichEditor field="description" label="商品描述" value={product?.description ?? ''} rows={catalogOnly ? 6 : 3} />
     <p class="mt-1 text-xs text-gray-500">
       {catalogOnly
         ? '可填写中文或英文商品资料。中文自动翻译，英文保留原文。'
@@ -120,12 +118,10 @@ const inputClass =
   {catalogOnly && (
     <fieldset class="space-y-3 rounded-md border border-line p-4">
       <legend class="px-1 text-sm font-semibold">商品详情模块</legend>
-      <p class="text-xs text-muted">可填中文或英文。规格和运输付款每行一项，留空的模块会在前台隐藏。</p>
+      <p class="text-xs text-muted">可填中文或英文。留空的模块会在前台隐藏。</p>
       {detailSectionKeys.map((key) => (
-        <label class="block text-sm" for={key}>{detailSectionFields[key]}
-          <textarea id={key} name={key} rows={key === 'quoteNote' ? 3 : 4} maxlength={DETAIL_SECTION_LIMIT}
-            class={inputClass}>{detailSections[key]}</textarea>
-        </label>
+        <ProductRichEditor field={key} label={detailSectionFields[key]} value={detailSections[key]} rows={3}
+          checklist={key !== 'quoteNote'} limit={DETAIL_SECTION_LIMIT} />
       ))}
     </fieldset>
   )}

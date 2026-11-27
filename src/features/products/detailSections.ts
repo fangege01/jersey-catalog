@@ -3,6 +3,8 @@ import { prepareEnglishSave } from '../i18n/english';
 import { syncSiteEnglish } from '../i18n/englishSettings';
 import { CACHE_TAG } from '../cache/tags';
 import { purgeCacheTags } from '../cache/purge';
+import { productMarkdownExcerpt, restoreProductTranslation } from './productMarkdown';
+import { hasRichProductFormat, productMarkdownSource, richProductValue } from './richFormat';
 
 export const detailSectionFields = {
   quoteNote: '价格下方说明',
@@ -13,6 +15,7 @@ type Key = keyof typeof detailSectionFields;
 type Fields = Record<Key, string>;
 export const detailSectionKeys = Object.keys(detailSectionFields) as Key[];
 export const DETAIL_SECTION_LIMIT = 1800;
+const MAX_RICH_SECTION_STORAGE = 24000;
 const MAX_LINES = 15;
 const empty = (): Fields => ({ quoteNote: '', specifications: '', shippingPayment: '' });
 export const detailSectionLines = (value: string) => value.split(/\r?\n/).map(line => line.trim()).filter(Boolean);
@@ -22,7 +25,9 @@ function safeFields(value: unknown): Fields {
   if (!value || typeof value !== 'object') return result;
   for (const key of detailSectionKeys) {
     const text = (value as Partial<Fields>)[key];
-    if (typeof text === 'string') result[key] = text.slice(0, DETAIL_SECTION_LIMIT);
+    if (typeof text === 'string') {
+      result[key] = hasRichProductFormat(text) && text.length <= MAX_RICH_SECTION_STORAGE ? text : text.slice(0, DETAIL_SECTION_LIMIT);
+    }
   }
   return result;
 }
@@ -42,8 +47,15 @@ export function parseProductDetailSections(form: FormData): { source?: Fields } 
   for (const key of detailSectionKeys) {
     const value = form.get(key);
     const label = detailSectionFields[key];
-    if (typeof value !== 'string' || value.length > DETAIL_SECTION_LIMIT) {
+    const rich = typeof value === 'string' && hasRichProductFormat(value);
+    if (typeof value !== 'string' || (rich
+      ? value.length > MAX_RICH_SECTION_STORAGE || productMarkdownExcerpt(value, DETAIL_SECTION_LIMIT + 1).length > DETAIL_SECTION_LIMIT
+      : value.length > DETAIL_SECTION_LIMIT)) {
       return { error: label + '最多可填写 ' + DETAIL_SECTION_LIMIT + ' 个字符。' };
+    }
+    if (rich) {
+      source[key] = richProductValue(productMarkdownSource(value));
+      continue;
     }
     const lines = detailSectionLines(value);
     if (lines.length > MAX_LINES) return { error: label + '最多可填写 ' + MAX_LINES + ' 行。' };
@@ -59,13 +71,23 @@ export function prepareProductDetailSections(db: D1Database, ai: Ai | undefined,
     quoteNote: DETAIL_SECTION_LIMIT, specifications: DETAIL_SECTION_LIMIT, shippingPayment: DETAIL_SECTION_LIMIT,
   };
   const { fallback, pending } = prepareEnglishSave(source, previous, detailSectionKeys);
+  for (const key of detailSectionKeys) {
+    if (!pending[key]) continue;
+    if (hasRichProductFormat(pending[key])) limits[key] = MAX_RICH_SECTION_STORAGE;
+    pending[key] = productMarkdownSource(pending[key]);
+  }
   const value = JSON.stringify({ source, english: fallback });
   return { value, sync(context: { waitUntil(promise: Promise<unknown>): void } | undefined, id: number, publicId?: string | null) {
     syncSiteEnglish(context, ai, pending, limits, async translated => {
       const english = { ...fallback };
       for (const key of detailSectionKeys) {
         const text = translated[key];
-        if (text && detailSectionLines(source[key]).length === detailSectionLines(text).length) english[key] = text;
+        if (!text) continue;
+        if (hasRichProductFormat(source[key])) {
+          const restored = restoreProductTranslation(source[key], text);
+          if (restored && restored.length <= MAX_RICH_SECTION_STORAGE &&
+              productMarkdownExcerpt(restored, DETAIL_SECTION_LIMIT + 1).length <= DETAIL_SECTION_LIMIT) english[key] = restored;
+        } else if (detailSectionLines(source[key]).length === detailSectionLines(text).length) english[key] = text;
       }
       const updated = await db.prepare('UPDATE products SET detail_sections=? WHERE id=? AND detail_sections=?')
         .bind(JSON.stringify({ source, english }), id, value).run();

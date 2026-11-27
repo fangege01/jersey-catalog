@@ -112,10 +112,9 @@ const zh = model.locale === 'zh-CN';
       {model.priceVaries && <span class="text-base text-faint">{zh ? '起价 ' : 'From '}</span>}
       {model.formattedPrice}
     </p>}
-    {model.quoteNote && (
-      <p class="mt-4 whitespace-pre-line break-words rounded-lg border border-red-200 border-s-4 border-s-red-600 bg-red-100 px-4 py-3 text-sm leading-relaxed text-black">
-        {model.quoteNote}
-      </p>
+    {model.quoteNoteHtml && (
+      <div class="markdown-content product-detail-copy mt-4 w-full break-words rounded-lg border border-red-200 border-s-4 border-s-red-600 bg-red-100 px-4 py-3 text-sm leading-relaxed text-black"
+        set:html={model.quoteNoteHtml} />
     )}
     {
       /* data-low-stock is the contract, not the wording. Reword or restyle it
@@ -129,7 +128,7 @@ const zh = model.locale === 'zh-CN';
     }
     {
       !purchase.inquiry && model.descriptionHtml && (
-        <div class="markdown-content mt-6 max-w-prose text-muted" set:html={model.descriptionHtml} />
+        <div class="markdown-content product-detail-copy mt-6 max-w-prose text-ink" set:html={model.descriptionHtml} />
       )
     }
 
@@ -144,14 +143,7 @@ const zh = model.locale === 'zh-CN';
     {model.detailSections?.map((section) => (
       <section class="mt-5 border-t border-line pt-4">
         <h2 class="text-sm font-semibold text-ink">{section.title}</h2>
-        <ul class="mt-2 space-y-2 text-sm text-muted">
-          {section.items.map((item) => (
-            <li class="flex items-start gap-2">
-              <span class="text-brand" aria-hidden="true">✓</span>
-              <span class="min-w-0 break-words">{item}</span>
-            </li>
-          ))}
-        </ul>
+        <div class="markdown-content product-detail-copy mt-2 text-sm text-ink" set:html={section.html} />
       </section>
     ))}
 
@@ -188,7 +180,7 @@ const zh = model.locale === 'zh-CN';
 {purchase.inquiry && model.descriptionHtml && (
   <section aria-labelledby="product-details" class="mt-12 border-t border-line pt-8 md:mt-16">
     <h2 id="product-details" class="font-serif text-2xl">{zh ? '商品详情' : 'Product details'}</h2>
-    <div class="markdown-content mt-4 max-w-4xl overflow-x-auto text-muted" set:html={model.descriptionHtml} />
+    <div class="markdown-content product-detail-copy mt-4 max-w-4xl overflow-x-auto text-ink" set:html={model.descriptionHtml} />
   </section>
 )}
 
