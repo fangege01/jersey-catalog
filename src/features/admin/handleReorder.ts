@@ -3,7 +3,6 @@
 export function enableHandleReorder(list: HTMLElement, onReorder: () => void | Promise<unknown>) {
   const rows = () => Array.from(list.children).filter((row): row is HTMLElement => row instanceof HTMLElement);
   let dragging: HTMLElement | null = null;
-  let startIndex = -1;
 
   for (const row of rows()) {
     const handle = row.querySelector<HTMLElement>('[data-handle]');
@@ -11,7 +10,6 @@ export function enableHandleReorder(list: HTMLElement, onReorder: () => void | P
     handle.draggable = true;
     handle.addEventListener('dragstart', event => {
       if (event.target !== handle || !event.dataTransfer) return;
-      startIndex = rows().indexOf(row);
       dragging = row;
       row.classList.add('dragging');
       event.dataTransfer.effectAllowed = 'move';
@@ -23,7 +21,6 @@ export function enableHandleReorder(list: HTMLElement, onReorder: () => void | P
       if (dragging !== row) return;
       row.classList.remove('dragging');
       dragging = null;
-      if (rows().indexOf(row) !== startIndex) void onReorder();
     });
   }
 
@@ -31,14 +28,22 @@ export function enableHandleReorder(list: HTMLElement, onReorder: () => void | P
     if (!dragging) return;
     event.preventDefault();
     if (event.dataTransfer) event.dataTransfer.dropEffect = 'move';
+  });
+  list.addEventListener('drop', event => {
+    if (!dragging) return;
+    event.preventDefault();
+    // Keep the drop target stable while hovering. Changing the row underneath
+    // the pointer during dragover can make the browser cancel a valid drop.
+    const rowToMove = dragging;
+    rowToMove.classList.remove('dragging');
+    dragging = null;
     const next = rows().find(row => {
-      if (row === dragging) return false;
+      if (row === rowToMove) return false;
       const bounds = row.getBoundingClientRect();
       return event.clientY <= bounds.top + bounds.height / 2;
     }) ?? null;
-    if (dragging.nextElementSibling !== next) list.insertBefore(dragging, next);
-  });
-  list.addEventListener('drop', event => {
-    if (dragging) event.preventDefault();
+    if (rowToMove.nextElementSibling === next) return;
+    list.insertBefore(rowToMove, next);
+    void onReorder();
   });
 }

@@ -1,7 +1,7 @@
 /**
  * The one place that decides which theme is active.
  *
- * Imported by astro.config.mjs, vitest.config.ts, the generated-CSS step, the
+ * Imported by astro.config.mjs, vitest.config.mjs, the generated-CSS step, the
  * boundary checker, and deploy validation. Nothing re-derives the id: two
  * readers with slightly different rules eventually disagree, and the symptom is
  * a build that compiles one design and styles another.

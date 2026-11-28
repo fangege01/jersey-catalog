@@ -76,11 +76,11 @@ describe('AdminLayout', () => {
 });
 
 describe('standalone test commands', () => {
-  it('vitest.config.ts generates the artifacts the root tsconfig extends', () => {
+  it('vitest.config.mjs generates the artifacts the root tsconfig extends', () => {
     // tsconfig.json extends generated tsconfig.theme.json. On a fresh
     // archive, `npm run test:storefront-contract` dies collecting tests unless
     // the config itself generates the artifacts first.
-    const config = readFileSync('vitest.config.ts', 'utf8');
+    const config = readFileSync('vitest.config.mjs', 'utf8');
     expect(config.indexOf('writeThemeArtifacts()')).toBeGreaterThan(-1);
     expect(config.indexOf('writeThemeArtifacts()')).toBeLessThan(
       config.indexOf('getViteConfig('),

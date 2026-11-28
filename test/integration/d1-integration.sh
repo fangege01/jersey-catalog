@@ -66,6 +66,7 @@ done
 # request with its own bare 500 without ever invoking the Worker.
 export X_LOCAL_OBSERVABILITY=false
 npx wrangler dev \
+  --local \
   --config dist/server/wrangler.json \
   --persist-to "$state_dir" \
   --var CANONICAL_ORIGIN:https://canonical.example \

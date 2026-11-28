@@ -20,7 +20,7 @@
  *
  * Per-process selection happens in process-local state only:
  *   - the `#theme` and `#theme-css` Vite aliases (astro.config.mjs,
- *     vitest.config.ts)
+ *     vitest.config.mjs)
  *   - an explicit `astro check --tsconfig tsconfig.theme.<id>.json`
  *
  * The files are generated, not committed.

@@ -1,4 +1,4 @@
-/// <reference types="vitest/config" />
+import { fileURLToPath } from 'node:url';
 import { getViteConfig } from 'astro/config';
 import { resolveTheme } from './scripts/themes.mjs';
 import { themeCssPath, writeThemeArtifacts } from './scripts/theme-css.mjs';
@@ -38,7 +38,7 @@ export default getViteConfig(
         // Lets pure-function modules that merely read deployment vars at import
         // time (config.ts, and the email templates through it) be unit-tested.
         // Real bindings stay out of scope — see the stub's own note.
-        'cloudflare:workers': new URL('./test/helpers/cloudflare-workers-stub.ts', import.meta.url).pathname,
+        'cloudflare:workers': fileURLToPath(new URL('./test/helpers/cloudflare-workers-stub.ts', import.meta.url)),
       },
     },
   },
