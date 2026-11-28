@@ -44,6 +44,17 @@ const render = async (component: unknown, model: unknown) => {
 };
 
 describe('buildProductCard', () => {
+  it('uses the lowest quoted price only for cards that request a wholesale starting price', () => {
+    const wholesale = product({ price_cents: 1400, wholesale_prices: '[1200,900,null]' });
+    const options = { showWholesaleStartingPrice: true };
+    expect(cardFor(wholesale, options)).toMatchObject({ formattedPrice: '$9.00', priceFrom: true });
+    expect(cardFor(wholesale)).toMatchObject({ formattedPrice: '$14.00' });
+    expect(cardFor(product({ price_cents: 0, wholesale_prices: '[null,1200,900]' }), options))
+      .toMatchObject({ formattedPrice: '$9.00', priceFrom: true });
+    expect(cardFor(product({ price_cents: 1400, wholesale_prices: 'invalid' }), options))
+      .toMatchObject({ formattedPrice: '$14.00' });
+  });
+
   it('exposes the public ID, never the row ID', () => {
     const card = cardFor(product());
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { productMarkdownExcerpt, renderProductDetailText, renderProductMarkdown, restoreProductTranslation } from './productMarkdown';
+import { productMarkdownExcerpt, renderProductDetailText, renderProductMarkdown, renderTitledProductDetailText, restoreProductTranslation } from './productMarkdown';
 import { richProductValue, safeProductLink } from './richFormat';
 import { pastedMarkdown } from './richPaste';
 
@@ -29,6 +29,18 @@ describe('product rich text', () => {
     expect(renderProductMarkdown('| Size | Age |\n| --- | --- |\n| S | Adult |')).toContain('<table>');
     expect(renderProductDetailText(richProductValue('An ordinary paragraph.'), { checklist: true }))
       .toBe('<p>An ordinary paragraph.</p>\n');
+  });
+
+  it('omits a repeated section title while preserving body text and other headings', () => {
+    const titles = ['Shipping and payment', '运输及付款'];
+    const value = richProductValue('**Shipping & Payment**\n\n✅ Tracked delivery\n\n### Payment options\n\nPayPal');
+    expect(renderTitledProductDetailText(value, titles))
+      .toBe('<ul class="fxf-checklist"><li>Tracked delivery</li></ul>\n<h3>Payment options</h3>\n<p>PayPal</p>\n');
+    expect(renderTitledProductDetailText('运输及付款\n✓ 提供物流追踪', titles))
+      .toMatch(/^<ul class="fxf-checklist"><li><p>提供物流追踪<\/p>\n<\/li><\/ul>$/u);
+    expect(renderTitledProductDetailText('## 运输及付款', titles)).toBe('');
+    expect(renderTitledProductDetailText('## Shipping options\n\nExpress delivery', titles))
+      .toContain('<h2>Shipping options</h2>');
   });
 
   it('strips unsafe raw HTML and refuses dangerous link targets', () => {

@@ -32,6 +32,8 @@ try {
   }
   const password = randomUUID();
   await db.prepare("INSERT INTO settings (key,value) VALUES ('setup_complete','1'), ('admin_password_hash',?), ('store_name','FXF')").bind(await hashPassword(password)).run();
+  await db.prepare("INSERT INTO settings (key,value) VALUES ('whatsapp_number','12025550123'), ('site_content:contact:en',?)")
+    .bind(JSON.stringify({ contactEmail: 'sales@example.test' })).run();
   const origin = (await mf.ready).origin;
   const read = (url, headers) => fetch(origin + url, { redirect: 'manual', headers });
   const post = (url, body, cookie) => fetch(origin + url, {
@@ -71,6 +73,10 @@ try {
   assert.equal(row.seo_title, fields.seo_title);
   assert.equal(row.meta_description, meta);
   assert.deepEqual(JSON.parse(row.wholesale_prices), [1200, 1000, 900]);
+  const home = await (await read('/')).text();
+  assert.match(home.match(/href="\/products\/argentina-home-2026" class="card-link"[^]*?<\/li>/)?.[0] ?? '', /From \$9\.00/);
+  const chineseHome = await (await read('/zh')).text();
+  assert.match(chineseHome.match(/href="\/zh\/products\/argentina-home-2026" class="card-link"[^]*?<\/li>/)?.[0] ?? '', /\$9\.00 起/);
   const gallery = async () => (await db.prepare('SELECT * FROM product_images WHERE product_id=? ORDER BY position')
     .bind(row.id).all()).results;
   const [primary] = await gallery();
@@ -99,6 +105,12 @@ try {
   assert.match(html, /<img[^>]*alt="Argentina home jersey front view"[^>]*title="Argentina jersey front"[^>]*loading="eager"/);
   assert.ok(html.includes(primary.caption));
   assert.match(html, /<h1\b[^>]*>Argentina Home Jersey<\/h1>/);
+  const quoteLinks = html.match(/class="product-quote-links"[^]*?<\/div>/)?.[0] ?? '';
+  assert.equal((quoteLinks.match(/<a\b/gu) ?? []).length, 2);
+  assert.match(quoteLinks, /href="https:\/\/wa\.me\/12025550123[^"]*"[^]*?Get a quote on WhatsApp/);
+  assert.match(quoteLinks, /href="mailto:sales@example\.test[^"]*"[^]*?Email for a quote/);
+  assert.match(quoteLinks, /quote-icon-whatsapp[\s\S]*quote-icon-email/);
+  assert.doesNotMatch(html, /Ask about quantities, available sizes, or delivery\./);
   for (const price of ['$14.00', '$12.00', '$10.00', '$9.00']) assert.ok(html.includes(price), price);
   const schema = JSON.parse(html.match(/<script[^>]*type="application\/ld\+json"[^>]*>(\{"@context":"https:\/\/schema.org","@type":"Product".*?\})<\/script>/s)[1]);
   assert.equal(schema.name, fields.name);
@@ -196,8 +208,8 @@ try {
   const richFields = {
     description: richProductValue('## Training kit\n\n### Textile\n\n**Lightweight** fabric and ++care instructions++.\n\n[Contact us](/contact)\n\n| Size | Chest |\n| --- | --- |\n| S | 94 cm |'),
     quoteNote: richProductValue('**Bulk orders**\n\n- First tier\n- Second tier'),
-    specifications: richProductValue('- [x] ✅✔ Adult XS–4XL\n- [x] ✓√ Youth sizes 16–28'),
-    shippingPayment: richProductValue('1. PayPal\n2. Bank transfer'),
+    specifications: richProductValue('**Product Specifications**\n\n✅ Adult XS–4XL\n\n✓ Youth sizes 16–28'),
+    shippingPayment: richProductValue('## Shipping & Payment\n\n1. PayPal\n2. Bank transfer'),
   };
   saved(await post(api, form({ slug: '', ...richFields }), cookie));
   const richSaved = await db.prepare('SELECT description, detail_sections FROM products WHERE id=?').bind(row.id).first();
@@ -213,6 +225,9 @@ try {
   assert.ok(rendered.includes('<u>care instructions</u>'));
   assert.ok(rendered.includes('<a href="/contact">Contact us</a>'));
   assert.ok(rendered.includes('<strong>Bulk orders</strong>'));
+  assert.equal((rendered.match(/>Product specifications</giu) ?? []).length, 1);
+  assert.doesNotMatch(rendered, /<h2>Shipping &amp; Payment<\/h2>/);
+  assert.equal((rendered.match(/>Shipping and payment</giu) ?? []).length, 1);
   assert.match(rendered, /<ul class="fxf-checklist">\s*<li>Adult XS–4XL<\/li>/);
   assert.match(rendered, /<td>94 cm<\/td>/);
   assert.match(rendered, /<ol>\s*<li>PayPal<\/li>/);
@@ -222,7 +237,7 @@ try {
   assert.ok(!rendered.includes('ProductRichEditor.astro'));
   const reopened = await (await read('/admin/products/' + row.public_id + '/edit', { cookie })).text();
   assert.match(reopened, /<template[^>]*>\s*<h2>Training kit<\/h2>/);
-  assert.match(reopened, /<template[^>]*>\s*<ul class="fxf-checklist">/);
+  assert.match(reopened, /<template[^>]*>\s*<p><strong>Product Specifications<\/strong><\/p>/);
   const richEndpoint = '/api/admin/products/rich-text';
   assert.notEqual((await read(richEndpoint)).status, 200);
   const richApi = payload => fetch(origin + richEndpoint, {

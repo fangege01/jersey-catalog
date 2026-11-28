@@ -50,6 +50,7 @@ export interface ProductCardModel {
   /** Server-formatted price in the store's currency. Display only — money is
    *  never posted back from a template as authority. */
   formattedPrice: string;
+  priceFrom?: boolean;
   /** Availability as a boolean, deliberately not a quantity: exact stock counts
    *  stay private, and bucket-level changes avoid cache invalidation. */
   inStock: boolean;

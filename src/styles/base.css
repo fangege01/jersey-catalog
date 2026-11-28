@@ -338,6 +338,22 @@
 .markdown-content .fxf-checklist > li > :last-child {
   margin-block-end: 0;
 }
+.markdown-content.product-detail-section-copy {
+  line-height: 1.5;
+}
+.markdown-content.product-detail-section-copy :is(p, ul, ol, li, blockquote, pre, table) {
+  margin-block-end: 0.375rem;
+}
+.markdown-content.product-detail-section-copy :is(h2, h3) {
+  margin-block: 0.75rem 0.25rem;
+}
+.markdown-content.product-detail-section-copy > :is(h2, h3):first-child {
+  margin-block-start: 0;
+}
+.markdown-content.product-detail-section-copy > :last-child,
+.markdown-content.product-detail-section-copy li > :last-child {
+  margin-block-end: 0;
+}
 .markdown-content a {
   color: var(--color-brand, currentColor);
   text-decoration: underline;

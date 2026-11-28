@@ -53,6 +53,25 @@ export function renderProductDetailText(value: string, options: RenderOptions & 
     items.map(line => '<li>' + renderProductMarkdown(line.slice(checklistPrefixLength(line)), options) + '</li>').join('') + '</ul>' : '';
 }
 
+/** Spec and shipping sections already have a semantic title in the template. */
+export function renderTitledProductDetailText(value: string, titles: readonly string[], options: RenderOptions = {}) {
+  const html = renderProductDetailText(value, { ...options, checklist: true })
+    .replace(/(?:<p>[\t \u00a0]*[✅✓✔√][^]*?<\/p>\s*)+/gu, group => {
+      const items = Array.from(group.matchAll(/<p>([^]*?)<\/p>/gu), ([, content]) =>
+        '<li>' + content.slice(checklistPrefixLength(content)) + '</li>');
+      return '<ul class="fxf-checklist">' + items.join('') + '</ul>\n';
+    });
+  const normalize = (text: string) => text.normalize('NFKC').toLowerCase()
+    .replace(/&(?:amp;)?/gu, 'and').replace(/[\s\p{P}]+/gu, '');
+  const heading = /^(<ul class="fxf-checklist"><li>)?<(h[23]|p)>([^]*?)<\/\2>\s*/u.exec(html);
+  if (!heading) return html;
+  const text = normalize(sanitize(heading[3], { allowedTags: [] }));
+  if (!titles.some(title => normalize(title) === text)) return html;
+  const rest = html.slice(heading[0].length);
+  if (!heading[1]) return rest;
+  return rest.startsWith('</li></ul>') ? '' : '<ul class="fxf-checklist">' + rest.slice('</li>'.length);
+}
+
 export function productMarkdownExcerpt(value: string, maxLength = 160): string {
   const html = renderProductMarkdown(value);
   const text = sanitize(html.replace(/<\/(?:p|h[23]|li|td|th|blockquote)>|<br\s*\/?>/giu, ' '), { allowedTags: [], allowedAttributes: {} })

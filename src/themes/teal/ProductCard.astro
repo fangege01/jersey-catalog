@@ -14,7 +14,9 @@ const zh = locale === 'zh-CN';
     <div class="card-content">
       <Heading class="font-bold leading-snug break-words">{card.name}</Heading>
       <div class="card-meta flex flex-wrap items-center justify-between gap-x-2 gap-y-1 text-xs sm:text-sm">
-        <span class="font-semibold tabular-nums text-brand">{card.formattedPrice}</span>
+        <span class="font-semibold tabular-nums text-brand">
+          {card.priceFrom && !zh && 'From '}{card.formattedPrice}{card.priceFrom && zh && ' 起'}
+        </span>
         <span class="text-muted">{zh ? '查看详情' : 'View details'} <span aria-hidden="true">→</span></span>
       </div>
     </div>

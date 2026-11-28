@@ -5,7 +5,7 @@ import { listVariants, listExtras } from '../products/variants';
 import { categoriesForProduct, relatedProducts } from '../categories/db';
 import { getRelatedStored, storeRelatedIds } from '../search';
 import { enabledMethods } from '../payments';
-import { productMarkdownExcerpt, renderProductDetailText, renderProductMarkdown } from '../products/productMarkdown';
+import { productMarkdownExcerpt, renderProductDetailText, renderProductMarkdown, renderTitledProductDetailText } from '../products/productMarkdown';
 import { hasRichProductFormat, productMarkdownSource } from '../products/richFormat';
 import { defaultProductMeta, importedProductSeo } from '../products/seo.ts';
 import { imageAliasPath } from '../products/imageSeo.ts';
@@ -219,9 +219,12 @@ export async function loadProductDetail(
   };
   const quoteNoteHtml = renderProductDetailText(detailCopy.quoteNote, markdownOptions);
   const detailSections = [
-    { title: zh ? '产品规格' : 'Product specifications', html: renderProductDetailText(detailCopy.specifications, { ...markdownOptions, checklist: true }) },
-    { title: zh ? '运输及付款' : 'Shipping and payment', html: renderProductDetailText(detailCopy.shippingPayment, { ...markdownOptions, checklist: true }) },
-  ].filter(section => section.html.trim());
+    { en: 'Product specifications', zh: '产品规格', copy: detailCopy.specifications },
+    { en: 'Shipping and payment', zh: '运输及付款', copy: detailCopy.shippingPayment },
+  ].map(section => ({
+    title: zh ? section.zh : section.en,
+    html: renderTitledProductDetailText(section.copy, [section.en, section.zh], markdownOptions),
+  })).filter(section => section.html.trim());
   const galleryByKey = new Map(gallery.map((image) => [image.image_key, image]));
   const imageKeys = [...new Set([...(product.image_key ? [product.image_key] : []), ...galleryByKey.keys()])];
   const imageUrls = imageKeys.map((key) => {

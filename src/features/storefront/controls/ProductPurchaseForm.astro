@@ -23,13 +23,14 @@ import type { ProductPurchaseModel } from '../models';
  */
 interface Props {
   model: ProductPurchaseModel;
+  compactInquiry?: boolean;
 }
 
-const { model } = Astro.props;
+const { model, compactInquiry } = Astro.props;
 const showAny = model.showAddToCart || model.showBuyNow;
 ---
 
-{model.inquiry && <ProductInquiry inquiry={model.inquiry} variantLabel={model.variantLabel} locale={model.locale} />}
+{model.inquiry && <ProductInquiry inquiry={model.inquiry} variantLabel={model.variantLabel} locale={model.locale} compact={compactInquiry} />}
 
 {
   !model.inquiry && showAny &&

@@ -173,6 +173,7 @@ export async function loadCatalogPage(
         delivery: options.delivery,
         currency: options.currency,
         catalogOnly: options.catalogOnly,
+        showWholesaleStartingPrice: !!options.landing && !!options.catalogOnly,
         sizes: CARD_SIZES,
         // Only the first card is the page's likely LCP image.
         priority: !options.landing && index === 0,

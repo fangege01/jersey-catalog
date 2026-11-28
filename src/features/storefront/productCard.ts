@@ -3,6 +3,7 @@ import { productImageSources, type ImageDelivery } from '../products/image';
 import { requirePublicId } from '../catalog/serialize';
 import { stockState } from '../products/stock';
 import { formatMoney } from '../../money';
+import { readWholesalePrices } from '../products/wholesale';
 import type { ProductCardModel, StorefrontImage } from './models';
 
 /**
@@ -57,6 +58,7 @@ export function buildStorefrontImage(
 
 export interface ProductCardOptions extends StorefrontImageOptions {
   catalogOnly?: boolean;
+  showWholesaleStartingPrice?: boolean;
   /**
    * Currency to format the price in. Required, not defaulted: a default would
    * either read the store config — making this builder binding-aware, which is
@@ -75,6 +77,12 @@ export function buildProductCard(
   product: Product,
   options: ProductCardOptions,
 ): ProductCardModel {
+  const tiers = options.showWholesaleStartingPrice
+    ? readWholesalePrices(product.wholesale_prices).filter(price => price !== null)
+    : [];
+  const startingPrice = tiers.length
+    ? Math.min(product.price_cents > 0 ? product.price_cents : Infinity, ...tiers)
+    : null;
   return {
     id: requirePublicId(product.public_id, product.id, 'product'),
     name: product.name,
@@ -82,7 +90,10 @@ export function buildProductCard(
     image: buildStorefrontImage(product.image_key, product.name, options),
     // The store's currency, not the row's: a product row can carry a legacy
     // currency, and the catalog has always displayed one consistent currency.
-    formattedPrice: formatMoney(product.price_cents, options.currency),
+    formattedPrice: startingPrice === null
+      ? formatMoney(product.price_cents, options.currency)
+      : formatMoney(startingPrice, product.currency),
+    ...(startingPrice !== null && { priceFrom: true }),
     // Availability only — never the count. `stockState` is the authoritative
     // classification; re-deriving `stock > 0` here would fork that rule.
     inStock: Boolean(options.catalogOnly) || stockState(product.stock) !== 'out',
