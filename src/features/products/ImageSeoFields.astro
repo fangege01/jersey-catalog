@@ -21,10 +21,4 @@ const generated = image && storedSeoFilename(image.image_key);
     <input name="alt" type="text" value={image?.alt ?? ''} placeholder={productName || '留空使用商品名称'} class={input} draggable="false" />
     <span class="mt-1 block text-xs text-muted">建议写这张照片实际展示的角度或细节。留空时商品页面会使用商品名称。</span>
   </label>
-  <label class="block text-sm">Image Title（图片标题）
-    <input name="image_title" type="text" value={image?.title ?? ''} class={input} draggable="false" />
-  </label>
-  <label class="block text-sm">Image Caption（图片说明）
-    <textarea name="image_caption" rows="2" class={input} draggable="false">{image?.caption ?? ''}</textarea>
-  </label>
 </div>

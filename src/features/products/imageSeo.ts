@@ -13,8 +13,8 @@ export function normalizedImageFilename(value: string): string {
 interface ImageSeo {
   filename: string;
   alt: string | null;
-  title: string | null;
-  caption: string | null;
+  title?: string | null;
+  caption?: string | null;
 }
 
 export function parseImageSeo(form: FormData): ImageSeo | { error: string } {
@@ -26,8 +26,8 @@ export function parseImageSeo(form: FormData): ImageSeo | { error: string } {
   return {
     filename,
     alt: String(form.get('alt') ?? '').trim() || null,
-    title: String(form.get('image_title') ?? '').trim() || null,
-    caption: String(form.get('image_caption') ?? '').trim() || null,
+    title: form.has('image_title') ? String(form.get('image_title') ?? '').trim() || null : undefined,
+    caption: form.has('image_caption') ? String(form.get('image_caption') ?? '').trim() || null : undefined,
   };
 }
 
@@ -45,8 +45,13 @@ export function requestedImageAlias(image: ProductImageRow, filename: string): s
 export async function saveImageSeo(db: D1Database, image: ProductImageRow, seo: ImageSeo): Promise<string | null> {
   const alias = requestedImageAlias(image, seo.filename);
   if (seo.filename && !alias) return '无法识别原图格式，暂不能自定义这张图片的文件名。';
-  const update = db.prepare('UPDATE product_images SET seo_alias=?, alt=?, title=?, caption=? WHERE id=? AND image_key=?')
-    .bind(alias, seo.alt, seo.title, seo.caption, image.id, image.image_key);
+  const update = db.prepare(`
+    UPDATE product_images SET seo_alias=?, alt=?,
+      title=CASE WHEN ? THEN ? ELSE title END,
+      caption=CASE WHEN ? THEN ? ELSE caption END
+    WHERE id=? AND image_key=?
+  `).bind(alias, seo.alt, seo.title !== undefined ? 1 : 0, seo.title ?? null,
+    seo.caption !== undefined ? 1 : 0, seo.caption ?? null, image.id, image.image_key);
   const claims = alias && alias !== image.seo_alias ? [db.prepare(
     'INSERT INTO product_image_url_aliases (alias_key,image_key) SELECT ?, image_key FROM product_images WHERE id=? AND image_key=?',
   ).bind(alias, image.id, image.image_key)] : [];

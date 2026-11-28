@@ -140,13 +140,13 @@ const weightRequired = zonesRequireWeight(shippingFor(Astro.locals.settings).con
         <ul data-gallery data-action={`/api/admin/products/${product.public_id}/images`} class="mb-6">
           {imageViews.map((img) => (
             <li data-image-id={img.public_id} class="flex flex-wrap items-center gap-3 py-3">
-              {/* Drag handle — the grip icon + grab cursor signal the row is draggable. */}
+              {/* The grip starts mouse drag sorting. Up/Down also work on touch and with a keyboard. */}
               <span
                 data-handle
                 aria-hidden="true"
-                class="shrink-0 cursor-grab text-gray-300 hover:text-gray-500"
+                class="shrink-0 cursor-grab select-none text-gray-300 hover:text-gray-500"
               >
-                <svg width="12" height="20" viewBox="0 0 12 20" fill="currentColor">
+                <svg width="12" height="20" viewBox="0 0 12 20" fill="currentColor" class="pointer-events-none">
                   <circle cx="3" cy="4" r="1.5" />
                   <circle cx="9" cy="4" r="1.5" />
                   <circle cx="3" cy="10" r="1.5" />
@@ -497,6 +497,7 @@ const weightRequired = zonesRequireWeight(shippingFor(Astro.locals.settings).con
       auto-update as rows reorder. */}
   <script>
     // @ts-nocheck -- plain-JS client script (annotations would ship to the browser)
+    import { enableHandleReorder } from '../../../../features/admin/handleReorder';
     const list = document.querySelector('[data-gallery]');
     if (list instanceof HTMLElement) {
       const action = list.dataset.action || '';
@@ -515,29 +516,7 @@ const weightRequired = zonesRequireWeight(shippingFor(Astro.locals.settings).con
         return send(p);
       };
 
-      let dragging = null;
-      for (const li of rows()) {
-        li.setAttribute('draggable', 'true');
-        li.addEventListener('dragstart', () => {
-          dragging = li;
-          li.classList.add('dragging');
-        });
-        li.addEventListener('dragend', () => {
-          li.classList.remove('dragging');
-          dragging = null;
-          persistOrder();
-        });
-      }
-      list.addEventListener('dragover', (e) => {
-        e.preventDefault();
-        if (!dragging) return;
-        const after = rows().find((el) => {
-          if (el === dragging) return false;
-          const r = el.getBoundingClientRect();
-          return r.top + r.height / 2 >= e.clientY;
-        });
-        list.insertBefore(dragging, after || null);
-      });
+      enableHandleReorder(list, persistOrder);
 
       list.addEventListener('submit', async (e) => {
         const form = e.target;

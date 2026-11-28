@@ -427,15 +427,14 @@ const inputClass = 'mt-1 block w-full rounded-md border border-line bg-paper p-2
                 const reason = unavailableReason(item);
                 return (
                   <li data-menu-item={item.publicId} class="flex min-w-0 items-start gap-3 py-3">
-                    {/* Grip + grab cursor signal the row is draggable, matching the
-                        product gallery. aria-hidden because Up/Down are the
+                    {/* The grip starts mouse drag sorting. aria-hidden because Up/Down are the
                         accessible, no-JS way to do the same thing. */}
                     <span
                       data-handle
                       aria-hidden="true"
-                      class="mt-1 hidden shrink-0 cursor-grab text-gray-300 hover:text-gray-500 sm:block"
+                      class="mt-1 hidden shrink-0 cursor-grab select-none text-gray-300 hover:text-gray-500 sm:block"
                     >
-                      <svg width="12" height="20" viewBox="0 0 12 20" fill="currentColor">
+                      <svg width="12" height="20" viewBox="0 0 12 20" fill="currentColor" class="pointer-events-none">
                         <circle cx="3" cy="5" r="1.5" />
                         <circle cx="9" cy="5" r="1.5" />
                         <circle cx="3" cy="10" r="1.5" />
@@ -566,6 +565,7 @@ const inputClass = 'mt-1 block w-full rounded-md border border-line bg-paper p-2
 
 
 <script>
+  import { enableHandleReorder } from '../../features/admin/handleReorder';
   const footerSync = document.querySelector<HTMLElement>('[data-footer-sync="pending"]');
   if (footerSync) {
     let attempts = 0;
@@ -735,32 +735,9 @@ const inputClass = 'mt-1 block w-full rounded-md border border-line bg-paper p-2
     };
     const reloadPage = () => window.location.reload();
 
-    // Drag-and-drop, mirroring the product gallery so the two reorderable lists
-    // in admin work the same way. Up/Down stay as the keyboard-accessible and
-    // no-JS path — this is additive.
-    let dragging: HTMLElement | null = null;
-    for (const row of rows()) {
-      row.setAttribute('draggable', 'true');
-      row.addEventListener('dragstart', () => {
-        dragging = row;
-        row.classList.add('dragging');
-      });
-      row.addEventListener('dragend', async () => {
-        row.classList.remove('dragging');
-        dragging = null;
-        refreshEnds(list);
-        await persistOrder();
-      });
-    }
-    list.addEventListener('dragover', (event) => {
-      event.preventDefault();
-      if (!dragging) return;
-      const after = rows().find((el) => {
-        if (el === dragging) return false;
-        const r = el.getBoundingClientRect();
-        return r.top + r.height / 2 >= (event as DragEvent).clientY;
-      });
-      list.insertBefore(dragging, after ?? null);
+    enableHandleReorder(list, async () => {
+      refreshEnds(list);
+      await persistOrder();
     });
 
     list.addEventListener('submit', async (event) => {

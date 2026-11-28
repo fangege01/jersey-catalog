@@ -1,4 +1,9 @@
 const richPrefix = '<!--fxf-product-rich-text-->';
+const leadingChecks = /^[\t \u00a0]*(?:[✅✓✔√][\ufe0e\ufe0f]?[\t \u00a0]*)+/u;
+
+export function checklistPrefixLength(line: string): number {
+  return line.match(leadingChecks)?.[0].length ?? 0;
+}
 
 export function hasRichProductFormat(value: string | null | undefined): boolean {
   return value?.startsWith(richPrefix) ?? false;

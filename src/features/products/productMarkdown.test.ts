@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { productMarkdownExcerpt, renderProductDetailText, renderProductMarkdown, restoreProductTranslation } from './productMarkdown';
 import { richProductValue, safeProductLink } from './richFormat';
+import { pastedMarkdown } from './richPaste';
 
 describe('product rich text', () => {
   it('renders headings, inline styles and semantic lists including checklists', () => {
@@ -48,5 +49,27 @@ describe('product rich text', () => {
     const result = restoreProductTranslation(source, '## Specifications\n\n- [x] **Adult sizes**\n- [x] Youth sizes');
     expect(result).toBe(richProductValue('## Specifications\n\n- [x] **Adult sizes**\n- [x] Youth sizes'));
     expect(restoreProductTranslation(source, 'Specifications\n\nAdult sizes')).toBeNull();
+  });
+
+  it('deduplicates typed symbols on checklist rows while leaving real headings and paragraphs alone', () => {
+    const html = renderProductMarkdown('## Sizing\n\n- [x] ✅ **✓✔** √Adult XS\n- [x] ✔ Youth\n\n### Delivery\n\nA ✓ means confirmed.');
+    expect(html).toContain('<h2>Sizing</h2>');
+    expect(html).toContain('<ul class="fxf-checklist">');
+    expect(html).toContain('<li>Youth');
+    expect(html).toContain('<h3>Delivery</h3>');
+    expect(html).toContain('A ✓ means confirmed.');
+    expect(html).not.toMatch(/[✅✔√]/u);
+    expect(renderProductDetailText('✓ Adult\n✅✔ Youth', { checklist: true })).not.toMatch(/[✅✓✔√]/u);
+  });
+
+  it('recognizes pasted Markdown and leaves ordinary measurements as plain text', () => {
+    const html = pastedMarkdown('## Fit\n\n### Sizes\n**Adult** *Youth*\n\n- XS–4XL\n\n1. PayPal\n2. Wire\n\n[Contact](/contact)', '');
+    expect(html).toContain('<h2>Fit</h2>');
+    expect(html).toContain('<h3>Sizes</h3>');
+    expect(html).toContain('<strong>Adult</strong> <em>Youth</em>');
+    expect(html).toContain('<ol>');
+    expect(html).toContain('<a href="/contact">Contact</a>');
+    expect(pastedMarkdown('Width 1.25 mm\nAdult XS–4XL\n100% Polyester', '')).toBeNull();
+    expect(pastedMarkdown('**Plain text**', '<p><strong>Formatted copy</strong></p>')).toBeNull();
   });
 });

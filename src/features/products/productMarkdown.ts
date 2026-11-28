@@ -1,46 +1,9 @@
 import MarkdownIt from 'markdown-it';
-import type { MarkdownIt as MarkdownItInstance, Token } from 'markdown-it';
-import insert from 'markdown-it-ins';
+import type { Token } from 'markdown-it';
 import sanitize from 'sanitize-html';
 import { renderMarkdown, type RenderOptions } from '../pages/markdown.ts';
-import { hasRichProductFormat, productMarkdownSource, richProductValue, safeProductLink } from './richFormat.ts';
-
-const checkPrefix = /^\[(?:x|X| )\][ \t]+/u;
-export const productChecklist = 'fxf-checklist';
-
-function markChecklists(tokens: Token[]) {
-  const lists: Array<{ token: Token; items: Array<Token | undefined> }> = [];
-  for (const [index, token] of tokens.entries()) {
-    if (token.type === 'bullet_list_open') lists.push({ token, items: [] });
-    if (token.type === 'list_item_open') {
-      const list = lists.at(-1);
-      if (list && token.level === list.token.level + 1) {
-        const inline = tokens[index + 2];
-        list.items.push(inline?.type === 'inline' ? inline.children?.[0] : undefined);
-      }
-    }
-    if (token.type === 'bullet_list_close') {
-      const list = lists.pop();
-      if (!list?.items.length || !list.items.every(item => item?.type === 'text' && checkPrefix.test(item.content))) continue;
-      list.token.attrSet('class', productChecklist);
-      for (const item of list.items) item!.content = item!.content.replace(checkPrefix, '');
-    }
-  }
-}
-
-function configure(instance: MarkdownItInstance, breaks: boolean) {
-  instance.set({ html: true, breaks });
-  instance.use(insert);
-  instance.validateLink = safeProductLink;
-  instance.core.ruler.push('product-format', ({ tokens }) => {
-    markChecklists(tokens);
-    for (const token of tokens) {
-      if (token.type === 'heading_open' || token.type === 'heading_close') {
-        token.tag = token.tag === 'h1' || token.tag === 'h2' ? 'h2' : 'h3';
-      }
-    }
-  });
-}
+import { checklistPrefixLength, hasRichProductFormat, productMarkdownSource, richProductValue, safeProductLink } from './richFormat.ts';
+import { configureProductMarkdown, productChecklist } from './productMarkdownRules.ts';
 
 const h2 = () => ({ tagName: 'h2', attribs: {} });
 const h3 = () => ({ tagName: 'h3', attribs: {} });
@@ -49,7 +12,7 @@ const safeHtml: sanitize.IOptions = {
     'blockquote', 'code', 'pre', 'hr', 'table', 'thead', 'tbody', 'tr', 'td', 'th'],
   allowedAttributes: {
     a: ['href', 'title'], img: ['src', 'alt', 'title', 'width', 'height', 'loading', 'decoding'],
-    ul: ['class'], ol: ['start'],
+    ul: ['class'], ol: ['start'], td: ['rowspan', 'colspan'], th: ['rowspan', 'colspan'],
   },
   allowedClasses: { ul: [productChecklist] },
   allowedSchemes: ['http', 'https', 'mailto', 'tel'],
@@ -58,6 +21,7 @@ const safeHtml: sanitize.IOptions = {
   transformTags: {
     h1: h2, h4: h3, h5: h3, h6: h3,
     ins: 'u', b: 'strong', i: 'em',
+    td: safeCellSpan, th: safeCellSpan,
     a: (_tag, attrs) => ({ tagName: 'a', attribs: safeProductLink(attrs.href ?? '') ? attrs : {} }),
     img: (_tag, attrs): sanitize.Tag => ({
       tagName: 'img',
@@ -67,8 +31,17 @@ const safeHtml: sanitize.IOptions = {
   },
 };
 
+function safeCellSpan(tagName: string, attrs: Record<string, string>) {
+  const attribs: Record<string, string> = {};
+  for (const key of ['rowspan', 'colspan']) {
+    if (/^(?:[1-9]|[1-9][0-9])$/u.test(attrs[key] ?? '')) attribs[key] = attrs[key];
+  }
+  return { tagName, attribs };
+}
+
 export function renderProductMarkdown(value: string, options: RenderOptions & { breaks?: boolean } = {}): string {
-  return sanitize(renderMarkdown(productMarkdownSource(value), options, md => configure(md, !!options.breaks)), safeHtml);
+  return sanitize(renderMarkdown(productMarkdownSource(value), options, md =>
+    configureProductMarkdown(md, { html: true, breaks: !!options.breaks })), safeHtml);
 }
 
 export function renderProductDetailText(value: string, options: RenderOptions & { checklist?: boolean } = {}) {
@@ -77,7 +50,7 @@ export function renderProductDetailText(value: string, options: RenderOptions & 
   }
   const items = value.split(/\r?\n/u).map(line => line.trim()).filter(Boolean);
   return items.length ? '<ul class="fxf-checklist">' +
-    items.map(line => '<li>' + renderProductMarkdown(line, options) + '</li>').join('') + '</ul>' : '';
+    items.map(line => '<li>' + renderProductMarkdown(line.slice(checklistPrefixLength(line)), options) + '</li>').join('') + '</ul>' : '';
 }
 
 export function productMarkdownExcerpt(value: string, maxLength = 160): string {
@@ -97,9 +70,12 @@ export function productMarkdownExcerpt(value: string, maxLength = 160): string {
 export function restoreProductTranslation(source: string, translated: string): string | null {
   if (!hasRichProductFormat(source)) return translated;
   const md = new MarkdownIt();
-  configure(md, false);
+  configureProductMarkdown(md, { html: true, breaks: false });
   const structure = (value: string) => md.parse(productMarkdownSource(value), {}).flatMap(token => {
-    const shape = (item: Token) => item.type === 'text' ? '' : [item.type, item.tag, item.attrs];
+    const shape = (item: Token) => item.type === 'text' ? '' : [
+      item.type, item.tag, item.attrs,
+      item.type === 'html_block' ? sanitize(item.content, safeHtml).match(/<\/?[a-z][^>]*>/giu) : null,
+    ];
     return token.type === 'inline' ? [token.type, ...((token.children ?? []).map(shape).filter(Boolean))] : [shape(token)];
   });
   return JSON.stringify(structure(source)) === JSON.stringify(structure(translated)) ? richProductValue(translated) : null;

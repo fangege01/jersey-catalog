@@ -64,6 +64,8 @@ try {
   create.set('image_caption', 'Sky-blue and white jersey viewed from the front.');
   const newForm = await (await read('/admin/products/new', { cookie })).text();
   for (const field of ['seo_title', 'meta_description', 'slug']) assert.ok(newForm.includes(`name="${field}"`));
+  for (const field of ['image_filename', 'alt']) assert.ok(newForm.includes(`name="${field}"`));
+  assert.doesNotMatch(newForm, /name="image_(?:title|caption)"/);
   saved(await post('/api/admin/products', create, cookie));
   const row = await db.prepare("SELECT * FROM products WHERE slug='argentina-home-2026'").first();
   assert.equal(row.seo_title, fields.seo_title);
@@ -81,6 +83,8 @@ try {
   assert.ok(editForm.includes(`value="${fields.seo_title}"`));
   assert.ok(editForm.includes(meta));
   assert.ok(editForm.includes('name="image_filename"'));
+  assert.ok(editForm.includes('name="alt"'));
+  assert.doesNotMatch(editForm, /name="image_(?:title|caption)"/);
   assert.ok(editForm.includes(primary.alt));
   const detail = '/products/' + row.slug;
   const html = await (await read(detail + '?utm_source=test')).text();
@@ -119,11 +123,14 @@ try {
   assert.match(badImage.headers.get('location'), /\/edit\?error=/);
   assert.match((await editImage(second, { image_filename: 'Back View', alt: 'Argentina home jersey back view',
     image_title: 'Back of the jersey', image_caption: 'Back panel of the Argentina jersey.' })).headers.get('location'), /\/edit#gallery$/);
-  assert.match((await editImage(primary, { image_filename: 'Home Shirt Front', alt: '', image_caption: primary.caption })).headers.get('location'), /\/edit#gallery$/);
+  assert.match((await editImage(primary, { image_filename: 'Home Shirt Front', alt: '' })).headers.get('location'), /\/edit#gallery$/);
   const [renamedImage, editedSecond] = await gallery();
   assert.equal(renamedImage.alt, null);
   assert.notEqual(renamedImage.seo_alias, primary.seo_alias);
   assert.equal(renamedImage.image_key, primary.image_key);
+  assert.match(renamedImage.seo_alias, /\/home-shirt-front\.(?:png|webp)$/);
+  assert.equal(renamedImage.title, primary.title);
+  assert.equal(renamedImage.caption, primary.caption);
   assert.equal(editedSecond.alt, 'Argentina home jersey back view');
   assert.equal(editedSecond.title, 'Back of the jersey');
   assert.equal(editedSecond.caption, 'Back panel of the Argentina jersey.');
@@ -187,9 +194,9 @@ try {
   assert.ok(defaults.includes('<title>Argentina Home Jersey</title>'));
   assert.ok(defaults.includes('name="description" content="A sky-blue soccer jersey."'));
   const richFields = {
-    description: richProductValue('## Training kit\n\n### Textile\n\n**Lightweight** fabric and ++care instructions++.\n\n[Contact us](/contact)'),
+    description: richProductValue('## Training kit\n\n### Textile\n\n**Lightweight** fabric and ++care instructions++.\n\n[Contact us](/contact)\n\n| Size | Chest |\n| --- | --- |\n| S | 94 cm |'),
     quoteNote: richProductValue('**Bulk orders**\n\n- First tier\n- Second tier'),
-    specifications: richProductValue('- [x] Adult XS–4XL\n- [x] Youth sizes 16–28'),
+    specifications: richProductValue('- [x] ✅✔ Adult XS–4XL\n- [x] ✓√ Youth sizes 16–28'),
     shippingPayment: richProductValue('1. PayPal\n2. Bank transfer'),
   };
   saved(await post(api, form({ slug: '', ...richFields }), cookie));
@@ -207,6 +214,7 @@ try {
   assert.ok(rendered.includes('<a href="/contact">Contact us</a>'));
   assert.ok(rendered.includes('<strong>Bulk orders</strong>'));
   assert.match(rendered, /<ul class="fxf-checklist">\s*<li>Adult XS–4XL<\/li>/);
+  assert.match(rendered, /<td>94 cm<\/td>/);
   assert.match(rendered, /<ol>\s*<li>PayPal<\/li>/);
   assert.ok(rendered.includes('<title>Argentina Home Jersey | FXF</title>'));
   assert.ok(rendered.includes('$12.00'));
@@ -215,6 +223,27 @@ try {
   const reopened = await (await read('/admin/products/' + row.public_id + '/edit', { cookie })).text();
   assert.match(reopened, /<template[^>]*>\s*<h2>Training kit<\/h2>/);
   assert.match(reopened, /<template[^>]*>\s*<ul class="fxf-checklist">/);
+  const richEndpoint = '/api/admin/products/rich-text';
+  assert.notEqual((await read(richEndpoint)).status, 200);
+  const richApi = payload => fetch(origin + richEndpoint, {
+    redirect: 'manual', method: 'POST', body: JSON.stringify(payload), headers: { origin, cookie, 'content-type': 'application/json' },
+  });
+  const preview = await richApi({ action: 'preview', content: richFields.description });
+  assert.equal(preview.status, 200);
+  const publishedMarkup = (await preview.json()).html.trimEnd();
+  assert.ok(rendered.includes(publishedMarkup));
+  const unsafePreview = await richApi({ action: 'preview', content: '<script>alert(1)</script><a href="javascript:alert(1)">Safe text</a>' });
+  assert.equal((await unsafePreview.json()).html.trim(), '<a>Safe text</a>');
+  const template = await richApi({ action: 'save', name: 'Size table', content: richFields.description });
+  assert.equal(template.status, 201);
+  const { id } = await template.json();
+  assert.ok(id);
+  assert.equal((await richApi({ action: 'save', id, name: 'Updated size table', content: '### Measurement' })).status, 200);
+  assert.deepEqual((await (await read(richEndpoint, { cookie })).json()).templates, [
+    { id, name: 'Updated size table', content: '### Measurement' },
+  ]);
+  assert.equal((await richApi({ action: 'delete', id })).status, 200);
+  assert.deepEqual((await (await read(richEndpoint, { cookie })).json()).templates, []);
   saved(await post(api, new URLSearchParams({ _action: 'delete' }), cookie));
   assert.equal((await read(renamed)).status, 404);
   assert.equal((await read(detail)).status, 404);
