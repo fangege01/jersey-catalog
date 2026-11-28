@@ -25,6 +25,7 @@ interface Props {
   /** Optional form id, so out-of-tree inputs (e.g. the variants editor) can submit
       with this form via the HTML `form="..."` attribute. */
   formId?: string;
+  wide?: boolean;
   /** Store-wide weight unit (Admin → Settings). Storage is always grams. */
   weightUnit?: WeightUnit;
   /** True when every enabled zone prices by weight, so a blank weight would make
@@ -41,6 +42,7 @@ const {
   selectedCategoryIds = [],
   showImage = true,
   formId,
+  wide = false,
   weightUnit = 'g',
   weightRequired = false,
 } = Astro.props;
@@ -69,7 +71,7 @@ const inputClass =
   action={action}
   enctype="multipart/form-data"
   id={formId}
-  class="max-w-lg space-y-4"
+  class:list={[wide ? 'min-w-0 space-y-6' : 'max-w-lg space-y-4']}
 >
   {
     error && (
@@ -85,7 +87,7 @@ const inputClass =
   </div>
 
   <div>
-    <ProductRichEditor field="description" label="商品描述" value={product?.description ?? ''} rows={catalogOnly ? 6 : 3} />
+    <ProductRichEditor field="description" label="商品描述" value={product?.description ?? ''} rows={wide ? 10 : catalogOnly ? 6 : 3} />
     <p class="mt-1 text-xs text-gray-500">
       {catalogOnly
         ? '可填写中文或英文商品资料。中文自动翻译，英文保留原文。'
@@ -94,10 +96,10 @@ const inputClass =
   </div>
 
   {catalogOnly ? (
-    <fieldset class="rounded-md border border-line p-4">
+    <fieldset class="min-w-0 rounded-lg border border-line p-4">
       <legend class="px-1 text-sm font-semibold">阶梯报价（{defaultCurrency.toUpperCase()} / 件）</legend>
       <p class="mb-3 text-xs text-muted">未定价的档位留空，前台显示「询价」。</p>
-      <div class="grid grid-cols-2 gap-3">
+      <div class:list={['grid grid-cols-2 gap-3', wide && 'lg:grid-cols-4']}>
         <label class="block text-sm" for="price">{wholesaleRanges[0]} 件
           <input id="price" name="price" type="number" inputmode="decimal" step={priceStep} min="0" value={price} class={inputClass} />
         </label>
@@ -116,11 +118,11 @@ const inputClass =
     </div>
   )}
   {catalogOnly && (
-    <fieldset class="space-y-3 rounded-md border border-line p-4">
+    <fieldset class:list={['min-w-0 rounded-lg border border-line p-4', wide ? 'space-y-5' : 'space-y-3']}>
       <legend class="px-1 text-sm font-semibold">商品详情模块</legend>
       <p class="text-xs text-muted">可填中文或英文。留空的模块会在前台隐藏。</p>
       {detailSectionKeys.map((key) => (
-        <ProductRichEditor field={key} label={detailSectionFields[key]} value={detailSections[key]} rows={3}
+        <ProductRichEditor field={key} label={detailSectionFields[key]} value={detailSections[key]} rows={wide ? 5 : 3}
           checklist={key !== 'quoteNote'} limit={DETAIL_SECTION_LIMIT} />
       ))}
     </fieldset>
@@ -130,7 +132,7 @@ const inputClass =
       <label class="block text-sm font-medium" for="release_year">商品年份</label>
       <input id="release_year" name="release_year" type="number" min={MIN_RELEASE_YEAR} max={MAX_RELEASE_YEAR}
         step="1" value={product?.release_year ?? undefined}
-        placeholder={String(releaseYearFromTitle(product?.name ?? '') ?? '例如 2026')} class={inputClass}
+        placeholder={String(releaseYearFromTitle(product?.name ?? '') ?? '例如 2026')} class:list={[inputClass, wide && 'sm:max-w-64']}
         aria-describedby="release-year-help" />
       <p id="release-year-help" class="mt-1 text-xs text-muted">留空时从商品标题识别年份。已上架商品自动显示有货。</p>
     </div>

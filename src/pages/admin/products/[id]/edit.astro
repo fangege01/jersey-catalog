@@ -65,35 +65,45 @@ const weightRequired = zonesRequireWeight(shippingFor(Astro.locals.settings).con
 ---
 
 <AdminLayout title="编辑商品" active="products">
-  {publication && <p class="text-sm text-gray-500">FXF 正式发布记录 · {publication.published_at} UTC · {publication.image_count} 张图片</p>}
-  <a href="/admin/products" class="text-sm text-gray-500 hover:text-brand">&larr; 返回商品列表</a>
-  <div class="mt-4 mb-6 flex items-center justify-between gap-4">
-    <h1 class="text-2xl font-bold">编辑商品</h1>
-    <a
-      href={`/products/${product.slug}`}
-      target="_blank"
-      rel="noopener"
-      class="text-sm text-accent hover:underline"
-    >
-      在前台查看 ↗
-    </a>
-  </div>
-  <ProductForm
-    action={`/api/admin/products/${product.public_id}`}
-    submitLabel="保存修改"
-    product={original}
-    categoryOptions={categoryOptions}
-    selectedCategoryIds={selectedCategoryIds}
-    error={error}
-    showImage={false}
-    formId="product-form"
-    weightUnit={weightUnit}
-    weightRequired={weightRequired}
-  />
+<div class="mx-auto w-full max-w-6xl space-y-5" data-product-edit>
+  <header class="space-y-3">
+    {publication && <p class="text-sm text-gray-500">FXF 正式发布记录 · {publication.published_at} UTC · {publication.image_count} 张图片</p>}
+    <a href="/admin/products" class="text-sm text-gray-500 hover:text-brand">&larr; 返回商品列表</a>
+    <div class="flex flex-wrap items-center justify-between gap-3">
+      <h1 class="text-2xl font-bold sm:text-3xl">编辑商品</h1>
+      <div class="flex flex-wrap items-center gap-2">
+        <a href={`/products/${product.slug}`} target="_blank" rel="noopener"
+          class="rounded-md border border-line bg-paper px-3 py-2 text-sm text-ink hover:border-brand">在前台查看 ↗</a>
+        <button type="submit" form="product-form"
+          class="rounded-md bg-brand px-3 py-2 text-sm font-semibold text-on-brand hover:bg-brand-hover">保存修改</button>
+      </div>
+    </div>
+    <nav aria-label="商品编辑区块" class="flex flex-wrap gap-2 border-b border-line pb-3 text-sm">
+      <a href="#product-content" class="rounded-md px-2 py-1 text-brand hover:bg-paper">商品资料</a>
+      <a href="#gallery" class="rounded-md px-2 py-1 text-brand hover:bg-paper">商品图片</a>
+      <a href="#options" class="rounded-md px-2 py-1 text-brand hover:bg-paper">规格与附加选项</a>
+    </nav>
+  </header>
+  <section id="product-content" aria-labelledby="product-content-title" class="scroll-mt-20 rounded-xl border border-line bg-paper p-4 sm:p-6">
+    <h2 id="product-content-title" class="mb-4 text-lg font-semibold">商品资料</h2>
+    <ProductForm
+      action={`/api/admin/products/${product.public_id}`}
+      submitLabel="保存修改"
+      product={original}
+      categoryOptions={categoryOptions}
+      selectedCategoryIds={selectedCategoryIds}
+      error={error}
+      showImage={false}
+      formId="product-form"
+      wide
+      weightUnit={weightUnit}
+      weightRequired={weightRequired}
+    />
+  </section>
 
-  <section id="gallery" class="mt-12 scroll-mt-20 border-t border-line pt-8">
-    <div class="mb-4 flex items-baseline justify-between gap-3">
-      <h2 class="text-xs uppercase tracking-widest text-gray-400">商品图片</h2>
+  <section id="gallery" class="scroll-mt-20 rounded-xl border border-line bg-paper p-4 sm:p-6">
+    <div class="mb-4 flex flex-wrap items-baseline justify-between gap-2">
+      <h2 class="text-lg font-semibold">商品图片</h2>
       <span class="text-xs text-gray-400">此处修改会自动保存</span>
     </div>
 
@@ -225,9 +235,9 @@ const weightRequired = zonesRequireWeight(shippingFor(Astro.locals.settings).con
     }
   </section>
 
-  <section id="options" class="mt-12 scroll-mt-20 border-t border-line pt-8">
+  <section id="options" class="min-w-0 scroll-mt-20 rounded-xl border border-line bg-paper p-4 sm:p-6">
     <div class="mb-5">
-      <h2 class="text-xs uppercase tracking-widest text-gray-400">规格与附加选项</h2>
+      <h2 class="text-lg font-semibold">规格与附加选项</h2>
       <p class="mt-1 max-w-prose text-xs text-gray-500">
         选填。 <strong class="font-medium text-gray-700">规格</strong> 有独立价格和库存，例如尺码。顾客选择的规格是库存扣减单位。 <strong class="font-medium text-gray-700">附加选项</strong> 可额外勾选并计入商品价格，例如礼品包装。附加选项没有独立库存。点击上方的 <strong class="font-medium text-gray-700">保存修改</strong>
         即可一并保存。
@@ -487,6 +497,7 @@ const weightRequired = zonesRequireWeight(shippingFor(Astro.locals.settings).con
       </button>
     </div>
   </section>
+</div>
 
   {/* Progressive enhancement: every gallery action runs via fetch (no reload, no
       jump). The plain form POSTs are the no-JS fallback (they redirect to

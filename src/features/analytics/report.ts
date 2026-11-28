@@ -16,6 +16,9 @@ export const trafficFilters = filters;
 
 type FilterKey = keyof typeof filters;
 type Filters = Record<FilterKey, string>;
+const recordedFilterKeys = ['country', 'source', 'campaign', 'content'] as const;
+type RecordedFilterKey = typeof recordedFilterKeys[number];
+
 export function readTrafficFilters(params: URLSearchParams): Filters {
   return {
     country: /^[A-Z]{2}$/.test(params.get('country') ?? '') ? params.get('country')! : '',
@@ -129,14 +132,24 @@ export async function trafficReport(db: D1Database, params: URLSearchParams, tim
       SELECT COUNT(DISTINCT CASE WHEN viewed_at IS NOT NULL THEN visitor_id END) AS viewed,
         COUNT(DISTINCT CASE WHEN clicked_at >= viewed_at THEN visitor_id END) AS clickedAfterView
       FROM visits`).bind(...bind),
+    // Options come from the whole date range so an active filter never hides other choices.
+    ...recordedFilterKeys.map(key => db.prepare(`SELECT ${key} AS value FROM traffic_events
+      WHERE occurred_at >= ? AND occurred_at < ? AND ${key} <> ''
+      GROUP BY ${key} ORDER BY COUNT(*) DESC, ${key} LIMIT 100`).bind(period.start, period.end)),
   ];
-  const [current, previous, trend, countries, sources, campaigns, devices, pages, landings, products, channelTrend, recent, funnel] =
+  const [current, previous, trend, countries, sources, campaigns, devices, pages, landings, products, channelTrend, recent, funnel, ...filterResults] =
     await db.batch(statements);
+  const filterOptions = {} as Record<RecordedFilterKey, string[]>;
+  for (const [index, key] of recordedFilterKeys.entries()) {
+    const options = (filterResults[index].results as { value: string }[]).map(row => row.value);
+    if (selected[key] && !options.includes(selected[key])) options.unshift(selected[key]);
+    filterOptions[key] = options;
+  }
   const points = new Map((trend.results as unknown as TrafficPoint[]).map((point) => [point.bucket, point]));
   const series = period.buckets.map(([bucket]) => points.get(bucket) ?? { ...empty, bucket });
   const channelsByBucket = new Map((channelTrend.results as unknown as ChannelPoint[]).map((point) => [point.bucket, point]));
   return {
-    period, selected, series,
+    period, selected, filterOptions, series,
     channelSeries: series.map(({ bucket }) => channelsByBucket.get(bucket) ?? { bucket, organic: 0, ai: 0 }),
     recent: recent.results as unknown as RecentVisit[],
     current: (current.results[0] as unknown as TrafficCounts | undefined) ?? empty,
