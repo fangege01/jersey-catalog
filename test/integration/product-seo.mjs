@@ -88,8 +88,8 @@ try {
   const editForm = await (await read('/admin/products/' + row.public_id + '/edit', { cookie })).text();
   assert.ok(editForm.includes(`value="${fields.seo_title}"`));
   assert.ok(editForm.includes(meta));
-  assert.ok(editForm.includes('name="image_filename"'));
-  assert.ok(editForm.includes('name="alt"'));
+  assert.match(editForm, /<textarea\b[^>]*name="image_filename"[^>]*wrap="soft"/);
+  assert.match(editForm, /<textarea\b[^>]*name="alt"[^>]*wrap="soft"/);
   assert.doesNotMatch(editForm, /name="image_(?:title|caption)"/);
   assert.ok(editForm.includes(primary.alt));
   const detail = '/products/' + row.slug;
