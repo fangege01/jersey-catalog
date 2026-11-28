@@ -8,7 +8,9 @@ import { readWholesalePrices, wholesaleFields, wholesaleRanges } from './wholesa
 import { DETAIL_SECTION_LIMIT, detailSectionFields, detailSectionKeys, readProductDetailSections } from './detailSections';
 import { MIN_RELEASE_YEAR, MAX_RELEASE_YEAR, releaseYearFromTitle } from './releaseYear';
 import { defaultProductMeta, importedProductSeo } from './seo';
-import ImageSeoFields from './ImageSeoFields.astro';
+import { readProductTags } from '../categories/productTaxonomy';
+import { publicOrigin } from '../http/origin';
+import { env } from 'cloudflare:workers';
 import ProductRichEditor from './ProductRichEditor.astro';
 
 interface Props {
@@ -20,8 +22,6 @@ interface Props {
   categoryOptions?: CategoryOption[];
   /** Ids of categories this product currently belongs to. */
   selectedCategoryIds?: number[];
-  /** Show the single-image upload (true on create; edit uses the gallery). */
-  showImage?: boolean;
   /** Optional form id, so out-of-tree inputs (e.g. the variants editor) can submit
       with this form via the HTML `form="..."` attribute. */
   formId?: string;
@@ -40,13 +40,14 @@ const {
   error = null,
   categoryOptions = [],
   selectedCategoryIds = [],
-  showImage = true,
   formId,
   wide = false,
   weightUnit = 'g',
   weightRequired = false,
 } = Astro.props;
-const selected = new Set(selectedCategoryIds);
+const selected = new Set(selectedCategoryIds.filter((id) => id !== product?.catalog_category_id));
+const savedCategory = categoryOptions.find((item) => item.id === product?.catalog_category_id);
+const primaryId = savedCategory?.depth === 0 ? savedCategory.id : savedCategory?.parent_id;
 const catalogOnly = getConfig().features.catalogOnly;
 // New products default to the store currency; edits keep their own.
 const defaultCurrency = product?.currency ?? getConfig().currency;
@@ -82,7 +83,7 @@ const inputClass =
   }
 
   <div>
-    <label class="block text-sm font-medium" for="name">{product ? '标题' : '名称'}</label>
+    <label class="block text-sm font-medium" for="name">标题</label>
     <input id="name" name="name" type="text" required value={product?.name ?? ''} class={inputClass} />
   </div>
 
@@ -165,6 +166,7 @@ const inputClass =
         <p id="slug-help" class="mt-1 text-xs text-muted">输入英文字母、数字和连字符。编辑时留空沿用当前网址。已发布商品改址后，旧链接会自动跳转。</p>
       </div>
     </div>
+    <p class="mt-3 break-all text-xs text-muted">Canonical：{product?.slug ? new URL('/products/' + product.slug, publicOrigin(Astro.url.origin, env.CANONICAL_ORIGIN)).href : '保存后根据商品网址自动生成'}</p>
   </details>
 
   {!catalogOnly && attachmentActive() && <fieldset class="rounded-md border border-line p-4">
@@ -225,25 +227,40 @@ const inputClass =
     )}
   </fieldset>}
 
-  {
-    showImage && (
-      <div>
-        <label class="block text-sm font-medium" for="image">
-          图片
+  <fieldset class="rounded-md border border-line p-4" data-product-taxonomy>
+      <legend class="px-2 font-medium">商品分类与属性</legend>
+      <div class="grid gap-3 sm:grid-cols-2">
+        <label class="text-sm">主要分类（Primary Category）
+          <select class={inputClass} name="primary_category">
+            <option value="">未设置</option>
+            {categoryOptions.filter((item) => item.depth === 0).map((item) =>
+              <option data-id={item.id} value={item.public_id} selected={item.id === primaryId}>{item.name}</option>)}
+          </select>
         </label>
-        <input id="image" name="image" type="file" accept="image/*" class="mt-1 block w-full text-sm text-muted file:mr-3 file:cursor-pointer file:rounded-md file:border-0 file:bg-brand file:px-4 file:py-2 file:text-xs file:font-medium file:uppercase file:tracking-wider file:text-on-brand hover:file:bg-brand-hover" />
-        <details class="mt-3 rounded-md border border-line p-3">
-          <summary class="cursor-pointer text-sm font-semibold">主图 SEO 设置</summary>
-          <div class="mt-3"><ImageSeoFields productName={product?.name} /></div>
-        </details>
+        <label class="text-sm">子分类（Subcategory）
+          <select class={inputClass} name="subcategory">
+            <option value="">未设置</option>
+            {categoryOptions.filter((item) => item.depth === 1).map((item) =>
+              <option data-parent={item.parent_id} value={item.public_id} selected={item.id === savedCategory?.id}>{item.name}</option>)}
+          </select>
+        </label>
+        {[
+          ['team', '球队 / 俱乐部（Team / Club）', product?.team],
+          ['product_type', '商品类型（Product Type）', product?.product_type],
+          ['sleeve_type', '袖型（Sleeve Type）', product?.sleeve_type],
+          ['product_tags', '商品标签（用逗号分隔）', readProductTags(product?.product_tags).join(', ')],
+        ].map(([name, label, value]) => (
+          <label class="text-sm">{label}
+            <input name={name} value={value ?? ''} maxlength={name === 'product_tags' ? 1220 : 80} class={inputClass} />
+          </label>
+        ))}
       </div>
-    )
-  }
+  </fieldset>
 
   {
     categoryOptions.length > 0 && (
       <fieldset>
-        <legend class="block text-sm font-medium">分类管理</legend>
+        <legend class="block text-sm font-medium">其他分类</legend>
         <div class="mt-1 max-h-48 space-y-1 overflow-auto rounded-md border border-line p-2">
           {categoryOptions.map((c) => (
             <label
@@ -280,3 +297,22 @@ const inputClass =
     <a href="/admin/products" class="rounded-md border border-line px-5 py-2 hover:bg-surface">取消</a>
   </div>
 </form>
+
+<script>
+  for (const fields of document.querySelectorAll('[data-product-taxonomy]')) {
+    const primary = fields.querySelector('[name="primary_category"]');
+    const child = fields.querySelector('[name="subcategory"]');
+    if (!(primary instanceof HTMLSelectElement) || !(child instanceof HTMLSelectElement)) continue;
+    const update = () => {
+      const parent = primary.selectedOptions[0]?.dataset.id;
+      for (const option of child.options) {
+        if (!option.value) continue;
+        option.hidden = option.disabled = !parent || option.dataset.parent !== parent;
+      }
+      if (child.selectedOptions[0]?.disabled) child.value = '';
+      child.disabled = !parent;
+    };
+    primary.addEventListener('change', update);
+    update();
+  }
+</script>

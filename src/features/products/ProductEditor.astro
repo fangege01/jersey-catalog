@@ -1,0 +1,755 @@
+---
+import { env } from 'cloudflare:workers';
+import AdminLayout from '../../layouts/AdminLayout.astro';
+import MediaPicker from '../media/MediaPicker.astro';
+import ProductForm from './ProductForm.astro';
+import ImageSeoFields from './ImageSeoFields.astro';
+import { listProductImages, type Product } from './db';
+import { listVariants, listExtras } from './variants';
+import {
+  listCategories,
+  buildTree,
+  flattenTree,
+  categoriesForProduct,
+} from '../categories/db';
+import { toMajorUnits, minorUnitsPerMajor, getConfig } from '../../config';
+import { productImageSources } from './image';
+import { zonesRequireWeight } from '../shipping/calculator';
+import { formatWeightValue } from '../shipping/weight';
+import { shippingFor } from '../shipping/effective';
+import { localizedProduct, translations } from '../i18n/db';
+
+interface Props { mode: 'create' | 'edit'; product?: Product | null }
+const { mode, product = null } = Astro.props;
+const creating = mode === 'create';
+const heading = creating ? 'Add New Product' : 'Edit Product';
+const saveLabel = creating ? '创建商品' : '保存修改';
+const action = product ? '/api/admin/products/' + product.public_id : '/api/admin/products';
+const galleryAction = action + '/images';
+const publicId = product?.public_id;
+const categoryOptions = flattenTree(buildTree(await listCategories(env.DB)));
+const publication = product ? await env.DB.prepare('SELECT published_at, image_count FROM product_publications WHERE product_id = ?')
+  .bind(product.id).first<{ published_at: string; image_count: number }>().catch(() => null) : null;
+const original = product && publicId ? localizedProduct(product, (await translations(env.DB, 'zh-CN', 'product', [publicId])).get(publicId)) : null;
+const selectedCategoryIds = product ? (await categoriesForProduct(env.DB, product.id)).map((c) => c.id) : [];
+const images = product ? await listProductImages(env.DB, product.id) : [];
+const error = Astro.url.searchParams.get('error');
+
+// Variants + extras (show all, including any inactive, so the admin sees everything).
+const variants = product ? await listVariants(env.DB, product.id, true) : [];
+const extras = product ? await listExtras(env.DB, product.id, true) : [];
+// The product's main photo — a variant with no specific image falls back to this
+// (so new variants default to showing it rather than an empty box).
+const imgBase = getConfig().images.baseUrl;
+const imageDelivery = Astro.locals.settings?.imageDelivery;
+const thumbnailSources = (imageKey: string | null, sizes = '64px') =>
+  productImageSources(imageKey, {
+    baseUrl: imgBase,
+    delivery: imageDelivery,
+    usage: 'thumbnail',
+    sizes,
+  });
+const imageViews = images.map((image) => ({
+  ...image,
+  sources: thumbnailSources(image.image_key, '56px'),
+}));
+// Look up a gallery image by id (to render a variant's currently-chosen photo).
+const imageById = new Map(imageViews.map((image) => [image.id, image]));
+const mainPhoto = product?.image_key ? thumbnailSources(product.image_key).src : null;
+// Price inputs are major units; step to the currency's smallest unit (0.01 USD, 1 JPY).
+const currency = product?.currency ?? getConfig().currency;
+const priceStep = 1 / minorUnitsPerMajor(currency);
+const major = (cents: number) => toMajorUnits(cents, currency);
+const weightUnit = Astro.locals.settings?.weightUnit ?? 'g';
+const weightRequired = zonesRequireWeight(shippingFor(Astro.locals.settings).config);
+---
+
+<AdminLayout title={heading} active="products">
+<div class="mx-auto w-full max-w-6xl space-y-5" data-product-edit data-mode={mode}>
+  <header class="space-y-3">
+    {publication && <p class="text-sm text-gray-500">FXF 正式发布记录 · {publication.published_at} UTC · {publication.image_count} 张图片</p>}
+    <a href="/admin/products" class="text-sm text-gray-500 hover:text-brand">&larr; 返回商品列表</a>
+    <div class="flex flex-wrap items-center justify-between gap-3">
+      <h1 class="text-2xl font-bold sm:text-3xl">{heading}</h1>
+      <div class="flex flex-wrap items-center gap-2">
+        {product && <a href={`/products/${product.slug}`} target="_blank" rel="noopener"
+          class="rounded-md border border-line bg-paper px-3 py-2 text-sm text-ink hover:border-brand">在前台查看 ↗</a>}
+        <button type="submit" form="product-form"
+          class="rounded-md bg-brand px-3 py-2 text-sm font-semibold text-on-brand hover:bg-brand-hover">{saveLabel}</button>
+      </div>
+    </div>
+    <nav aria-label="商品编辑区块" class="flex flex-wrap gap-2 border-b border-line pb-3 text-sm">
+      <a href="#product-content" class="rounded-md px-2 py-1 text-brand hover:bg-paper">商品资料</a>
+      <a href="#gallery" class="rounded-md px-2 py-1 text-brand hover:bg-paper">商品图片</a>
+      <a href="#options" class="rounded-md px-2 py-1 text-brand hover:bg-paper">规格与附加选项</a>
+    </nav>
+  </header>
+  <p data-product-save-error role="alert" hidden class="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700"></p>
+  {Astro.url.searchParams.has('created') && <p role="status" class="text-sm text-brand">商品已创建。</p>}
+  {Astro.url.searchParams.has('saved') && <p role="status" class="text-sm text-brand">商品已保存。</p>}
+  <section id="product-content" aria-labelledby="product-content-title" class="scroll-mt-20 rounded-xl border border-line bg-paper p-4 sm:p-6">
+    <h2 id="product-content-title" class="mb-4 text-lg font-semibold">商品资料</h2>
+    <ProductForm
+      action={action}
+      submitLabel={saveLabel}
+      product={original}
+      categoryOptions={categoryOptions}
+      selectedCategoryIds={selectedCategoryIds}
+      error={error}
+      formId="product-form"
+      wide
+      weightUnit={weightUnit}
+      weightRequired={weightRequired}
+    />
+  </section>
+
+  <section id="gallery" class="scroll-mt-20 rounded-xl border border-line bg-paper p-4 sm:p-6" style="container-type: inline-size">
+    <div class="mb-4 flex flex-wrap items-baseline justify-between gap-2">
+      <h2 class="text-lg font-semibold">商品图片</h2>
+      <span class="text-xs text-gray-400">{creating ? '图片将在创建商品时一并保存' : '此处修改会自动保存'}</span>
+    </div>
+
+    {creating ? <>
+      <div class="mb-6 flex flex-wrap items-center gap-3">
+        <input type="file" form="product-form" name="images" data-draft-files accept="image/jpeg,image/png,image/webp,image/gif" multiple class="block w-full text-sm text-gray-600 file:mr-3 file:cursor-pointer file:rounded-md file:border-0 file:bg-brand file:px-4 file:py-2 file:text-xs file:font-medium file:uppercase file:tracking-wider file:text-white hover:file:bg-brand-hover sm:w-auto" />
+        <button type="button" data-draft-add hidden class="rounded-md border border-line px-4 py-2 text-xs font-medium uppercase tracking-wider text-gray-700 hover:border-brand hover:text-brand">添加图片</button>
+      </div>
+      <div class="mb-6">
+        <MediaPicker id="product-gallery" label="从素材库选择" allowUpload={false} />
+      </div>
+      <p data-draft-error role="status" class="mb-2 text-sm text-red-700"></p>
+      <ol data-gallery data-draft-gallery class="mb-6"></ol>
+      <template data-draft-card>
+        <li class="flex min-w-0 flex-col gap-2.5 rounded-lg border border-line bg-paper p-3">
+          <div class="relative flex h-24 items-center justify-center rounded-md bg-surface">
+            <img alt="" draggable="false" width="96" height="96" class="h-full w-full rounded-md object-contain" />
+            <span data-image-order class="absolute left-1.5 top-1.5 flex h-6 min-w-6 items-center justify-center rounded-md bg-ink px-1 text-xs font-semibold text-white"></span>
+            <span data-primary-badge class="absolute right-1.5 top-1.5 rounded-md bg-brand px-1.5 py-0.5 text-xs text-on-brand">主图</span>
+          </div>
+          <div class="flex flex-wrap items-center gap-3 text-sm">
+            <span data-handle draggable="true" aria-hidden="true" class="cursor-grab select-none px-1 text-muted">⠿</span>
+            <button type="button" data-up aria-label="上移">↑</button>
+            <button type="button" data-down aria-label="下移">↓</button>
+            <button type="button" data-make-primary class="ml-auto text-accent">设为主图</button>
+            <button type="button" data-draft-remove class="text-red-600">删除</button>
+          </div>
+          <details class="w-full rounded-md border border-line bg-surface px-3 py-2">
+            <summary class="cursor-pointer text-sm font-medium">图片 SEO 设置</summary>
+            <div class="mt-3"><ImageSeoFields /></div>
+          </details>
+        </li>
+      </template>
+    </> : <>
+    <form
+      method="POST"
+      action={galleryAction}
+      enctype="multipart/form-data"
+      class="mb-6 flex flex-wrap items-center gap-3"
+    >
+      <input type="hidden" name="_action" value="add" />
+      <input
+        type="file"
+        name="images"
+        accept="image/*"
+        multiple
+        class="block w-full text-sm text-gray-600 file:mr-3 file:cursor-pointer file:rounded-md file:border-0 file:bg-brand file:px-4 file:py-2 file:text-xs file:font-medium file:uppercase file:tracking-wider file:text-white hover:file:bg-brand-hover sm:w-auto"
+      />
+      <button
+        type="submit"
+        class="rounded-md border border-line px-4 py-2 text-xs font-medium uppercase tracking-wider text-gray-700 hover:border-brand hover:text-brand"
+      >
+        添加图片
+      </button>
+    </form>
+
+    {/* Reuse a file already in the library. The picker is outside the upload
+        form above — it posts its own attach request, and a nested form would be
+        invalid HTML. */}
+    <div class="mb-6">
+      <MediaPicker id="product-gallery" label="从素材库选择" />
+      <form
+        method="POST"
+        action={galleryAction}
+        data-attach-form
+        class="hidden"
+      >
+        <input type="hidden" name="_action" value="attach" />
+        <input type="hidden" name="media_id" data-attach-media-id />
+      </form>
+    </div>
+
+    </>}
+
+    {!creating && <p data-gallery-message role="status" class="mb-2 text-sm text-muted"></p>}
+    {
+      !creating && (
+        <ol data-gallery data-action={galleryAction} class="mb-6">
+          {imageViews.map((img, index) => (
+            <li data-image-id={img.public_id} class="flex min-w-0 flex-col gap-2.5 rounded-lg border border-line bg-paper p-3">
+              <div class="relative flex h-24 items-center justify-center rounded-md bg-surface">
+                <img
+                  src={img.sources.src}
+                  srcset={img.sources.srcset}
+                  sizes="96px"
+                  alt={img.alt ?? ''}
+                  draggable="false"
+                  width="96"
+                  height="96"
+                  class="h-full w-full rounded-md object-contain"
+                />
+                <span data-image-order class="absolute left-1.5 top-1.5 flex h-6 min-w-6 items-center justify-center rounded-md bg-ink px-1 text-xs font-semibold tabular-nums text-white">
+                  {index + 1}
+                </span>
+                <span data-primary-badge class="absolute right-1.5 top-1.5 rounded-md bg-brand px-1.5 py-0.5 text-xs font-medium text-on-brand">主图</span>
+              </div>
+              <div class="flex flex-wrap items-center gap-x-2 gap-y-1">
+                {/* The grip starts mouse drag sorting. Up/Down also work on touch and with a keyboard. */}
+                <span
+                  data-handle
+                  draggable="true"
+                  aria-hidden="true"
+                  class="shrink-0 cursor-grab select-none px-1 text-muted hover:text-brand"
+                >
+                  <svg width="12" height="20" viewBox="0 0 12 20" fill="currentColor" class="pointer-events-none">
+                    <circle cx="3" cy="4" r="1.5" />
+                    <circle cx="9" cy="4" r="1.5" />
+                    <circle cx="3" cy="10" r="1.5" />
+                    <circle cx="9" cy="10" r="1.5" />
+                    <circle cx="3" cy="16" r="1.5" />
+                    <circle cx="9" cy="16" r="1.5" />
+                  </svg>
+                </span>
+
+                <div class="flex shrink-0 text-base leading-none text-muted">
+                  <form data-js-action="up" method="POST" action={galleryAction}>
+                    <input type="hidden" name="_action" value="move" />
+                    <input type="hidden" name="direction" value="up" />
+                    <input type="hidden" name="image_id" value={img.public_id} />
+                    <button type="submit" data-up aria-label="上移" class="block px-1 hover:text-brand">
+                      ↑
+                    </button>
+                  </form>
+                  <form data-js-action="down" method="POST" action={galleryAction}>
+                    <input type="hidden" name="_action" value="move" />
+                    <input type="hidden" name="direction" value="down" />
+                    <input type="hidden" name="image_id" value={img.public_id} />
+                    <button type="submit" data-down aria-label="下移" class="block px-1 hover:text-brand">
+                      ↓
+                    </button>
+                  </form>
+                </div>
+
+                <div class="ml-auto flex shrink-0 items-center gap-2 text-xs">
+                  <form data-js-action="primary" method="POST" action={galleryAction}>
+                    <input type="hidden" name="_action" value="primary" />
+                    <input type="hidden" name="image_id" value={img.public_id} />
+                    <button type="submit" data-make-primary class="text-accent hover:underline">
+                      设为主图
+                    </button>
+                  </form>
+                  <form data-js-action="delete" method="POST" action={galleryAction}>
+                    <input type="hidden" name="_action" value="delete" />
+                    <input type="hidden" name="image_id" value={img.public_id} />
+                    <button type="submit" class="text-red-600 hover:underline">
+                      删除
+                    </button>
+                  </form>
+                </div>
+              </div>
+              <details class="w-full rounded-md border border-line bg-surface px-3 py-2">
+                <summary class="cursor-pointer text-sm font-medium">图片 SEO 设置</summary>
+                <form method="POST" action={galleryAction} class="mt-3 min-w-0 space-y-3">
+                  <input type="hidden" name="_action" value="seo" />
+                  <input type="hidden" name="image_id" value={img.public_id} />
+                  <ImageSeoFields image={img} productName={product?.name} />
+                  <button type="submit" class="rounded-md bg-brand px-3 py-2 text-xs font-medium text-on-brand">保存图片 SEO</button>
+                </form>
+              </details>
+            </li>
+          ))}
+        </ol>
+      )
+    }
+  </section>
+
+  <section id="options" class="min-w-0 scroll-mt-20 rounded-xl border border-line bg-paper p-4 sm:p-6">
+    <div class="mb-5">
+      <h2 class="text-lg font-semibold">规格与附加选项</h2>
+      <p class="mt-1 max-w-prose text-xs text-gray-500">
+        选填。 <strong class="font-medium text-gray-700">规格</strong> 有独立价格和库存，例如尺码。顾客选择的规格是库存扣减单位。 <strong class="font-medium text-gray-700">附加选项</strong> 可额外勾选并计入商品价格，例如礼品包装。附加选项没有独立库存。点击上方的 <strong class="font-medium text-gray-700">{saveLabel}</strong>
+        即可一并保存。
+      </p>
+    </div>
+
+    {/* Variant group label (e.g. "Size") — submits with the product form. */}
+    <label class="mb-8 flex max-w-xs flex-col gap-1 text-xs uppercase tracking-widest text-gray-400">
+      规格组选项名称
+      <input
+        form="product-form"
+        type="text"
+        name="variant_group_label"
+        value={product?.variant_label ?? ''}
+        placeholder="例如尺码、颜色"
+        class="w-48 rounded-md border border-line bg-transparent px-3 py-1.5 text-sm normal-case tracking-normal text-gray-900 focus:border-brand focus:outline-none"
+      />
+    </label>
+
+    {/* Variants — one inline blank row is always present (no-JS can add one per
+        save); "+ Add variant" clones it for adding several at once. All inputs use
+        form="product-form" so they submit with the product's Save changes. */}
+    <h3 class="mb-3 text-sm font-medium">规格</h3>
+    <div data-variant-rows data-default-price={major(product?.price_cents ?? 0)} class="space-y-3">
+      {
+        [...variants, null].map((v) => (
+          <div data-variant-row data-blank={v ? undefined : ''} class="flex flex-wrap items-end gap-3 border-b border-line pb-3">
+            <input form="product-form" type="hidden" name="v_id" value={v?.public_id ?? ''} />
+            {/* Photo (left): a thumbnail button that opens a palette of gallery
+                images. The hidden field carries the chosen id (array-aligned). */}
+            {(() => {
+              const sel = v?.image_id ? imageById.get(v.image_id) : null;
+              return (
+                <div class="relative">
+                  {/* pimg_ public ID of the chosen gallery photo ('' = main). */}
+                  <input form="product-form" type="hidden" name="v_image" value={sel?.public_id ?? ''} data-image-input />
+                  <button
+                    type="button"
+                    data-photo-trigger
+                    aria-label="选择规格图片"
+                    class="relative block h-14 w-14 shrink-0 overflow-hidden rounded border border-line hover:border-brand"
+                  >
+                    <img
+                      data-photo-preview
+                      src={sel ? sel.sources.src : (mainPhoto ?? undefined)}
+                      alt=""
+                      class:list={['h-full w-full object-cover', !sel && !mainPhoto && 'hidden']}
+                    />
+                    <span
+                      data-photo-empty
+                      class:list={[
+                        'flex h-full w-full items-center justify-center text-center text-[8px] uppercase leading-tight tracking-widest text-gray-400',
+                        (sel || mainPhoto) && 'hidden',
+                      ]}
+                    >
+                      添加照片
+                    </span>
+                  </button>
+
+                  <div
+                    data-palette
+                    class="absolute left-0 top-full z-20 mt-1 hidden w-max max-w-[16rem] rounded-md border border-line bg-paper p-2 shadow-lg"
+                  >
+                    <div class="flex flex-wrap gap-1.5">
+                      <button
+                        type="button"
+                        data-thumb=""
+                        data-src={mainPhoto ?? ''}
+                        aria-pressed={!v?.image_id ? 'true' : 'false'}
+                        title="使用商品主图"
+                        class:list={[
+                          'relative flex h-12 w-12 items-center justify-center overflow-hidden rounded border border-line text-center text-[8px] uppercase leading-tight tracking-widest text-gray-400 hover:border-brand',
+                          !v?.image_id && 'ring-2 ring-brand',
+                        ]}
+                      >
+                        {mainPhoto ? (
+                          <img src={mainPhoto} alt="" class="h-full w-full object-cover opacity-70" />
+                        ) : null}
+                        <span class="absolute inset-0 flex items-center justify-center bg-white/60">主要</span>
+                      </button>
+                      {imageViews.map((img, idx) => (
+                        <button
+                          type="button"
+                          data-thumb={img.public_id}
+                          data-src={img.sources.src}
+                          aria-pressed={!!v && img.id === v.image_id ? 'true' : 'false'}
+                          title={img.alt?.trim() || `Image ${idx + 1}`}
+                          class:list={[
+                            'h-12 w-12 overflow-hidden rounded border border-line hover:border-brand',
+                            !!v && img.id === v.image_id && 'ring-2 ring-brand',
+                          ]}
+                        >
+                          <img src={img.sources.src} alt="" class="h-full w-full object-cover" />
+                        </button>
+                      ))}
+                      {images.length === 0 && (
+                        <span data-photo-placeholder class="px-1 py-2 text-[10px] normal-case text-gray-400">
+                          请先添加相册图片
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
+            <label class="flex flex-col gap-1 text-[10px] uppercase tracking-widest text-gray-400">
+              显示名称
+              <input
+                form="product-form"
+                type="text"
+                name="v_label"
+                value={v?.label ?? ''}
+                placeholder="例如 L"
+                class="w-40 rounded-md border border-line bg-transparent px-3 py-1.5 text-sm normal-case tracking-normal text-gray-900 focus:border-brand focus:outline-none"
+              />
+            </label>
+            <label class="flex flex-col gap-1 text-[10px] uppercase tracking-widest text-gray-400">
+              价格（{currency.toUpperCase()})
+              <input
+                form="product-form"
+                type="number"
+                name="v_price"
+                min="0"
+                step={priceStep}
+                value={v ? major(v.price_cents) : major(product?.price_cents ?? 0)}
+                placeholder="0.00"
+                class="w-28 rounded-md border border-line bg-transparent px-3 py-1.5 text-sm tracking-normal text-gray-900 focus:border-brand focus:outline-none"
+              />
+            </label>
+            {!getConfig().features.catalogOnly && <label class="flex flex-col gap-1 text-[10px] uppercase tracking-widest text-gray-400">
+              库存
+              <input
+                form="product-form"
+                type="number"
+                name="v_stock"
+                min="0"
+                step="1"
+                value={v ? v.stock : 0}
+                class="w-20 rounded-md border border-line bg-transparent px-3 py-1.5 text-sm tracking-normal text-gray-900 focus:border-brand focus:outline-none"
+              />
+            </label>}
+            <label class="flex flex-col gap-1 text-[10px] uppercase tracking-widest text-gray-400">
+              SKU
+              <input
+                form="product-form"
+                type="text"
+                name="v_sku"
+                value={v?.sku ?? ''}
+                placeholder="选填"
+                class="w-32 rounded-md border border-line bg-transparent px-3 py-1.5 text-sm normal-case tracking-normal text-gray-900 focus:border-brand focus:outline-none"
+              />
+            </label>
+            <label class="flex flex-col gap-1 text-[10px] uppercase tracking-widest text-gray-400">
+              重量（{weightUnit})
+              <input
+                form="product-form"
+                type="text"
+                name="v_weight"
+                inputmode="decimal"
+                value={v?.weight_grams != null ? formatWeightValue(v.weight_grams, weightUnit) : ''}
+                placeholder={
+                  product?.weight_grams != null
+                    ? formatWeightValue(product.weight_grams, weightUnit)
+                    : 'inherits'
+                }
+                title="留空时使用商品重量。输入 0 表示此规格无重量。"
+                class="w-24 rounded-md border border-line bg-transparent px-3 py-1.5 text-sm normal-case tracking-normal text-gray-900 focus:border-brand focus:outline-none"
+              />
+            </label>
+            {/* Remove: a text link for both new and existing rows. Existing rows
+                carry a hidden checkbox the link checks (→ deleted on save); new
+                rows are just dropped from the DOM. */}
+            {v && (
+              <input form="product-form" type="checkbox" name="v_remove" value={v.public_id} class="hidden" data-remove-mark />
+            )}
+            <button
+              type="button"
+              data-remove-row
+              class="hidden pb-1.5 text-xs uppercase tracking-widest text-red-600 hover:underline"
+            >
+              移除
+            </button>
+          </div>
+        ))
+      }
+    </div>
+    <button
+      type="button"
+      data-add-variant
+      class="mt-3 mb-8 hidden rounded-md border border-line px-4 py-2 text-xs font-medium uppercase tracking-wider text-gray-700 hover:border-brand hover:text-brand"
+    >
+      ＋ 添加规格
+    </button>
+
+    {/* Add-ons — same single-save pattern as variants. */}
+    <h3 class="mb-3 text-sm font-medium">附加选项</h3>
+    <div data-extra-rows class="space-y-3">
+      {
+        [...extras, null].map((ex) => (
+          <div data-extra-row data-blank={ex ? undefined : ''} class="flex flex-wrap items-end gap-3 border-b border-line pb-3">
+            <input form="product-form" type="hidden" name="e_id" value={ex?.public_id ?? ''} />
+            <label class="flex flex-col gap-1 text-[10px] uppercase tracking-widest text-gray-400">
+              显示名称
+              <input
+                form="product-form"
+                type="text"
+                name="e_label"
+                value={ex?.label ?? ''}
+                placeholder="例如礼品包装"
+                class="w-48 rounded-md border border-line bg-transparent px-3 py-1.5 text-sm normal-case tracking-normal text-gray-900 focus:border-brand focus:outline-none"
+              />
+            </label>
+            <label class="flex flex-col gap-1 text-[10px] uppercase tracking-widest text-gray-400">
+              附加价格（{currency.toUpperCase()})
+              <input
+                form="product-form"
+                type="number"
+                name="e_price"
+                min="0"
+                step={priceStep}
+                value={ex ? major(ex.price_delta_cents) : ''}
+                placeholder="0.00"
+                class="w-28 rounded-md border border-line bg-transparent px-3 py-1.5 text-sm tracking-normal text-gray-900 focus:border-brand focus:outline-none"
+              />
+            </label>
+            {ex && (
+              <input form="product-form" type="checkbox" name="e_remove" value={ex.public_id} class="hidden" data-remove-mark />
+            )}
+            <button
+              type="button"
+              data-remove-row
+              class="hidden pb-1.5 text-xs uppercase tracking-widest text-red-600 hover:underline"
+            >
+              移除
+            </button>
+          </div>
+        ))
+      }
+    </div>
+    <button
+      type="button"
+      data-add-extra
+      class="mt-3 hidden rounded-md border border-line px-4 py-2 text-xs font-medium uppercase tracking-wider text-gray-700 hover:border-brand hover:text-brand"
+    >
+      ＋ 添加附加选项
+    </button>
+
+    {/* Submits the product form too (via form="product-form"), so changes here can
+        be saved without scrolling back to the top. */}
+    <div class="mt-8 border-t border-line pt-5">
+      <button
+        type="submit"
+        form="product-form"
+        class="rounded-md bg-brand px-5 py-2 font-medium text-white hover:bg-brand-hover"
+      >
+        {saveLabel}
+      </button>
+    </div>
+  </section>
+</div>
+
+  {/* Keep unsaved product fields in place while the existing gallery endpoint saves image changes. */}
+  <script>
+    // @ts-nocheck -- plain-JS client script (annotations would ship to the browser)
+    import { enableHandleReorder } from '../admin/handleReorder';
+    const list = document.querySelector('[data-gallery][data-action]');
+    if (list instanceof HTMLElement) {
+      const action = list.dataset.action || '';
+      const rows = () =>
+        Array.from(list.children).filter((el) => el instanceof HTMLElement);
+      const send = (params) =>
+        fetch(action, {
+          method: 'POST',
+          headers: { 'content-type': 'application/x-www-form-urlencoded' },
+          body: new URLSearchParams(params),
+        });
+      const feedback = (message) => {
+        const status = document.querySelector('[data-gallery-message]');
+        if (status) status.textContent = message;
+      };
+      const persistOrder = async () => {
+        const p = new URLSearchParams();
+        p.set('_action', 'reorder');
+        for (const li of rows()) p.append('order', li.dataset.imageId || '');
+        try {
+          if (!(await send(p)).ok) throw new Error('图片顺序保存失败，请重试。');
+          feedback('图片顺序已保存。');
+        } catch {
+          feedback('图片顺序未保存，请刷新后重试。');
+        }
+      };
+
+      new MutationObserver(() => {
+        rows().forEach((row, index) => {
+          const badge = row.querySelector('[data-image-order]');
+          if (badge) badge.textContent = String(index + 1);
+        });
+      }).observe(list, { childList: true });
+      enableHandleReorder(list, persistOrder, 'grid');
+
+      list.closest('section')?.addEventListener('submit', async (e) => {
+        const form = e.target;
+        if (!(form instanceof HTMLFormElement)) return;
+        e.preventDefault();
+        const type = form.dataset.jsAction;
+        if (type === 'delete' && !confirm('确定删除这张图片？')) return;
+        const data = new FormData(form);
+        try {
+          const response = await fetch(form.action, { method: 'POST', body: data });
+          const destination = new URL(response.url);
+          if (!response.ok || !destination.pathname.endsWith('/edit') || destination.searchParams.has('error')) {
+            throw new Error(destination.searchParams.get('error') || '图片修改失败，请重试。');
+          }
+          if (data.get('_action') === 'seo') {
+            feedback('图片 SEO 已保存。');
+            return;
+          }
+          const page = new DOMParser().parseFromString(await response.text(), 'text/html');
+          const rendered = Array.from(page.querySelectorAll('[data-gallery][data-action] > li'));
+          const existing = new Map(rows().map((row) => [row.dataset.imageId, row]));
+          const ordered = rendered.map((row) => existing.get(row.dataset.imageId) ?? row);
+          for (const row of rows()) {
+            if (ordered.includes(row)) continue;
+            row.remove();
+            for (const input of document.querySelectorAll('[data-image-input]')) {
+              if (input.value === row.dataset.imageId) input.closest('[data-variant-row]')?.querySelector('[data-thumb=""]')?.click();
+            }
+          }
+          for (const row of ordered) list.appendChild(row);
+          if (data.get('_action') === 'add') form.reset();
+          feedback('商品图片已保存。');
+        } catch (failure) {
+          feedback(failure.message || '图片修改失败，请重试。');
+        }
+      });
+    }
+  </script>
+
+  {/* Variants/extras editor: reveal the JS-only "+ Add"/"Remove" controls and let
+      one blank row be cloned for adding several. With JS off, the single inline
+      blank row still allows adding one variant/add-on per save. */}
+  <script>
+    // @ts-nocheck -- plain-JS client script (annotations would ship to the browser)
+    const closeAllPalettes = () => {
+      for (const p of document.querySelectorAll('[data-palette]')) p.classList.add('hidden');
+    };
+
+    // Apply a photo choice to a row: store the id, update the left preview, and
+    // highlight the chosen tile in the palette.
+    const selectThumb = (row, value) => {
+      const input = row.querySelector('[data-image-input]');
+      if (input instanceof HTMLInputElement) input.value = value;
+      let src = '';
+      for (const b of row.querySelectorAll('[data-thumb]')) {
+        const on = (b.getAttribute('data-thumb') || '') === value;
+        b.classList.toggle('ring-2', on);
+        b.classList.toggle('ring-brand', on);
+        b.setAttribute('aria-pressed', on ? 'true' : 'false');
+        if (on) src = b.getAttribute('data-src') || '';
+      }
+      // The preview shows whatever the chosen tile points at — a specific image, or
+      // the main product photo for the "Main" tile (its data-src is the main photo).
+      const preview = row.querySelector('[data-photo-preview]');
+      const empty = row.querySelector('[data-photo-empty]');
+      if (preview instanceof HTMLImageElement && empty instanceof HTMLElement) {
+        if (src) {
+          preview.src = src;
+          preview.classList.remove('hidden');
+          empty.classList.add('hidden');
+        } else {
+          preview.removeAttribute('src');
+          preview.classList.add('hidden');
+          empty.classList.remove('hidden');
+        }
+      }
+    };
+
+    const setupRows = (rowsSel, addSel) => {
+      const rows = document.querySelector(rowsSel);
+      const addBtn = document.querySelector(addSel);
+      if (!(rows instanceof HTMLElement) || !(addBtn instanceof HTMLElement)) return;
+      const blank = rows.querySelector('[data-blank]');
+      if (!(blank instanceof HTMLElement)) return;
+      addBtn.classList.remove('hidden');
+
+      // With JS, pull the inline blank row out and use it as the template — so
+      // "Add" appends a fresh row at the END (no second, lingering blank row).
+      // No-JS keeps the blank row in place (it was never removed).
+      blank.remove();
+
+      // Reveal the JS-only Remove links on the existing rows.
+      for (const b of rows.querySelectorAll('[data-remove-row]')) b.classList.remove('hidden');
+
+      // Delegated clicks (so appended rows work too): photo trigger toggles its
+      // palette; a tile applies the choice; a Remove link drops/marks its row.
+      rows.addEventListener('click', (e) => {
+        const el = e.target instanceof Element ? e.target : null;
+        if (!el) return;
+        const trigger = el.closest('[data-photo-trigger]');
+        if (trigger) {
+          const palette = trigger.parentElement?.querySelector('[data-palette]');
+          if (palette) document.dispatchEvent(new CustomEvent('product:photo-palette', { detail: palette }));
+          const isHidden = palette?.classList.contains('hidden');
+          closeAllPalettes();
+          if (palette && isHidden) palette.classList.remove('hidden');
+          return;
+        }
+        const thumb = el.closest('[data-thumb]');
+        if (thumb) {
+          const row = thumb.closest('[data-variant-row], [data-extra-row]');
+          if (row) selectThumb(row, thumb.getAttribute('data-thumb') || '');
+          closeAllPalettes();
+          return;
+        }
+        const rm = el.closest('[data-remove-row]');
+        if (rm) {
+          const row = rm.closest('[data-variant-row], [data-extra-row]');
+          if (!row) return;
+          // Existing rows: check the hidden flag and hide (deleted on save).
+          // New rows: just drop them.
+          const mark = row.querySelector('[data-remove-mark]');
+          if (mark instanceof HTMLInputElement) {
+            mark.checked = true;
+            row.classList.add('hidden');
+          } else {
+            row.remove();
+          }
+        }
+      });
+
+      const defaultPrice = () => document.querySelector('#product-form [name="price"]')?.value || rows.dataset.defaultPrice || '';
+      addBtn.addEventListener('click', () => {
+        const clone = blank.cloneNode(true);
+        clone.removeAttribute('data-blank');
+        for (const el of clone.querySelectorAll('input, select')) {
+          if (el instanceof HTMLSelectElement) el.selectedIndex = 0;
+          else if (el instanceof HTMLInputElement) {
+            // New variants default their price to the main product price.
+            el.value =
+              el.name.endsWith('_stock') ? '0' : el.name === 'v_price' ? defaultPrice() : '';
+          }
+        }
+        selectThumb(clone, ''); // new variants default to the main product photo
+        clone.querySelector('[data-remove-row]')?.classList.remove('hidden');
+        rows.appendChild(clone); // append at the end
+        clone.querySelector('input[name$="_label"]')?.focus();
+      });
+    };
+    setupRows('[data-variant-rows]', '[data-add-variant]');
+    setupRows('[data-extra-rows]', '[data-add-extra]');
+
+    // Click outside any photo trigger/palette closes the open palette.
+    document.addEventListener('click', (e) => {
+      const el = e.target instanceof Element ? e.target : null;
+      if (el && el.closest('[data-palette], [data-photo-trigger]')) return;
+      closeAllPalettes();
+    });
+  </script>
+</AdminLayout>
+
+<script>
+  import './productEditorClient';
+</script>
+
+<script>
+  // Picker selection → submit the hidden attach form. Kept out of MediaPicker
+  // itself so the same dialog can serve the logo and the Markdown editor, which
+  // do something different with the same event.
+  document.addEventListener('media:selected', (event) => {
+    if (!(event.target instanceof Element) || !event.target.closest('[data-media-picker="product-gallery"]')) return;
+    const detail = (event as CustomEvent).detail as { id: string };
+    const form = document.querySelector<HTMLFormElement>('[data-attach-form]');
+    const field = form?.querySelector<HTMLInputElement>('[data-attach-media-id]');
+    if (!form || !field) return;
+    field.value = detail.id ?? '';
+    form.requestSubmit();
+  });
+</script>

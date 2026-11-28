@@ -6,24 +6,25 @@ export function enableHandleReorder(
   const rows = () => Array.from(list.children).filter((row): row is HTMLElement => row instanceof HTMLElement);
   let dragging: HTMLElement | null = null;
 
-  for (const row of rows()) {
-    const handle = row.querySelector<HTMLElement>('[data-handle]');
-    if (!handle) continue;
-    handle.draggable = true;
-    handle.addEventListener('dragstart', event => {
-      if (event.target !== handle || !event.dataTransfer) return;
+  list.addEventListener('dragstart', event => {
+      const handle = event.target;
+      if (!(handle instanceof HTMLElement) || !handle.matches('[data-handle]') || !event.dataTransfer) return;
+      const row = handle.closest<HTMLElement>('li');
+      if (!row || row.parentElement !== list) return;
       dragging = row;
       row.classList.add('dragging');
       event.dataTransfer.effectAllowed = 'move';
       event.dataTransfer.setData('application/x-fxf-admin-sort', '1');
       const bounds = row.getBoundingClientRect();
       event.dataTransfer.setDragImage(row, event.clientX - bounds.left, event.clientY - bounds.top);
-    });
-    handle.addEventListener('dragend', () => {
-      if (dragging !== row) return;
-      row.classList.remove('dragging');
+  });
+  list.addEventListener('dragend', () => {
+      dragging?.classList.remove('dragging');
       dragging = null;
-    });
+  });
+  for (const row of rows()) {
+    const handle = row.querySelector<HTMLElement>('[data-handle]');
+    if (handle) handle.draggable = true;
   }
 
   list.addEventListener('dragover', event => {

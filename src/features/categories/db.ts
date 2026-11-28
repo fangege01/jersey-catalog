@@ -19,6 +19,7 @@ export interface CategoryNode extends Category {
 
 /** A depth-tagged flat row, for indented <select> options / checkboxes. */
 export interface CategoryOption {
+  parent_id?: number | null;
   id: number;
   public_id: string | null;
   name: string;
@@ -339,7 +340,7 @@ export function flattenTree(nodes: CategoryNode[]): CategoryOption[] {
   const out: CategoryOption[] = [];
   const walk = (ns: CategoryNode[]) => {
     for (const n of ns) {
-      out.push({ id: n.id, public_id: n.public_id, name: n.name, slug: n.slug, depth: n.depth });
+      out.push({ id: n.id, public_id: n.public_id, name: n.name, slug: n.slug, depth: n.depth, parent_id: n.parent_id });
       walk(n.children);
     }
   };

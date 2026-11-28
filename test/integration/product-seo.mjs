@@ -273,6 +273,97 @@ try {
   assert.ok(imported.includes('<title>Imported search title</title>'));
   assert.ok(imported.includes('"sku":"FXF-ABC-1"'));
   assert.ok(imported.includes('"name":"Imported visible title"'));
+  const categoryIds = ['cat_aaaaaaaaaa', 'cat_bbbbbbbbbb', 'cat_cccccccccc'];
+  const root = await db.prepare("INSERT INTO categories (name,slug,public_id) VALUES ('National teams','national-teams',?) RETURNING id")
+    .bind(categoryIds[0]).first();
+  const child = await db.prepare("INSERT INTO categories (name,slug,public_id,parent_id) VALUES ('Argentina','argentina',?,?) RETURNING id")
+    .bind(categoryIds[1], root.id).first();
+  const other = await db.prepare("INSERT INTO categories (name,slug,public_id) VALUES ('Featured','featured',?) RETURNING id")
+    .bind(categoryIds[2]).first();
+  const mediaResponse = await post('/api/admin/media', (() => {
+    const data = new FormData();
+    data.set('files', png);
+    return data;
+  })(), cookie);
+  assert.ok(mediaResponse.ok || mediaResponse.status === 303);
+  const media = await db.prepare('SELECT * FROM media ORDER BY id DESC LIMIT 1').first();
+  assert.ok(media.public_id);
+  const editorPost = (url, body) => fetch(origin + url, {
+    method: 'POST', body, headers: { origin, cookie, accept: 'application/json' },
+  });
+  const complete = form({
+    name: 'Editor Showcase Jersey', slug: 'editor-showcase', description: richProductValue('## Fabric\n\n**Soft knit**'),
+    primary_category: categoryIds[0], subcategory: categoryIds[1], category: categoryIds[2],
+    team: 'Argentina', product_type: 'Player Jersey', sleeve_type: 'Short Sleeve',
+    product_tags: 'Home, Match', release_year: '2026',
+    variant_group_label: 'Size', v_label: 'Adult M', v_price: '14.50', v_image: 'upload',
+    e_label: 'Printed name', e_price: '1.25',
+    quoteNote: 'Customize with a name', specifications: 'Breathable fabric', shippingPayment: 'Tracked delivery',
+  });
+  complete.append('gallery_order', 'library');
+  complete.append('gallery_order', 'upload');
+  complete.set('gallery_media_library', media.public_id);
+  complete.set('gallery_file_upload', png);
+  complete.set('gallery_filename_library', 'showcase-front');
+  complete.set('gallery_alt_library', 'Showcase jersey front');
+  complete.set('gallery_alt_upload', 'Showcase jersey back');
+  const createComplete = await editorPost('/api/admin/products', complete);
+  assert.equal(createComplete.status, 200, await createComplete.clone().text());
+  const createdLocation = (await createComplete.json()).location;
+  const current = await db.prepare("SELECT * FROM products WHERE slug='editor-showcase'").first();
+  assert.match(createdLocation, new RegExp(current.public_id + '/edit\\?created=1'));
+  assert.deepEqual([current.active, current.catalog_category_id, current.release_year, current.team, current.product_type, current.sleeve_type],
+    [1, child.id, 2026, 'Argentina', 'Player Jersey', 'Short Sleeve']);
+  assert.deepEqual(JSON.parse(current.product_tags), ['Home', 'Match']);
+  assert.deepEqual((await db.prepare('SELECT category_id FROM product_categories WHERE product_id=? ORDER BY category_id').bind(current.id).all())
+    .results.map(row => row.category_id), [child.id, other.id]);
+  const stored = (await db.prepare('SELECT * FROM product_images WHERE product_id=? ORDER BY position').bind(current.id).all()).results;
+  assert.equal(current.image_key, media.image_key);
+  assert.deepEqual(stored.map(row => row.alt), ['Showcase jersey front', 'Showcase jersey back']);
+  assert.match(stored[0].seo_alias, /showcase-front\.(png|webp)$/);
+  const variant = await db.prepare('SELECT * FROM product_variants WHERE product_id=?').bind(current.id).first();
+  const extra = await db.prepare('SELECT * FROM product_extras WHERE product_id=?').bind(current.id).first();
+  assert.deepEqual([variant.label, variant.price_cents, variant.image_id], ['Adult M', 1450, stored[1].id]);
+  assert.deepEqual([extra.label, extra.price_delta_cents], ['Printed name', 125]);
+  const repeat = await editorPost('/api/admin/products', complete);
+  assert.equal(repeat.status, 422);
+  const completeHtml = await (await read('/products/editor-showcase')).text();
+  assert.match(completeHtml, /Showcase jersey front/);
+  assert.match(completeHtml, /Soft knit/);
+  assert.match(completeHtml, /Customize with a name/);
+  assert.match(completeHtml, /Breathable fabric/);
+  assert.match(completeHtml, /Tracked delivery/);
+  assert.match(completeHtml, /\$9\.00/);
+  assert.match(completeHtml, /Argentina/);
+  const updated = form({
+    name: current.name, slug: current.slug, description: 'Updated product copy.', price: '15',
+    seo_title: 'Updated SEO Title', primary_category: categoryIds[2], subcategory: '',
+    release_year: '2026', team: 'Argentina', product_type: 'Player Jersey', sleeve_type: 'Short Sleeve',
+    product_tags: 'Home, Match', variant_group_label: 'Size',
+  });
+  const editResult = await editorPost('/api/admin/products/' + current.public_id, updated);
+  assert.equal(editResult.status, 200, await editResult.clone().text());
+  const after = await db.prepare('SELECT * FROM products WHERE id=?').bind(current.id).first();
+  assert.deepEqual([after.description, after.price_cents, after.seo_title, after.catalog_category_id, after.image_key],
+    ['Updated product copy.', 1500, 'Updated SEO Title', other.id, current.image_key]);
+  assert.equal(after.product_tags, current.product_tags);
+  assert.equal((await db.prepare('SELECT image_id FROM product_variants WHERE id=?').bind(variant.id).first()).image_id, stored[1].id);
+  assert.equal((await db.prepare('SELECT label FROM product_extras WHERE id=?').bind(extra.id).first()).label, extra.label);
+  assert.match(await (await read('/categories/featured')).text(), /Editor Showcase Jersey/);
+  const bucket = await mf.getR2Bucket('BUCKET');
+  const mediaBefore = (await db.prepare('SELECT COUNT(*) AS count FROM media').first()).count;
+  const objectsBefore = (await bucket.list()).objects.length;
+  const aliasesBefore = (await db.prepare('SELECT COUNT(*) AS count FROM product_image_url_aliases').first()).count;
+  await db.prepare(`CREATE TRIGGER reject_fixture_variant BEFORE INSERT ON product_variants
+    WHEN NEW.label='Rollback fixture' BEGIN SELECT RAISE(ABORT,'fixture storage failure'); END`).run();
+  const rejected = form({ name: 'Rollback fixture', slug: 'rollback-fixture', v_label: 'Rollback fixture',
+    v_price: '14', gallery_order: 'fixture', gallery_file_fixture: png, gallery_filename_fixture: 'rollback-photo' });
+  assert.equal((await editorPost('/api/admin/products', rejected)).status, 422);
+  assert.equal(await db.prepare("SELECT id FROM products WHERE slug='rollback-fixture'").first(), null);
+  assert.equal((await db.prepare('SELECT COUNT(*) AS count FROM media').first()).count, mediaBefore);
+  assert.equal((await bucket.list()).objects.length, objectsBefore);
+  assert.equal((await db.prepare('SELECT COUNT(*) AS count FROM product_image_url_aliases').first()).count, aliasesBefore);
+  assert.equal((await read('/products/rollback-fixture')).status, 404);
   console.log('Product SEO integration passed: legacy migration, admin forms, D1 writes, metadata, image, schema, slug conflicts, 301 and sitemap.');
 } finally {
   await mf.dispose();

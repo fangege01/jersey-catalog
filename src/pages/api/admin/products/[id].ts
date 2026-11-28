@@ -41,6 +41,8 @@ import { parsePublicId } from '../../../../features/ids/publicId';
 import { CACHE_TAG } from '../../../../features/cache/tags';
 import { purgeCacheTags } from '../../../../features/cache/purge';
 import { saveCopyInEnglish } from '../../../../features/i18n/adminCopy';
+import { parseProductTaxonomy } from '../../../../features/categories/productTaxonomy';
+import { productEditorResponse } from '../../../../features/products/editorResponse';
 
 export const prerender = false;
 
@@ -128,7 +130,7 @@ export const POST: APIRoute = async ({ request, params, redirect, locals }) => {
   }
 
   const fail = (msg: string) =>
-    redirect(`/admin/products/${publicId}/edit?error=${encodeURIComponent(msg)}`, 303);
+    productEditorResponse(request, `/admin/products/${publicId}/edit?error=${encodeURIComponent(msg)}`, msg);
 
   // The store's display unit, plus whether a blank weight would make this product
   // unsellable (every enabled zone prices by weight). Both come from settings the
@@ -143,6 +145,8 @@ export const POST: APIRoute = async ({ request, params, redirect, locals }) => {
     requireWeight: zonesRequireWeight(shippingFor(locals.settings).config),
   });
   if ('error' in parsed) return fail(parsed.error);
+  const taxonomy = await parseProductTaxonomy(env.DB, form);
+  if ('error' in taxonomy) return fail(taxonomy.error);
   const sections = parseProductDetailSections(form);
   if ('error' in sections) return fail(sections.error);
 
@@ -200,7 +204,7 @@ export const POST: APIRoute = async ({ request, params, redirect, locals }) => {
   }
 
   try {
-    await updateProduct(env.DB, id, { ...parsed.data, ...productSeoFields(form), name: copy.title,
+    await updateProduct(env.DB, id, { ...parsed.data, ...taxonomy.data, ...productSeoFields(form), name: copy.title,
       description: copy.body, image_key, slug: url.slug, detail_sections: details?.value },
       copy.source && { publicId, source: copy.source });
   } catch (error) {
@@ -222,7 +226,10 @@ export const POST: APIRoute = async ({ request, params, redirect, locals }) => {
     .map((v) => parsePublicId(v, 'category'))
     .filter((v): v is string => v !== null);
   const categoryIds = (await getCategoriesByPublicIds(env.DB, categoryPublicIds)).map((c) => c.id);
-  await setProductCategories(env.DB, id, categoryIds);
+  const primary = taxonomy.data.catalog_category_id === undefined
+    ? existing.catalog_category_id : taxonomy.data.catalog_category_id;
+  if (primary) categoryIds.push(primary);
+  await setProductCategories(env.DB, id, [...new Set(categoryIds)]);
 
   // Variants + extras edited inline on the same form (no-op if none submitted).
   // A bad variant weight is reported rather than dropped: applyVariantForm
@@ -241,5 +248,6 @@ export const POST: APIRoute = async ({ request, params, redirect, locals }) => {
   }
 
   await purgeCacheTags([CACHE_TAG.catalog, CACHE_TAG.product(publicId)]);
-  return redirect('/admin/products', 303);
+  return productEditorResponse(request, request.headers.get('accept')?.includes('application/json')
+    ? `/admin/products/${publicId}/edit?saved=1` : '/admin/products');
 };
