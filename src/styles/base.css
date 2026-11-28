@@ -235,14 +235,12 @@
   display: none; /* Chrome / Safari */
 }
 
-/* Admin image gallery. Per-row borders (so nothing trails during a drag), and
-   :first-child / :last-child drive the primary badge + ↑/↓/make-primary
-   visibility — which auto-updates when rows reorder, no JS state to maintain. */
-[data-gallery] > li {
-  border-bottom: 1px solid var(--color-line);
-}
-[data-gallery] > li:last-child {
-  border-bottom: 0;
+/* Admin image gallery. DOM order drives the primary badge and move controls. */
+[data-gallery] {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 10rem), 1fr));
+  align-items: start;
+  gap: .625rem;
 }
 [data-gallery] > li.dragging {
   opacity: 0.4;
@@ -252,9 +250,7 @@
 [data-gallery] > li:not(:first-child) [data-primary-badge] {
   display: none;
 }
-/* Hidden controls keep their slot (visibility, not display) so the ↑/↓ stack
-   stays aligned and the right-hand action column stays the same width on every
-   row — which keeps every alt-text field the same size. */
+/* Hidden controls keep their slot so other actions stay in place. */
 [data-gallery] > li:first-child [data-up],
 [data-gallery] > li:last-child [data-down],
 [data-gallery] > li:first-child [data-make-primary] {
