@@ -78,7 +78,7 @@ const zh = navigation === 'zh-CN';
           </div>
         )}
       </div>
-      <div class:list={['no-scrollbar mt-3 flex gap-2 overflow-x-auto', navigation && 'gallery-thumbs']} data-gallery-thumbs={navigation ? '' : undefined}>
+      <div class:list={['mt-3 gap-2', navigation ? 'gallery-thumbs' : 'no-scrollbar flex overflow-x-auto']} data-gallery-thumbs={navigation ? '' : undefined}>
         {images.map((image, index) => (
           <a
             href={`#pi-${image.anchor}`}
@@ -89,7 +89,7 @@ const zh = navigation === 'zh-CN';
             <img
               src={image.thumbnail.src}
               srcset={image.thumbnail.srcset}
-              sizes={image.thumbnail.sizes}
+              sizes={navigation && image.thumbnail.srcset ? '(min-width: 76rem) 6.75rem, (min-width: 48rem) 9vw, 18vw' : image.thumbnail.sizes}
               alt=""
               width="64"
               height="64"
@@ -128,9 +128,11 @@ const zh = navigation === 'zh-CN';
   .gallery-prev{inset-inline-start:.55rem;}
   .gallery-next{inset-inline-end:.55rem;}
   .gallery-counter{bottom:.6rem;inset-inline-end:.6rem;padding:.2rem .55rem;font-size:.75rem;font-variant-numeric:tabular-nums;pointer-events:none;}
-  .gallery-thumbs{scrollbar-width:thin;padding:.18rem .15rem .35rem;}
-  .gallery-thumbs a[aria-current=true]{border-color:#0f766e;outline:2px solid #0f766e;outline-offset:-2px;}
-  @media(max-width:47rem){.gallery-thumbs img{width:3.25rem;height:3.25rem;}}
+  .gallery-thumbs{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));}
+  .gallery-thumbs a{border-radius:.5rem;}
+  .gallery-thumbs img{display:block;width:100%;height:auto;aspect-ratio:1;}
+  .gallery-thumbs a[aria-current=true]{border-color:var(--color-brand);outline:2px solid var(--color-brand);outline-offset:-2px;}
+  .gallery-thumbs a:focus-visible{outline:2px solid var(--color-brand);outline-offset:2px;}
   @media(prefers-reduced-motion:reduce){[data-linked-gallery] [data-hero-track]{scroll-behavior:auto;}}
 </style>
 
@@ -158,11 +160,6 @@ const zh = navigation === 'zh-CN';
         if (position === current) anchor.setAttribute('aria-current', 'true');
         else anchor.removeAttribute('aria-current');
       });
-      const active = anchors[current];
-      if (active.offsetLeft < thumbs.scrollLeft) thumbs.scrollLeft = active.offsetLeft;
-      if (active.offsetLeft + active.offsetWidth > thumbs.scrollLeft + thumbs.clientWidth) {
-        thumbs.scrollLeft = active.offsetLeft + active.offsetWidth - thumbs.clientWidth + 2;
-      }
       previous.setAttribute('aria-disabled', String(current === 0));
       next.setAttribute('aria-disabled', String(current === frames.length - 1));
       counter.textContent = `${current + 1} / ${frames.length}`;

@@ -113,7 +113,7 @@ const zh = model.locale === 'zh-CN';
       {model.formattedPrice}
     </p>}
     {model.quoteNoteHtml && (
-      <div class="markdown-content product-detail-copy mt-4 w-full break-words rounded-lg border border-red-200 border-s-4 border-s-red-600 bg-red-100 px-4 py-3 text-sm leading-relaxed text-black"
+      <div class="markdown-content product-detail-copy quote-note mt-4 w-full"
         set:html={model.quoteNoteHtml} />
     )}
     {
@@ -172,9 +172,9 @@ const zh = model.locale === 'zh-CN';
 </div>
 
 {purchase.inquiry && model.descriptionHtml && (
-  <section aria-labelledby="product-details" class="mt-12 border-t border-line pt-8 md:mt-16">
-    <h2 id="product-details" class="font-serif text-2xl">{zh ? '商品详情' : 'Product details'}</h2>
-    <div class="markdown-content product-detail-copy mt-4 max-w-4xl overflow-x-auto text-ink" set:html={model.descriptionHtml} />
+  <section aria-labelledby="product-details" class="product-description mt-10 rounded-xl border border-line px-4 py-5 sm:px-6 md:mt-12">
+    <h2 id="product-details" class="text-xl font-bold text-ink">{zh ? '商品详情' : 'Product details'}</h2>
+    <div class="markdown-content product-detail-copy product-description-copy mt-3 overflow-x-auto text-ink" set:html={model.descriptionHtml} />
   </section>
 )}
 
@@ -190,3 +190,41 @@ const zh = model.locale === 'zh-CN';
     </section>
   )
 }
+
+<style>
+  .quote-note {
+    max-width: none;
+    padding: .75rem .9rem;
+    border: 1px solid #fecaca;
+    border-inline-start: 3px solid #dc2626;
+    border-radius: .65rem;
+    background: #fff4f3;
+    color: #302524;
+    font-size: .875rem;
+    line-height: 1.55;
+  }
+  .quote-note :global(strong) { color: #842727; font-weight: 750; }
+  .quote-note :global(:is(p, ul, ol)),
+  .product-description-copy :global(:is(p, ul, ol, blockquote, table, pre)) { margin-block-end: .6rem; }
+  .product-description-copy {
+    max-width: 56rem;
+    margin-inline: 0;
+    font-size: .9375rem;
+    line-height: 1.6;
+  }
+  .product-description-copy :global(:is(h2, h3)) {
+    margin-block: 1.05rem .35rem;
+    font: inherit;
+    font-weight: 750;
+    color: var(--color-brand);
+  }
+  .product-description-copy :global(h2) { font-size: 1.075rem; }
+  .product-description-copy > :global(:is(h2, h3):first-child) { margin-block-start: 0; }
+  .product-description-copy :global(:is(ul, ol):not(.fxf-checklist)) { padding-inline-start: 1.2rem; }
+  .product-description-copy :global(li) { margin-block-end: .2rem; }
+  .product-description-copy :global(li > p) { margin-block-end: .25rem; }
+  .product-description-copy :global(li > :is(ul, ol)) { margin-block: .2rem .3rem; }
+  .product-description-copy :global(li > :last-child),
+  .product-description-copy > :global(:last-child),
+  .quote-note > :global(:last-child) { margin-block-end: 0; }
+</style>

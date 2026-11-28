@@ -217,7 +217,9 @@ export async function loadProductDetail(
     baseUrl: options.imageBaseUrl,
     resolveLink: options.catalogOnly ? (href: string) => managedWhatsAppHref(href, inquiryNumber ?? null) : undefined,
   };
-  const quoteNoteHtml = renderProductDetailText(detailCopy.quoteNote, markdownOptions);
+  const quoteNote = detailCopy.quoteNote.replace(/^(\*\*[^*\n]+[:：]\*\*)(?=\S)/mu, '$1 ');
+  const quoteNoteHtml = renderProductDetailText(quoteNote, markdownOptions)
+    .replace(/^(<p><strong>[^<]*[:：]<\/strong>)(?=[^\s<])/u, '$1 ');
   const detailSections = [
     { en: 'Product specifications', zh: '产品规格', copy: detailCopy.specifications },
     { en: 'Shipping and payment', zh: '运输及付款', copy: detailCopy.shippingPayment },
